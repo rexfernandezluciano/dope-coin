@@ -93,7 +93,7 @@ export default function Mining() {
 
   const isActive = miningStatus?.isActive || false;
   const progress = miningStatus?.progress || 0;
-  const currentEarned = miningStatus?.currentEarned || 0;
+  const currentEarned = Number(miningStatus?.currentEarned) || 0;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8" data-testid="mining-page">
