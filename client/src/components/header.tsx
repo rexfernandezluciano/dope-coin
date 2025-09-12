@@ -7,11 +7,18 @@ export function Header() {
   const { user, logout } = useAuth();
 
   return (
-    <header className="sticky top-0 z-50 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 border-b border-border shadow-sm" data-testid="header-navigation">
+    <header
+      className="sticky top-0 z-50 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 border-b border-border shadow-sm"
+      data-testid="header-navigation"
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center space-x-4">
-            <Link href="/" className="flex items-center space-x-2" data-testid="link-home">
+            <Link
+              href="/"
+              className="flex items-center space-x-2"
+              data-testid="link-home"
+            >
               <div className="w-8 h-8 rounded-full gradient-bg flex items-center justify-center">
                 <Coins className="text-white text-sm" />
               </div>
@@ -53,14 +60,23 @@ export function Header() {
           </nav>
 
           <div className="flex items-center space-x-4">
-            <button className="p-2 rounded-lg hover:bg-muted transition-colors" data-testid="button-notifications">
+            <button
+              className="p-2 rounded-lg hover:bg-muted transition-colors"
+              data-testid="button-notifications"
+            >
               <Bell className="h-5 w-5 text-muted-foreground" />
             </button>
             {user && (
-              <div className="flex items-center space-x-3">
+              <Link className="flex items-center space-x-3" href="/profile">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-secondary to-accent flex items-center justify-center">
-                  <span className="text-sm font-semibold text-white" data-testid="user-initials">
-                    {user.fullName.split(' ').map(n => n[0]).join('')}
+                  <span
+                    className="text-sm font-semibold text-white"
+                    data-testid="user-initials"
+                  >
+                    {user.fullName
+                      .split(" ")
+                      .map((n) => n[0])
+                      .join("")}
                   </span>
                 </div>
                 <Button
@@ -71,7 +87,7 @@ export function Header() {
                 >
                   Logout
                 </Button>
-              </div>
+              </Link>
             )}
           </div>
         </div>

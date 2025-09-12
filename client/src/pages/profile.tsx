@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { AuthService } from "@/lib/auth";
-import { User, Mail, Shield, Calendar, Copy, CheckCircle, AlertCircle } from "lucide-react";
+import { User, Mail, Shield, Copy, CheckCircle, AlertCircle } from "lucide-react";
 
 export default function ProfilePage() {
   const { toast } = useToast();

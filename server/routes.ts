@@ -159,12 +159,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           level: user.level,
           isVerified: user.isVerified,
           referralCode: user.referralCode,
+          stellarPublicKey: user.stellarPublicKey, // Keep public key, but not secret
           createdAt: user.createdAt,
         },
         wallet,
         stats,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Profile fetch error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
@@ -219,7 +220,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const session = await miningService.startMining(userId);
       res.json({ message: "Mining started successfully", session });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Mining start error:", error.message);
       if (error.message.includes('Mining cooldown')) {
         res.status(400).json({ message: error.message });
@@ -237,12 +238,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const session = await miningService.stopMining(userId);
       res.json({ message: "Mining stopped successfully", session });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Mining stop error:", error.message);
       if (error.message.includes('No active mining session')) {
         res.status(400).json({ message: error.message });
       } else {
-        res.status(500).json({ message: "Internal server error" });
+        res.status(500).json({ message: "Internal server error: " + error.message });
       }
     }
   });
@@ -255,7 +256,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const status = await miningService.getMiningStatus(userId);
       res.json(status);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Mining status error:", error.message);
       res.status(500).json({ message: "Internal server error" });
     }
@@ -269,7 +270,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const reward = await miningService.claimReward(userId);
       res.json({ message: "Reward claimed successfully", reward });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Mining claim error:", error.message);
       if (error.message.includes('No rewards available') || error.message.includes('No active mining session')) {
         res.status(400).json({ message: error.message });
@@ -286,14 +287,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
-      const wallet = await storage.getWallet(userId);
       
       // Get latest XLM balance from Stellar
       const xlmBalance = await stellarService.getXLMBalance(userId);
+      // Get latest DOPE balance from Stellar
+      const dopeBalance = await stellarService.getDOPEBalance(userId);
       
       // Update wallet with latest balance
       const updatedWallet = await storage.updateWallet(userId, {
         xlmBalance: xlmBalance.toString(),
+        dopeBalance: dopeBalance.toString(),
         lastUpdated: new Date(),
       });
 

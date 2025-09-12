@@ -8,8 +8,7 @@ export function MobileNav() {
     { href: "/", icon: Home, label: "Dashboard" },
     { href: "/mining", icon: Pickaxe, label: "Mining" },
     { href: "/wallet", icon: Wallet, label: "Wallet" },
-    { href: "/referrals", icon: User, label: "Referrals" }, // Added Referrals link
-    { href: "/profile", icon: User, label: "Profile" },
+    { href: "/referrals", icon: User, label: "Referrals" }
   ];
 
   return (

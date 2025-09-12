@@ -21,9 +21,6 @@ const networkPassphrase = STELLAR_NETWORK === "mainnet"
 console.log(`DOPE Issuer: ${dopeIssuerKeypair.publicKey()}`);
 console.log(`DOPE Distributor: ${dopeDistributorKeypair.publicKey()}`);
 
-console.log(`DOPE Issuer Secret: ${DOPE_ISSUER_SECRET}`);
-console.log(`DOPE Distributor Secret: ${DOPE_DISTRIBUTOR_SECRET}`);
-
 // Initialize platform accounts on startup
 async function initializePlatformAccounts() {
   if (STELLAR_NETWORK === "testnet") {
@@ -75,7 +72,7 @@ async function initializePlatformAccounts() {
       await server.submitTransaction(issueTransaction);
       
       console.log("DOPE token platform setup completed");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error initializing platform accounts:", error.message);
     }
   }
@@ -146,7 +143,7 @@ export class StellarService {
         }
       }
       return false;
-    } catch (error) {
+    } catch (error: any) {
       console.log("Account funding error:", error.message);
       return false;
     }
