@@ -49,20 +49,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const response = await apiRequest("POST", "/api/auth/login", { email, password });
     const data = await response.json();
     
-    setToken(data.token);
-    setUser(data.user);
-    localStorage.setItem("token", data.token);
-    localStorage.setItem("user", JSON.stringify(data.user));
+    if (data.token && data.user) {
+      setToken(data.token);
+      setUser(data.user);
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+    } else {
+      throw new Error("Invalid response from server");
+    }
   };
 
   const register = async (registerData: RegisterData) => {
     const response = await apiRequest("POST", "/api/auth/register", registerData);
     const data = await response.json();
     
-    setToken(data.token);
-    setUser(data.user);
-    localStorage.setItem("token", data.token);
-    localStorage.setItem("user", JSON.stringify(data.user));
+    if (data.token && data.user) {
+      setToken(data.token);
+      setUser(data.user);
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+    } else {
+      throw new Error("Invalid response from server");
+    }
   };
 
   const logout = () => {
