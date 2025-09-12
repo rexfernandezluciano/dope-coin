@@ -22,6 +22,7 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByReferralCode(referralCode: string): Promise<User | undefined>;
   createUser(insertUser: InsertUser): Promise<User>;
   updateUser(id: string, updates: Partial<User>): Promise<User>;
 
@@ -57,6 +58,10 @@ export interface IStorage {
   getRecentMiningSessionsByUser(userId: string, limit: number): Promise<MiningSession[]>;
   getReferralCount(userId: string): Promise<number>;
   getActiveMiningSessionsCount(): Promise<number>;
+
+  // Referral methods
+  addReferralBonus(userId: string, amount: string): Promise<void>;
+  getActiveReferrals(userId: string): Promise<User[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -324,6 +329,61 @@ export class DatabaseStorage implements IStorage {
     } catch (error) {
       console.error("Error getting active mining sessions count:", error);
       return 0;
+    }
+  }
+
+  async getUserByReferralCode(referralCode: string): Promise<User | undefined> {
+    try {
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.referralCode, referralCode));
+      return user || undefined;
+    } catch (error) {
+      console.error("Error getting user by referral code:", error);
+      return undefined;
+    }
+  }
+
+  async addReferralBonus(userId: string, amount: string): Promise<void> {
+    try {
+      // Update user's wallet balance
+      const wallet = await this.getWallet(userId);
+      if (wallet) {
+        const currentBalance = parseFloat(wallet.dopeBalance);
+        const bonusAmount = parseFloat(amount);
+        const newBalance = (currentBalance + bonusAmount).toString();
+        
+        await this.updateWallet(userId, {
+          dopeBalance: newBalance,
+          lastUpdated: new Date(),
+        });
+      }
+
+      // Create transaction record
+      await this.createTransaction({
+        userId,
+        type: "referral_bonus",
+        amount,
+        assetType: "DOPE",
+        status: "completed",
+      });
+    } catch (error) {
+      console.error("Error adding referral bonus:", error);
+      throw error;
+    }
+  }
+
+  async getActiveReferrals(userId: string): Promise<User[]> {
+    try {
+      const referrals = await db
+        .select()
+        .from(users)
+        .where(eq(users.referredBy, userId));
+      return referrals;
+    } catch (error) {
+      console.error("Error getting active referrals:", error);
+      return [];
     }
   }
 }
