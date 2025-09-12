@@ -60,13 +60,13 @@ export class MiningService {
       const hoursMinned = miningDuration / (60 * 60 * 1000);
       const totalShouldHaveEarned = hoursMinned * parseFloat(session.rate);
       const alreadyIssued = parseFloat(session.totalEarned || "0");
-      
+
       // Calculate only the amount owed (not yet issued)
       const amountOwed = Math.max(0, totalShouldHaveEarned - alreadyIssued);
 
       const updatedSession = await storage.updateMiningSession(session.id, {
         endTime,
-        totalEarned: totalShouldHaveEarned.toString(),
+        totalEarned: totalShouldHaveEarned.toFixed(8), // Ensure this is a string with fixed decimal places
         isActive: false,
         progress: 100,
       });

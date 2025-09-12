@@ -7,7 +7,7 @@ import { ProfileCard } from "@/components/profile-card";
 import { NetworkStats } from "@/components/network-stats";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { UserPlus, History, Lock, HelpCircle, Send, ArrowDownLeft } from "lucide-react";
+import { UserPlus, History, Lock, HelpCircle } from "lucide-react";
 import { useLocation } from "wouter";
 
 export default function Dashboard() {
@@ -66,7 +66,7 @@ export default function Dashboard() {
                 <div className="text-right">
                   <div className="text-sm text-muted-foreground">Mining Rate</div>
                   <div className="text-lg font-semibold text-success" data-testid="mining-rate">
-                    {dashboardData?.mining?.rate || "0.25"} DOPE/hour
+                    {dashboardData?.mining?.rate || "0.50"}/hour
                   </div>
                 </div>
               </div>
@@ -85,32 +85,6 @@ export default function Dashboard() {
           
           {/* Wallet Balance */}
           <WalletCard />
-
-          {/* Send & Receive Buttons */}
-          <Card data-testid="send-receive-actions">
-            <CardContent className="p-4">
-              <div className="grid grid-cols-2 gap-3">
-                <Button 
-                  onClick={() => navigate("/send")}
-                  className="p-4 h-auto flex flex-col items-center bg-primary hover:bg-primary/90 transition-colors group"
-                  data-testid="button-send"
-                >
-                  <Send className="w-6 h-6 text-primary-foreground mb-2 group-hover:scale-110 transition-transform" />
-                  <span className="text-sm font-medium text-primary-foreground">Send</span>
-                </Button>
-                
-                <Button
-                  onClick={() => navigate("/receive")}
-                  variant="outline"
-                  className="p-4 h-auto flex flex-col items-center hover:bg-muted transition-colors group"
-                  data-testid="button-receive"
-                >
-                  <ArrowDownLeft className="w-6 h-6 text-success mb-2 group-hover:scale-110 transition-transform" />
-                  <span className="text-sm font-medium">Receive</span>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
 
           {/* User Profile Card */}
           <ProfileCard />

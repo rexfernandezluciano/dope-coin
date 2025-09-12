@@ -93,13 +93,13 @@ export default function WalletPage() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="text-center p-4 bg-gradient-to-br from-secondary/20 to-secondary/10 rounded-lg">
-                <div className="text-2xl font-bold text-secondary" data-testid="dope-balance">
+                <div className="text-xl font-bold text-secondary" data-testid="dope-balance">
                   {parseFloat(walletData?.dopeBalance || "0").toFixed(4)}
                 </div>
                 <div className="text-sm text-muted-foreground">DOPE</div>
               </div>
               <div className="text-center p-4 bg-gradient-to-br from-accent/20 to-accent/10 rounded-lg">
-                <div className="text-2xl font-bold text-accent" data-testid="xlm-balance">
+                <div className="text-xl font-bold text-accent" data-testid="xlm-balance">
                   {parseFloat(walletData?.xlmBalance || "0").toFixed(4)}
                 </div>
                 <div className="text-sm text-muted-foreground">XLM</div>
@@ -109,70 +109,6 @@ export default function WalletPage() {
             <div className="text-xs text-muted-foreground text-center">
               Last updated: {walletData?.lastUpdated ? new Date(walletData.lastUpdated).toLocaleString() : "Never"}
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Send Tokens */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Send className="w-5 h-5 mr-2" />
-              Send Tokens
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSendSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="assetType">Asset Type</Label>
-                <Select 
-                  value={sendForm.assetType} 
-                  onValueChange={(value: "DOPE" | "XLM") => 
-                    setSendForm(prev => ({ ...prev, assetType: value }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="DOPE">DOPE</SelectItem>
-                    <SelectItem value="XLM">XLM</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="toAddress">Recipient Address</Label>
-                <Input
-                  id="toAddress"
-                  placeholder="Enter recipient address"
-                  value={sendForm.toAddress}
-                  onChange={(e) => setSendForm(prev => ({ ...prev, toAddress: e.target.value }))}
-                  data-testid="input-to-address"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="amount">Amount</Label>
-                <Input
-                  id="amount"
-                  type="number"
-                  step="0.0001"
-                  placeholder="0.0000"
-                  value={sendForm.amount}
-                  onChange={(e) => setSendForm(prev => ({ ...prev, amount: e.target.value }))}
-                  data-testid="input-amount"
-                />
-              </div>
-
-              <Button 
-                type="submit" 
-                className="w-full"
-                disabled={sendTokens.isPending}
-                data-testid="button-send"
-              >
-                {sendTokens.isPending ? "Sending..." : "Send Transaction"}
-              </Button>
-            </form>
           </CardContent>
         </Card>
 

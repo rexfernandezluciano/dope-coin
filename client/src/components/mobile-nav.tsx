@@ -7,12 +7,8 @@ export function MobileNav() {
   const navItems = [
     { href: "/", icon: Home, label: "Home" },
     { href: "/wallet", icon: Wallet, label: "Wallet" },
-    { href: "/send", icon: Send, label: "Send" },
-    { href: "/receive", icon: ArrowDownLeft, label: "Receive" },
     { href: "/mining", icon: Pickaxe, label: "Mining" },
-    { href: "/transactions", icon: History, label: "History" },
     { href: "/referrals", icon: Users, label: "Referrals" },
-    { href: "/profile", icon: User, label: "Profile" },
   ];
 
   return (

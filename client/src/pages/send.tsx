@@ -110,29 +110,6 @@ export default function SendPage() {
           <h1 className="text-2xl font-bold">Send Transaction</h1>
         </div>
 
-        {/* Current Balance */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Available Balance</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="text-center p-4 bg-gradient-to-br from-secondary/20 to-secondary/10 rounded-lg">
-                <div className="text-xl font-bold text-secondary">
-                  {parseFloat(walletData?.dopeBalance || "0").toFixed(4)}
-                </div>
-                <div className="text-sm text-muted-foreground">DOPE</div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-accent/20 to-accent/10 rounded-lg">
-                <div className="text-xl font-bold text-accent">
-                  {parseFloat(walletData?.xlmBalance || "0").toFixed(4)}
-                </div>
-                <div className="text-sm text-muted-foreground">XLM</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Send Form */}
         <Card>
           <CardHeader>

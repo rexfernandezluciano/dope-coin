@@ -2,13 +2,15 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Wallet, Send, QrCode } from "lucide-react";
-import { AuthService } from "@/lib/auth";
+import { useLocation } from "wouter";
 
 export function WalletCard() {
   const { data: wallet, isLoading } = useQuery({
     queryKey: ["/api/protected/wallet"],
     refetchInterval: 30000, // Update every 30 seconds
   });
+
+  const navigate = useLocation()[1];
 
   if (isLoading) {
     return (
@@ -44,12 +46,15 @@ export function WalletCard() {
       <CardContent>
         <div className="space-y-4">
           <div>
-            <div className="text-3xl font-bold text-foreground" data-testid="dope-balance">
+            <div
+              className="text-3xl font-bold text-foreground"
+              data-testid="dope-balance"
+            >
               {dopeBalance.toFixed(4)}
             </div>
             <div className="text-sm text-muted-foreground">DOPE Coins</div>
           </div>
-          
+
           <div className="pt-4 border-t border-border">
             <div className="flex justify-between text-sm mb-2">
               <span className="text-muted-foreground">XLM Balance</span>
@@ -64,20 +69,22 @@ export function WalletCard() {
               </span>
             </div>
           </div>
-          
+
           <div className="grid grid-cols-2 gap-3 pt-4">
-            <Button 
-              className="bg-secondary hover:bg-secondary/90 text-secondary-foreground" 
+            <Button
+              className="bg-secondary hover:bg-secondary/90 text-secondary-foreground"
               size="sm"
               data-testid="button-send"
+              onClick={() => navigate("/send")}
             >
               <Send className="w-4 h-4 mr-1" />
               Send
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
               data-testid="button-receive"
+              onClick={() => navigate("/receive")}
             >
               <QrCode className="w-4 h-4 mr-1" />
               Receive
