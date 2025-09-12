@@ -164,9 +164,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updatedAt: new Date(),
       });
 
+      // Remove sensitive data from updated user object
+      const { password, stellarSecretKey, ...safeUpdatedUser } = updatedUser;
+      
       res.json({
         message: "Profile updated successfully",
-        user: updatedUser,
+        user: safeUpdatedUser,
       });
     } catch (error) {
       console.error("Profile update error:", error);
@@ -335,8 +338,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Mock mining status for now
       const miningStatus = { isActive: false, rate: "0.25" };
 
+      // Remove sensitive data from user object
+      const { password, stellarSecretKey, ...safeUser } = user || {};
+      
       res.json({
-        user,
+        user: safeUser,
         wallet,
         mining: miningStatus,
         recentTransactions,
