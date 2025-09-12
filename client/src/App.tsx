@@ -63,49 +63,73 @@ function Router() {
       <Switch>
         <Route path="/" component={() => (
           <ProtectedRoute>
-            <Header />
-            <Dashboard />
-            <MobileNav />
+            <div className="flex flex-col min-h-screen">
+              <Header />
+              <main className="flex-1 main-content">
+                <Dashboard />
+              </main>
+              <MobileNav />
+            </div>
           </ProtectedRoute>
         )} />
 
         <Route path="/dashboard" component={() => (
           <ProtectedRoute>
-            <Header />
-            <Dashboard />
-            <MobileNav />
+            <div className="flex flex-col min-h-screen">
+              <Header />
+              <main className="flex-1 main-content">
+                <Dashboard />
+              </main>
+              <MobileNav />
+            </div>
           </ProtectedRoute>
         )} />
 
         <Route path="/profile" component={() => (
           <ProtectedRoute>
-            <Header />
-            <Profile />
-            <MobileNav />
+            <div className="flex flex-col min-h-screen">
+              <Header />
+              <main className="flex-1 main-content">
+                <Profile />
+              </main>
+              <MobileNav />
+            </div>
           </ProtectedRoute>
         )} />
 
         <Route path="/wallet" component={() => (
           <ProtectedRoute>
-            <Header />
-            <Wallet />
-            <MobileNav />
+            <div className="flex flex-col min-h-screen">
+              <Header />
+              <main className="flex-1 main-content">
+                <Wallet />
+              </main>
+              <MobileNav />
+            </div>
           </ProtectedRoute>
         )} />
 
         <Route path="/transactions" component={() => (
           <ProtectedRoute>
-            <Header />
-            <Transactions />
-            <MobileNav />
+            <div className="flex flex-col min-h-screen">
+              <Header />
+              <main className="flex-1 main-content">
+                <Transactions />
+              </main>
+              <MobileNav />
+            </div>
           </ProtectedRoute>
         )} />
 
         <Route path="/mining" component={() => (
           <ProtectedRoute>
-            <Header />
-            <Mining />
-            <MobileNav />
+            <div className="flex flex-col min-h-screen">
+              <Header />
+              <main className="flex-1 main-content">
+                <Mining />
+              </main>
+              <MobileNav />
+            </div>
           </ProtectedRoute>
         )} />
 

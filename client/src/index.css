@@ -3,6 +3,33 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Navigation fixes */
+.gradient-bg {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+/* Ensure proper spacing for mobile layout */
+@media (max-width: 768px) {
+  .main-content {
+    padding-bottom: 5rem; /* Space for mobile nav */
+  }
+}
+
+/* Fix any potential z-index issues */
+.mobile-nav {
+  z-index: 1000;
+}
+
+.header-nav {
+  z-index: 999;
+}
+
+/* Prevent text selection on navigation items */
+.nav-item {
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
 :root {
   --background: hsl(210, 20%, 98%);
   --foreground: hsl(215, 13%, 18%);

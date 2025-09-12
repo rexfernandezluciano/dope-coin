@@ -11,31 +11,39 @@ export function Header() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center space-x-4">
-            <Link href="/">
-              <a className="flex items-center space-x-2" data-testid="link-home">
-                <div className="w-8 h-8 rounded-full gradient-bg flex items-center justify-center">
-                  <Coins className="text-white text-sm" />
-                </div>
-                <span className="text-xl font-bold text-primary">DOPE Coin</span>
-              </a>
+            <Link href="/" className="flex items-center space-x-2" data-testid="link-home">
+              <div className="w-8 h-8 rounded-full gradient-bg flex items-center justify-center">
+                <Coins className="text-white text-sm" />
+              </div>
+              <span className="text-xl font-bold text-primary">DOPE Coin</span>
             </Link>
           </div>
 
-          <nav className="hidden md:flex space-x-6">
-            <Link href="/dashboard" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-              Dashboard
+          <nav className="hidden md:flex items-center space-x-6">
+            <Link href="/dashboard">
+              <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                Dashboard
+              </span>
             </Link>
-            <Link href="/wallet" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-              Wallet
+            <Link href="/wallet">
+              <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                Wallet
+              </span>
             </Link>
-            <Link href="/mining" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-              Mining
+            <Link href="/mining">
+              <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                Mining
+              </span>
             </Link>
-            <Link href="/transactions" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-              History
+            <Link href="/transactions">
+              <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                History
+              </span>
             </Link>
-            <Link href="/profile" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-              Profile
+            <Link href="/profile">
+              <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                Profile
+              </span>
             </Link>
           </nav>
 
