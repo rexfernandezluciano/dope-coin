@@ -1,14 +1,18 @@
-import { Home, Pickaxe, Wallet, User } from "lucide-react";
+import { Home, User, Wallet, History, Pickaxe, Users, Send, ArrowDownLeft } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
 export function MobileNav() {
   const [location] = useLocation();
 
   const navItems = [
-    { href: "/", icon: Home, label: "Dashboard" },
-    { href: "/mining", icon: Pickaxe, label: "Mining" },
+    { href: "/", icon: Home, label: "Home" },
     { href: "/wallet", icon: Wallet, label: "Wallet" },
-    { href: "/referrals", icon: User, label: "Referrals" }
+    { href: "/send", icon: Send, label: "Send" },
+    { href: "/receive", icon: ArrowDownLeft, label: "Receive" },
+    { href: "/mining", icon: Pickaxe, label: "Mining" },
+    { href: "/transactions", icon: History, label: "History" },
+    { href: "/referrals", icon: Users, label: "Referrals" },
+    { href: "/profile", icon: User, label: "Profile" },
   ];
 
   return (

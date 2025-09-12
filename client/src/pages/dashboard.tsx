@@ -7,10 +7,12 @@ import { ProfileCard } from "@/components/profile-card";
 import { NetworkStats } from "@/components/network-stats";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { UserPlus, History, Lock, HelpCircle } from "lucide-react";
+import { UserPlus, History, Lock, HelpCircle, Send, ArrowDownLeft } from "lucide-react";
+import { useLocation } from "wouter";
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const [, navigate] = useLocation();
 
   const { data: dashboardData, isLoading } = useQuery({
     queryKey: ["/api/protected/dashboard"],
@@ -84,6 +86,32 @@ export default function Dashboard() {
           {/* Wallet Balance */}
           <WalletCard />
 
+          {/* Send & Receive Buttons */}
+          <Card data-testid="send-receive-actions">
+            <CardContent className="p-4">
+              <div className="grid grid-cols-2 gap-3">
+                <Button 
+                  onClick={() => navigate("/send")}
+                  className="p-4 h-auto flex flex-col items-center bg-primary hover:bg-primary/90 transition-colors group"
+                  data-testid="button-send"
+                >
+                  <Send className="w-6 h-6 text-primary-foreground mb-2 group-hover:scale-110 transition-transform" />
+                  <span className="text-sm font-medium text-primary-foreground">Send</span>
+                </Button>
+                
+                <Button
+                  onClick={() => navigate("/receive")}
+                  variant="outline"
+                  className="p-4 h-auto flex flex-col items-center hover:bg-muted transition-colors group"
+                  data-testid="button-receive"
+                >
+                  <ArrowDownLeft className="w-6 h-6 text-success mb-2 group-hover:scale-110 transition-transform" />
+                  <span className="text-sm font-medium">Receive</span>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* User Profile Card */}
           <ProfileCard />
 
@@ -98,6 +126,7 @@ export default function Dashboard() {
               <div className="grid grid-cols-2 gap-3">
                 <Button 
                   variant="outline"
+                  onClick={() => navigate("/referrals")}
                   className="p-4 h-auto flex flex-col items-center hover:bg-muted transition-colors group"
                   data-testid="action-invite"
                 >
@@ -107,6 +136,7 @@ export default function Dashboard() {
                 
                 <Button
                   variant="outline"
+                  onClick={() => navigate("/transactions")}
                   className="p-4 h-auto flex flex-col items-center hover:bg-muted transition-colors group"
                   data-testid="action-history"
                 >
@@ -116,6 +146,7 @@ export default function Dashboard() {
                 
                 <Button
                   variant="outline"
+                  onClick={() => navigate("/profile")}
                   className="p-4 h-auto flex flex-col items-center hover:bg-muted transition-colors group"
                   data-testid="action-security"
                 >
@@ -125,6 +156,7 @@ export default function Dashboard() {
                 
                 <Button
                   variant="outline"
+                  onClick={() => window.open("mailto:support@dopecoin.app", "_blank")}
                   className="p-4 h-auto flex flex-col items-center hover:bg-muted transition-colors group"
                   data-testid="action-support"
                 >
