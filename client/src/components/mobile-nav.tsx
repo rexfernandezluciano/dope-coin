@@ -8,6 +8,7 @@ export function MobileNav() {
     { href: "/", icon: Home, label: "Dashboard" },
     { href: "/mining", icon: Pickaxe, label: "Mining" },
     { href: "/wallet", icon: Wallet, label: "Wallet" },
+    { href: "/referrals", icon: User, label: "Referrals" }, // Added Referrals link
     { href: "/profile", icon: User, label: "Profile" },
   ];
 
@@ -17,10 +18,10 @@ export function MobileNav() {
         <div className="grid grid-cols-4 py-1 px-2 max-w-md mx-auto">
           {navItems.map(({ href, icon: Icon, label }) => (
             <Link key={href} href={href}>
-              <div 
+              <div
                 className={`flex flex-col items-center py-2 px-1 rounded-lg transition-all duration-200 ${
-                  location === href 
-                    ? 'text-primary bg-accent/20' 
+                  location === href
+                    ? 'text-primary bg-accent/20'
                     : 'text-muted-foreground hover:text-foreground hover:bg-accent/10'
                 }`}
                 data-testid={`nav-${label.toLowerCase()}`}

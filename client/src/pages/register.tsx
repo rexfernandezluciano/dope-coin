@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,16 +10,27 @@ import { Coins } from "lucide-react";
 
 export default function Register() {
   const [formData, setFormData] = useState({
+    fullName: "",
     username: "",
     email: "",
     password: "",
     confirmPassword: "",
-    fullName: "",
+    referralCode: "",
   });
   const [isLoading, setIsLoading] = useState(false);
   const { register } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+
+  // Check for referral code in URL
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const refCode = urlParams.get('ref');
+    if (refCode) {
+      setFormData(prev => ({ ...prev, referralCode: refCode }));
+    }
+  }, []);
+
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({
@@ -140,10 +151,28 @@ export default function Register() {
                 onChange={handleChange}
                 placeholder="Confirm your password"
                 required
-                minLength={6}
                 data-testid="input-confirm-password"
               />
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="referralCode">Referral Code (Optional)</Label>
+              <Input
+                id="referralCode"
+                name="referralCode"
+                type="text"
+                value={formData.referralCode}
+                onChange={handleChange}
+                placeholder="Enter referral code"
+                data-testid="input-referral-code"
+              />
+              {formData.referralCode && (
+                <p className="text-xs text-muted-foreground">
+                  You and your referrer will both receive bonus DOPE coins!
+                </p>
+              )}
+            </div>
+
             <Button
               type="submit"
               className="w-full gradient-bg hover:opacity-90"

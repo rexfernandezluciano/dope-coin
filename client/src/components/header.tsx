@@ -7,7 +7,7 @@ export function Header() {
   const { user, logout } = useAuth();
 
   return (
-    <header className="bg-card border-b border-border shadow-sm" data-testid="header-navigation">
+    <header className="sticky top-0 z-50 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 border-b border-border shadow-sm" data-testid="header-navigation">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center space-x-4">
@@ -38,6 +38,11 @@ export function Header() {
             <Link href="/transactions">
               <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
                 History
+              </span>
+            </Link>
+            <Link href="/referrals">
+              <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                Referrals
               </span>
             </Link>
             <Link href="/profile">

@@ -14,6 +14,7 @@ import NotFound from "@/pages/not-found";
 import Wallet from "@/pages/wallet";
 import Transactions from "@/pages/transactions";
 import Mining from "@/pages/mining";
+import ReferralsPage from "@/pages/referrals";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -127,6 +128,18 @@ function Router() {
               <Header />
               <main className="flex-1 main-content">
                 <Mining />
+              </main>
+              <MobileNav />
+            </div>
+          </ProtectedRoute>
+        )} />
+
+        <Route path="/referrals" component={() => (
+          <ProtectedRoute>
+            <div className="flex flex-col min-h-screen">
+              <Header />
+              <main className="flex-1 main-content">
+                <ReferralsPage />
               </main>
               <MobileNav />
             </div>
