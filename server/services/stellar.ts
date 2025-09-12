@@ -21,6 +21,9 @@ const networkPassphrase = STELLAR_NETWORK === "mainnet"
 console.log(`DOPE Issuer: ${dopeIssuerKeypair.publicKey()}`);
 console.log(`DOPE Distributor: ${dopeDistributorKeypair.publicKey()}`);
 
+console.log(`DOPE Issuer Secret: ${DOPE_ISSUER_SECRET}`);
+console.log(`DOPE Distributor Secret: ${DOPE_DISTRIBUTOR_SECRET}`);
+
 // Initialize platform accounts on startup
 async function initializePlatformAccounts() {
   if (STELLAR_NETWORK === "testnet") {
