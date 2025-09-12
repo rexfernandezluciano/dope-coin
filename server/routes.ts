@@ -6,7 +6,7 @@ import { authMiddleware } from "./middleware/auth";
 import { rateLimiter } from "./middleware/rateLimiter";
 import { jwtService } from "./services/jwt";
 import { stellarService } from "./services/stellar";
-// import { miningService } from "./services/mining";
+import { miningService } from "./services/mining";
 import { loginSchema, registerSchema } from "@shared/schema";
 import { z } from "zod";
 
@@ -195,12 +195,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
-      // const session = await miningService.startMining(userId);
-      // Temporarily return mock response
-      res.json({ message: "Mining started - temporarily disabled", session: { id: "mock", userId, isActive: true, rate: "0.25" } });
+      const session = await miningService.startMining(userId);
+      res.json({ message: "Mining started successfully", session });
     } catch (error) {
-      console.error("Mining start error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      console.error("Mining start error:", error.message);
+      if (error.message.includes('Mining cooldown')) {
+        res.status(400).json({ message: error.message });
+      } else {
+        res.status(500).json({ message: "Internal server error" });
+      }
     }
   });
 
@@ -210,12 +213,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
-      // const session = await miningService.stopMining(userId);
-      // Temporarily return mock response
-      res.json({ message: "Mining stopped - temporarily disabled", session: { id: "mock", userId, isActive: false } });
+      const session = await miningService.stopMining(userId);
+      res.json({ message: "Mining stopped successfully", session });
     } catch (error) {
-      console.error("Mining stop error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      console.error("Mining stop error:", error.message);
+      if (error.message.includes('No active mining session')) {
+        res.status(400).json({ message: error.message });
+      } else {
+        res.status(500).json({ message: "Internal server error" });
+      }
     }
   });
 
@@ -225,12 +231,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
-      // const status = await miningService.getMiningStatus(userId);
-      // Temporarily return mock response
-      const status = { isActive: false, session: null, nextReward: null, progress: 0, currentEarned: 0 };
+      const status = await miningService.getMiningStatus(userId);
       res.json(status);
     } catch (error) {
-      console.error("Mining status error:", error);
+      console.error("Mining status error:", error.message);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -241,13 +245,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
-      // const reward = await miningService.claimReward(userId);
-      // Temporarily return mock response
-      const reward = { amount: "0.25", totalEarned: "0.25" };
-      res.json({ message: "Reward claimed", reward });
+      const reward = await miningService.claimReward(userId);
+      res.json({ message: "Reward claimed successfully", reward });
     } catch (error) {
-      console.error("Mining claim error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      console.error("Mining claim error:", error.message);
+      if (error.message.includes('No rewards available') || error.message.includes('No active mining session')) {
+        res.status(400).json({ message: error.message });
+      } else {
+        res.status(500).json({ message: "Internal server error" });
+      }
     }
   });
 

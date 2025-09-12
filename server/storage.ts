@@ -15,7 +15,7 @@ import {
   type NetworkStats
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sum, count } from "drizzle-orm";
+import { eq, and, desc, sum, count, sql } from "drizzle-orm";
 
 export interface IStorage {
   // User methods
@@ -45,6 +45,12 @@ export interface IStorage {
   updateNetworkStats(updates: Partial<NetworkStats>): Promise<NetworkStats>;
   getActiveMinerCount(): Promise<number>;
   getTotalDopeSupply(): Promise<number>;
+  
+  // Enhanced mining methods
+  getCompletedMiningSessionsCount(userId: string, days: number): Promise<number>;
+  getRecentMiningSessionsByUser(userId: string, limit: number): Promise<MiningSession[]>;
+  getReferralCount(userId: string): Promise<number>;
+  getActiveMiningSessionsCount(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -198,6 +204,67 @@ export class DatabaseStorage implements IStorage {
       .select({ total: sum(wallets.dopeBalance) })
       .from(wallets);
     return parseFloat(result[0]?.total?.toString() || "0");
+  }
+
+  async getCompletedMiningSessionsCount(userId: string, days: number): Promise<number> {
+    try {
+      const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      const [result] = await db
+        .select({ count: count() })
+        .from(miningSessions)
+        .where(
+          and(
+            eq(miningSessions.userId, userId),
+            eq(miningSessions.isActive, false),
+            sql`${miningSessions.startTime} >= ${startDate}`
+          )
+        );
+      return result.count;
+    } catch (error) {
+      console.error("Error getting completed mining sessions count:", error);
+      return 0;
+    }
+  }
+
+  async getRecentMiningSessionsByUser(userId: string, limit: number): Promise<MiningSession[]> {
+    try {
+      const sessions = await db
+        .select()
+        .from(miningSessions)
+        .where(eq(miningSessions.userId, userId))
+        .orderBy(desc(miningSessions.createdAt))
+        .limit(limit);
+      return sessions;
+    } catch (error) {
+      console.error("Error getting recent mining sessions:", error);
+      return [];
+    }
+  }
+
+  async getReferralCount(userId: string): Promise<number> {
+    try {
+      const [result] = await db
+        .select({ count: count() })
+        .from(users)
+        .where(eq(users.referredBy, userId));
+      return result.count;
+    } catch (error) {
+      console.error("Error getting referral count:", error);
+      return 0;
+    }
+  }
+
+  async getActiveMiningSessionsCount(): Promise<number> {
+    try {
+      const [result] = await db
+        .select({ count: count() })
+        .from(miningSessions)
+        .where(eq(miningSessions.isActive, true));
+      return result.count;
+    } catch (error) {
+      console.error("Error getting active mining sessions count:", error);
+      return 0;
+    }
   }
 }
 
