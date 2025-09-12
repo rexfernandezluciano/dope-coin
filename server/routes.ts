@@ -5,9 +5,7 @@ import { storage } from "./storage";
 import { authMiddleware } from "./middleware/auth";
 import { rateLimiter } from "./middleware/rateLimiter";
 import { jwtService } from "./services/jwt";
-// Stellar service import will be fixed
-// import { stellarService } from "./services/stellar";
-// Mining service import will be fixed  
+import { stellarService } from "./services/stellar";
 // import { miningService } from "./services/mining";
 import { loginSchema, registerSchema } from "@shared/schema";
 import { z } from "zod";
@@ -27,8 +25,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Hash password
       const hashedPassword = await bcrypt.hash(validatedData.password, 10);
       
-      // Create Stellar keypair (temporarily disabled)
-      // const stellarKeypair = stellarService.generateKeypair();
+      // Create Stellar keypair
+      const stellarKeypair = stellarService.generateKeypair();
       
       // Generate referral code
       const referralCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -38,8 +36,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email: validatedData.email,
         password: hashedPassword,
         fullName: validatedData.fullName,
-        stellarPublicKey: null,
-        stellarSecretKey: null,
+        stellarPublicKey: stellarKeypair.publicKey(),
+        stellarSecretKey: stellarKeypair.secret(),
         referralCode,
       };
 
@@ -48,8 +46,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Initialize wallet
       await storage.createWallet({ userId: user.id });
       
-      // Create DOPE token for user if needed (temporarily disabled)
-      // await stellarService.createUserToken(user.id);
+      // Create DOPE token for user if needed
+      await stellarService.createUserToken(user.id);
 
       const token = jwtService.generateToken(user.id);
       
@@ -262,9 +260,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const wallet = await storage.getWallet(userId);
       
-      // Get latest XLM balance from Stellar (temporarily disabled)
-      // const xlmBalance = await stellarService.getXLMBalance(userId);
-      const xlmBalance = 0;
+      // Get latest XLM balance from Stellar
+      const xlmBalance = await stellarService.getXLMBalance(userId);
       
       // Update wallet with latest balance
       const updatedWallet = await storage.updateWallet(userId, {
@@ -291,9 +288,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid parameters" });
       }
 
-      // const transaction = await stellarService.sendTokens(userId, toAddress, amount, assetType);
-      // Temporarily return mock response
-      const transaction = { hash: "mock-hash", status: "completed", amount, assetType };
+      const transaction = await stellarService.sendTokens(userId, toAddress, amount, assetType);
       
       res.json({
         message: "Transaction sent",

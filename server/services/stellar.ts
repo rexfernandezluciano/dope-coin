@@ -6,10 +6,20 @@ const STELLAR_SERVER_URL = STELLAR_NETWORK === "mainnet"
   ? "https://horizon.stellar.org"
   : "https://horizon-testnet.stellar.org";
 
+// Platform DOPE token issuer (should be in environment variables in production)
+const DOPE_ISSUER_SECRET = process.env.DOPE_ISSUER_SECRET || Keypair.random().secret();
+const DOPE_DISTRIBUTOR_SECRET = process.env.DOPE_DISTRIBUTOR_SECRET || Keypair.random().secret();
+
+const dopeIssuerKeypair = Keypair.fromSecret(DOPE_ISSUER_SECRET);
+const dopeDistributorKeypair = Keypair.fromSecret(DOPE_DISTRIBUTOR_SECRET);
+
 const server = new Horizon.Server(STELLAR_SERVER_URL);
 const networkPassphrase = STELLAR_NETWORK === "mainnet" 
   ? Networks.PUBLIC 
   : Networks.TESTNET;
+
+console.log(`DOPE Issuer: ${dopeIssuerKeypair.publicKey()}`);
+console.log(`DOPE Distributor: ${dopeDistributorKeypair.publicKey()}`);
 
 export class StellarService {
   generateKeypair(): Keypair {
@@ -43,13 +53,39 @@ export class StellarService {
       const account = await server.loadAccount(user.stellarPublicKey);
       const dopeBalance = account.balances.find(balance => 
         balance.asset_type === "credit_alphanum4" && 
-        balance.asset_code === "DOPE"
+        balance.asset_code === "DOPE" &&
+        balance.asset_issuer === dopeIssuerKeypair.publicKey()
       );
       
       return parseFloat(dopeBalance?.balance || "0");
     } catch (error) {
       console.error("Error fetching DOPE balance:", error);
       return 0;
+    }
+  }
+
+  async fundAccount(publicKey: string): Promise<boolean> {
+    if (STELLAR_NETWORK !== "testnet") return true;
+    
+    try {
+      console.log(`Funding account via friendbot: ${publicKey}`);
+      await server.friendbot(publicKey).call();
+      console.log(`Account funded successfully: ${publicKey}`);
+      
+      // Wait for funding to propagate and verify account exists
+      for (let i = 0; i < 10; i++) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        try {
+          await server.loadAccount(publicKey);
+          return true;
+        } catch {
+          // Account not ready yet, continue waiting
+        }
+      }
+      return false;
+    } catch (error) {
+      console.log("Account funding error:", error.message);
+      return false;
     }
   }
 
@@ -60,23 +96,21 @@ export class StellarService {
         throw new Error("User stellar account not found");
       }
 
-      const sourceKeypair = Keypair.fromSecret(user.stellarSecretKey);
-      const account = await server.loadAccount(sourceKeypair.publicKey());
-
-      // For testnet, fund the account first
-      if (STELLAR_NETWORK === "testnet") {
-        try {
-          await server.friendbot(sourceKeypair.publicKey()).call();
-        } catch (error) {
-          // Account might already be funded
-          console.log("Account funding skipped:", error);
-        }
+      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      
+      // Fund account if needed
+      const funded = await this.fundAccount(userKeypair.publicKey());
+      if (!funded) {
+        console.log("Account funding failed, skipping token setup");
+        return;
       }
 
-      // Create DOPE asset
-      const dopeAsset = new Asset("DOPE", sourceKeypair.publicKey());
+      const account = await server.loadAccount(userKeypair.publicKey());
+
+      // Create DOPE asset with platform issuer
+      const dopeAsset = new Asset("DOPE", dopeIssuerKeypair.publicKey());
       
-      // Create transaction to trust DOPE asset
+      // Create transaction to trust platform DOPE asset
       const transaction = new TransactionBuilder(account, {
         fee: "100",
         networkPassphrase,
@@ -87,10 +121,10 @@ export class StellarService {
         .setTimeout(30)
         .build();
 
-      transaction.sign(sourceKeypair);
+      transaction.sign(userKeypair);
       await server.submitTransaction(transaction);
 
-      console.log(`DOPE token setup completed for user ${userId}`);
+      console.log(`DOPE token trustline created for user ${userId}`);
     } catch (error) {
       console.error("Error creating user token:", error);
       // Don't throw error to prevent blocking user registration
@@ -111,7 +145,7 @@ export class StellarService {
       if (assetType === "XLM") {
         asset = Asset.native();
       } else {
-        asset = new Asset("DOPE", sourceKeypair.publicKey());
+        asset = new Asset("DOPE", dopeIssuerKeypair.publicKey());
       }
 
       const transaction = new TransactionBuilder(account, {
@@ -156,16 +190,15 @@ export class StellarService {
   async issueDopeTokens(userId: string, amount: string): Promise<void> {
     try {
       const user = await storage.getUser(userId);
-      if (!user?.stellarSecretKey || !user?.stellarPublicKey) {
+      if (!user?.stellarPublicKey) {
         throw new Error("User stellar account not found");
       }
 
-      const issuerKeypair = Keypair.fromSecret(user.stellarSecretKey);
-      const account = await server.loadAccount(issuerKeypair.publicKey());
+      // Use distributor account to send tokens
+      const distributorAccount = await server.loadAccount(dopeDistributorKeypair.publicKey());
+      const dopeAsset = new Asset("DOPE", dopeIssuerKeypair.publicKey());
 
-      const dopeAsset = new Asset("DOPE", issuerKeypair.publicKey());
-
-      const transaction = new TransactionBuilder(account, {
+      const transaction = new TransactionBuilder(distributorAccount, {
         fee: "100",
         networkPassphrase,
       })
@@ -177,7 +210,7 @@ export class StellarService {
         .setTimeout(30)
         .build();
 
-      transaction.sign(issuerKeypair);
+      transaction.sign(dopeDistributorKeypair);
       const result = await server.submitTransaction(transaction);
 
       // Record mining reward transaction
@@ -188,7 +221,7 @@ export class StellarService {
         toAddress: user.stellarPublicKey,
         stellarTxId: result.hash,
         status: "completed",
-        metadata: { source: "mining" },
+        metadata: { source: "mining", issuer: dopeIssuerKeypair.publicKey() },
       });
 
       // Update wallet balance
@@ -199,7 +232,7 @@ export class StellarService {
         lastUpdated: new Date(),
       });
 
-      console.log(`Issued ${amount} DOPE tokens to user ${userId}`);
+      console.log(`Issued ${amount} DOPE tokens from distributor to user ${userId}`);
     } catch (error) {
       console.error("Error issuing DOPE tokens:", error);
       throw error;
