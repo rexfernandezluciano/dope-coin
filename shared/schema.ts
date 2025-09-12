@@ -132,6 +132,7 @@ export const registerSchema = insertUserSchema.pick({
 }).extend({
   password: z.string().min(6),
   confirmPassword: z.string().min(6),
+  referralCode: z.string().optional(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],

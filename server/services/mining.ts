@@ -156,6 +156,9 @@ export class MiningService {
       // Issue DOPE tokens
       await stellarService.issueDopeTokens(userId, rewardAmount.toFixed(8));
 
+      // Check for level progression
+      await this.checkLevelProgression(userId, newTotalEarned);
+
       return {
         amount: rewardAmount.toFixed(8),
         totalEarned: newTotalEarned.toFixed(8),
@@ -169,6 +172,28 @@ export class MiningService {
   private calculateMiningRate(level: number): number {
     // Increase mining rate by 10% per level
     return BASE_MINING_RATE.times(Math.pow(1.1, level - 1)).toNumber();
+  }
+
+  private async checkLevelProgression(userId: string, totalEarned: number): Promise<void> {
+    try {
+      const user = await storage.getUser(userId);
+      if (!user) return;
+
+      // Level progression: 10 DOPE per level
+      const newLevel = Math.floor(totalEarned / 10) + 1;
+      
+      if (newLevel > user.level) {
+        await storage.updateUserLevel(userId, newLevel);
+        
+        // Give level up bonus
+        const levelUpBonus = (newLevel - user.level) * 2; // 2 DOPE per level gained
+        await storage.addReferralBonus(userId, levelUpBonus.toString());
+        
+        console.log(`User ${userId} leveled up to level ${newLevel}! Bonus: ${levelUpBonus} DOPE`);
+      }
+    } catch (error) {
+      console.error("Error checking level progression:", error);
+    }
   }
 
   private async calculateEnhancedMiningRate(userId: string, level: number): Promise<number> {

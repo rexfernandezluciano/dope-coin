@@ -1,10 +1,10 @@
-import { 
-  users, 
-  miningSessions, 
-  transactions, 
-  wallets, 
+import {
+  users,
+  miningSessions,
+  transactions,
+  wallets,
   networkStats,
-  type User, 
+  type User,
   type InsertUser,
   type MiningSession,
   type InsertMiningSession,
@@ -15,7 +15,7 @@ import {
   type NetworkStats
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sum, count, sql } from "drizzle-orm";
+import { eq, and, desc, sum, count, sql, gte } from "drizzle-orm";
 
 export interface IStorage {
   // User methods
@@ -24,28 +24,34 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(insertUser: InsertUser): Promise<User>;
   updateUser(id: string, updates: Partial<User>): Promise<User>;
-  
+
   // Wallet methods
   getWallet(userId: string): Promise<Wallet | undefined>;
   createWallet(insertWallet: InsertWallet): Promise<Wallet>;
   updateWallet(userId: string, updates: Partial<Wallet>): Promise<Wallet>;
-  
+
   // Mining methods
   getActiveMiningSession(userId: string): Promise<MiningSession | undefined>;
   createMiningSession(insertSession: InsertMiningSession): Promise<MiningSession>;
   updateMiningSession(id: string, updates: Partial<MiningSession>): Promise<MiningSession>;
-  
+
   // Transaction methods
   createTransaction(insertTransaction: InsertTransaction): Promise<Transaction>;
   getTransactions(userId: string, page: number, limit: number): Promise<Transaction[]>;
-  
+
   // Stats methods
-  getUserStats(userId: string): Promise<any>;
+  getUserStats(userId: string): Promise<{
+    totalSessions: number;
+    totalEarned: string;
+    totalReferrals: number;
+    verificationStatus: boolean;
+    miningStreak: number;
+  }>;
   getNetworkStats(): Promise<NetworkStats | undefined>;
   updateNetworkStats(updates: Partial<NetworkStats>): Promise<NetworkStats>;
   getActiveMinerCount(): Promise<number>;
   getTotalDopeSupply(): Promise<number>;
-  
+
   // Enhanced mining methods
   getCompletedMiningSessionsCount(userId: string, days: number): Promise<number>;
   getRecentMiningSessionsByUser(userId: string, limit: number): Promise<MiningSession[]>;
@@ -156,13 +162,67 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Stats methods
-  async getUserStats(userId: string): Promise<any> {
-    // Return basic user stats for now
-    const user = await this.getUser(userId);
-    return {
-      totalSessions: 0,
-      totalEarned: "0"
-    };
+  async getUserStats(userId: string): Promise<{
+    totalSessions: number;
+    totalEarned: string;
+    totalReferrals: number;
+    verificationStatus: boolean;
+    miningStreak: number;
+  }> {
+    try {
+      // Get total mining sessions
+      const [sessionsResult] = await db
+        .select({ count: count() })
+        .from(miningSessions)
+        .where(eq(miningSessions.userId, userId));
+
+      // Get total earned from transactions
+      const [earningsResult] = await db
+        .select({
+          totalEarned: sql<string>`COALESCE(SUM(CASE WHEN ${transactions.type} IN ('mining_reward', 'referral_bonus') THEN ${transactions.amount} ELSE 0 END), 0)`
+        })
+        .from(transactions)
+        .where(eq(transactions.userId, userId));
+
+      // Get referral count
+      const totalReferrals = await this.getReferralCount(userId);
+
+      // Get user verification status
+      const user = await this.getUser(userId);
+
+      // Calculate mining streak (consecutive days with mining activity)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      const [streakResult] = await db
+        .select({
+          streak: sql<number>`COUNT(DISTINCT DATE(${miningSessions.startTime}))`
+        })
+        .from(miningSessions)
+        .where(
+          and(
+            eq(miningSessions.userId, userId),
+            gte(miningSessions.startTime, sevenDaysAgo)
+          )
+        );
+
+      return {
+        totalSessions: sessionsResult.count,
+        totalEarned: earningsResult.totalEarned || "0",
+        totalReferrals,
+        verificationStatus: user?.isVerified || false,
+        miningStreak: streakResult.streak || 0,
+      };
+    } catch (error) {
+      console.error("Error getting user stats:", error);
+      return {
+        totalSessions: 0,
+        totalEarned: "0",
+        totalReferrals: 0,
+        verificationStatus: false,
+        miningStreak: 0,
+      };
+    }
   }
 
   async getNetworkStats(): Promise<NetworkStats | undefined> {
@@ -173,7 +233,7 @@ export class DatabaseStorage implements IStorage {
   async updateNetworkStats(updates: Partial<NetworkStats>): Promise<NetworkStats> {
     // First try to get existing stats
     const existingStats = await this.getNetworkStats();
-    
+
     if (existingStats) {
       const [stats] = await db
         .update(networkStats)

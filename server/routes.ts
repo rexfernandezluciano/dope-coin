@@ -22,6 +22,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "User already exists" });
       }
 
+      // Validate referral code if provided
+      let referrerUser = null;
+      if (validatedData.referralCode) {
+        referrerUser = await storage.getUserByReferralCode(validatedData.referralCode);
+        if (!referrerUser) {
+          return res.status(400).json({ message: "Invalid referral code" });
+        }
+      }
+
       // Hash password
       const hashedPassword = await bcrypt.hash(validatedData.password, 10);
       
@@ -39,6 +48,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         stellarPublicKey: stellarKeypair.publicKey(),
         stellarSecretKey: stellarKeypair.secret(),
         referralCode,
+        referredBy: referrerUser?.id || null,
       };
 
       const user = await storage.createUser(userData);
@@ -48,6 +58,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Create DOPE token for user if needed
       await stellarService.createUserToken(user.id);
+
+      // Give referral bonus to referrer if applicable
+      if (referrerUser) {
+        try {
+          const referralBonusAmount = "1.0"; // 1 DOPE bonus for successful referral
+          await storage.addReferralBonus(referrerUser.id, referralBonusAmount);
+          console.log(`Referral bonus of ${referralBonusAmount} DOPE given to user ${referrerUser.id}`);
+        } catch (error) {
+          console.error("Error giving referral bonus:", error);
+          // Continue registration even if referral bonus fails
+        }
+      }
 
       const token = jwtService.generateToken(user.id);
       
@@ -324,6 +346,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // User statistics endpoint
+  app.get("/api/protected/stats", async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const stats = await storage.getUserStats(userId);
+      res.json(stats);
+    } catch (error) {
+      console.error("User stats error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Referrals endpoint
+  app.get("/api/protected/referrals", async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const activeReferrals = await storage.getActiveReferrals(userId);
+      const totalReferrals = await storage.getReferralCount(userId);
+
+      res.json({
+        totalReferrals,
+        activeReferrals: activeReferrals.length,
+        referrals: activeReferrals.map(user => ({
+          id: user.id,
+          username: user.username,
+          fullName: user.fullName,
+          level: user.level,
+          joinedAt: user.createdAt,
+          lastActive: user.updatedAt,
+        })),
+      });
+    } catch (error) {
+      console.error("Referrals fetch error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Network stats
   app.get("/api/network/stats", async (req, res) => {
     try {
@@ -336,6 +403,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Dashboard data
+  // Email verification endpoints
+  app.post("/api/protected/send-verification", rateLimiter, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (user.isVerified) {
+        return res.status(400).json({ message: "Email already verified" });
+      }
+
+      // In a real implementation, you would send an email here
+      // For now, we'll just mark as verified after 24 hours simulation
+      console.log(`Verification email would be sent to ${user.email}`);
+      
+      res.json({ message: "Verification email sent" });
+    } catch (error) {
+      console.error("Send verification error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/protected/verify-email", async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      const { code } = req.body;
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      // In a real implementation, you would validate the verification code
+      // For demo purposes, accept any 6-digit code
+      if (!code || code.length !== 6) {
+        return res.status(400).json({ message: "Invalid verification code" });
+      }
+
+      const updatedUser = await storage.updateUser(userId, {
+        isVerified: true,
+        updatedAt: new Date(),
+      });
+
+      // Give verification bonus
+      await storage.addReferralBonus(userId, "5.0"); // 5 DOPE bonus for verification
+
+      res.json({ 
+        message: "Email verified successfully",
+        user: {
+          id: updatedUser.id,
+          isVerified: updatedUser.isVerified,
+        }
+      });
+    } catch (error) {
+      console.error("Verify email error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/protected/dashboard", async (req, res) => {
     try {
       const userId = req.user?.id;
