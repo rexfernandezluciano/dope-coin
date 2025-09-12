@@ -353,7 +353,7 @@ export class DatabaseStorage implements IStorage {
         const currentBalance = parseFloat(wallet.dopeBalance);
         const bonusAmount = parseFloat(amount);
         const newBalance = (currentBalance + bonusAmount).toString();
-        
+
         await this.updateWallet(userId, {
           dopeBalance: newBalance,
           lastUpdated: new Date(),
