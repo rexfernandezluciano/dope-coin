@@ -164,8 +164,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updatedAt: new Date(),
       });
 
-      // Remove sensitive data from updated user object
-      const { password, stellarSecretKey, ...safeUpdatedUser } = updatedUser;
+      // Create safe updated user object without sensitive fields
+      const safeUpdatedUser = {
+        id: updatedUser.id,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        fullName: updatedUser.fullName,
+        profilePicture: updatedUser.profilePicture,
+        stellarPublicKey: updatedUser.stellarPublicKey, // Keep public key, but not secret
+        isVerified: updatedUser.isVerified,
+        level: updatedUser.level,
+        referralCode: updatedUser.referralCode,
+        referredBy: updatedUser.referredBy,
+        createdAt: updatedUser.createdAt,
+        updatedAt: updatedUser.updatedAt,
+      };
       
       res.json({
         message: "Profile updated successfully",
@@ -338,8 +351,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Mock mining status for now
       const miningStatus = { isActive: false, rate: "0.25" };
 
-      // Remove sensitive data from user object
-      const { password, stellarSecretKey, ...safeUser } = user || {};
+      // Create safe user object without sensitive fields
+      const safeUser = user ? {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        fullName: user.fullName,
+        profilePicture: user.profilePicture,
+        stellarPublicKey: user.stellarPublicKey, // Keep public key, but not secret
+        isVerified: user.isVerified,
+        level: user.level,
+        referralCode: user.referralCode,
+        referredBy: user.referredBy,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      } : null;
       
       res.json({
         user: safeUser,
