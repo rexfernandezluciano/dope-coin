@@ -1,13 +1,14 @@
 import { storage } from "../storage";
 import { stellarService } from "./stellar";
+import Decimal from "decimal.js";
 
-const BASE_MINING_RATE = 0.25; // DOPE per hour
+const BASE_MINING_RATE = new Decimal(0.25); // DOPE per hour
 const MINING_SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 const REWARD_INTERVAL = 60 * 60 * 1000; // 1 hour in milliseconds
 const MIN_SESSION_COOLDOWN = 30 * 60 * 1000; // 30 minutes cooldown between sessions
-const MAX_NETWORK_EFFECT_BONUS = 2.0; // Maximum 2x bonus from network effects
-const REFERRAL_BONUS_RATE = 0.1; // 10% bonus for having referrals
-const ACTIVE_BONUS_MULTIPLIER = 1.2; // 20% bonus for highly active users
+const MAX_NETWORK_EFFECT_BONUS = new Decimal(2.0); // Maximum 2x bonus from network effects
+const REFERRAL_BONUS_RATE = new Decimal(0.1); // 10% bonus for having referrals
+const ACTIVE_BONUS_MULTIPLIER = new Decimal(1.2); // 20% bonus for highly active users
 
 export class MiningService {
   async startMining(userId: string) {
@@ -167,7 +168,7 @@ export class MiningService {
 
   private calculateMiningRate(level: number): number {
     // Increase mining rate by 10% per level
-    return BASE_MINING_RATE * Math.pow(1.1, level - 1);
+    return BASE_MINING_RATE.times(Math.pow(1.1, level - 1)).toNumber();
   }
 
   private async calculateEnhancedMiningRate(userId: string, level: number): Promise<number> {
@@ -195,7 +196,7 @@ export class MiningService {
       // Network effect: Early users get higher rates when network is smaller
       // Bonus decreases as network grows (Pi Network style)
       const networkFactor = Math.max(0.1, 1000 / (activeMiners + 100));
-      return Math.min(MAX_NETWORK_EFFECT_BONUS, 1 + networkFactor);
+      return Math.min(MAX_NETWORK_EFFECT_BONUS.toNumber(), 1 + networkFactor);
     } catch (error) {
       console.error("Error calculating network effect:", error);
       return 1;
@@ -206,7 +207,7 @@ export class MiningService {
     try {
       // Count active referrals (users referred who are actively mining)
       const activeReferrals = await this.getActiveReferralCount(userId);
-      return Math.min(0.5, activeReferrals * REFERRAL_BONUS_RATE); // Max 50% bonus
+      return Math.min(0.5, activeReferrals * REFERRAL_BONUS_RATE.toNumber()); // Max 50% bonus
     } catch (error) {
       console.error("Error calculating referral bonus:", error);
       return 0;
@@ -241,8 +242,8 @@ export class MiningService {
           }
         }
       }
-    } catch (error) {
-      if (error.message.includes('Mining cooldown')) {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.message.includes('Mining cooldown')) {
         throw error;
       }
       console.error("Error validating session cooldown:", error);
