@@ -11,10 +11,13 @@ import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Profile from "@/pages/profile";
 import NotFound from "@/pages/not-found";
+import Wallet from "@/pages/wallet";
+import Transactions from "@/pages/transactions";
+import Mining from "@/pages/mining";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
-  
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -25,17 +28,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  
+
   if (!user) {
     return <Login />;
   }
-  
+
   return <>{children}</>;
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
-  
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -46,51 +49,71 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  
+
   if (user) {
     return <Dashboard />;
   }
-  
+
   return <>{children}</>;
 }
 
 function Router() {
   return (
-    <Switch>
-      <Route path="/login">
-        <PublicRoute>
-          <Login />
-        </PublicRoute>
-      </Route>
-      
-      <Route path="/register">
-        <PublicRoute>
-          <Register />
-        </PublicRoute>
-      </Route>
-      
-      <Route path="/profile">
-        <ProtectedRoute>
-          <div className="min-h-screen bg-background">
-            <Header />
-            <Profile />
-            <MobileNav />
-          </div>
-        </ProtectedRoute>
-      </Route>
-      
-      <Route path="/">
-        <ProtectedRoute>
-          <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background">
+      <Switch>
+        <Route path="/" component={() => (
+          <ProtectedRoute>
             <Header />
             <Dashboard />
             <MobileNav />
-          </div>
-        </ProtectedRoute>
-      </Route>
-      
-      <Route component={NotFound} />
-    </Switch>
+          </ProtectedRoute>
+        )} />
+
+        <Route path="/dashboard" component={() => (
+          <ProtectedRoute>
+            <Header />
+            <Dashboard />
+            <MobileNav />
+          </ProtectedRoute>
+        )} />
+
+        <Route path="/profile" component={() => (
+          <ProtectedRoute>
+            <Header />
+            <Profile />
+            <MobileNav />
+          </ProtectedRoute>
+        )} />
+
+        <Route path="/wallet" component={() => (
+          <ProtectedRoute>
+            <Header />
+            <Wallet />
+            <MobileNav />
+          </ProtectedRoute>
+        )} />
+
+        <Route path="/transactions" component={() => (
+          <ProtectedRoute>
+            <Header />
+            <Transactions />
+            <MobileNav />
+          </ProtectedRoute>
+        )} />
+
+        <Route path="/mining" component={() => (
+          <ProtectedRoute>
+            <Header />
+            <Mining />
+            <MobileNav />
+          </ProtectedRoute>
+        )} />
+
+        <Route path="/login" component={Login} />
+        <Route path="/register" component={Register} />
+        <Route component={NotFound} />
+      </Switch>
+    </div>
   );
 }
 

@@ -20,20 +20,25 @@ export function Header() {
               </a>
             </Link>
           </div>
-          
-          <nav className="hidden md:flex space-x-8">
-            <Link href="/">
-              <a className="text-muted-foreground hover:text-primary font-medium" data-testid="nav-dashboard">
-                Dashboard
-              </a>
+
+          <nav className="hidden md:flex space-x-6">
+            <Link href="/dashboard" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+              Dashboard
             </Link>
-            <Link href="/profile">
-              <a className="text-muted-foreground hover:text-primary font-medium" data-testid="nav-profile">
-                Profile
-              </a>
+            <Link href="/wallet" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+              Wallet
+            </Link>
+            <Link href="/mining" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+              Mining
+            </Link>
+            <Link href="/transactions" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+              History
+            </Link>
+            <Link href="/profile" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+              Profile
             </Link>
           </nav>
-          
+
           <div className="flex items-center space-x-4">
             <button className="p-2 rounded-lg hover:bg-muted transition-colors" data-testid="button-notifications">
               <Bell className="h-5 w-5 text-muted-foreground" />
@@ -45,9 +50,9 @@ export function Header() {
                     {user.fullName.split(' ').map(n => n[0]).join('')}
                   </span>
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={logout}
                   data-testid="button-logout"
                 >
