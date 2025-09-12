@@ -26,8 +26,8 @@ export const miningSessions = pgTable("mining_sessions", {
   userId: varchar("user_id").notNull().references(() => users.id),
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time"),
-  rate: decimal("rate", { precision: 10, scale: 8 }).notNull(),
-  totalEarned: decimal("total_earned", { precision: 10, scale: 8 }).default("0"),
+  rate: decimal("rate", { precision: 18, scale: 8 }).notNull(),
+  totalEarned: decimal("total_earned", { precision: 18, scale: 8 }).default("0"),
   isActive: boolean("is_active").default(true),
   progress: integer("progress").default(0),
   createdAt: timestamp("created_at").default(sql`now()`),
@@ -37,7 +37,7 @@ export const transactions = pgTable("transactions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
   type: text("type").notNull(), // 'mining_reward', 'send', 'receive', 'referral_bonus'
-  amount: decimal("amount", { precision: 10, scale: 8 }).notNull(),
+  amount: decimal("amount", { precision: 18, scale: 8 }).notNull(),
   fromAddress: text("from_address"),
   toAddress: text("to_address"),
   stellarTxId: text("stellar_tx_id"),
@@ -49,8 +49,8 @@ export const transactions = pgTable("transactions", {
 export const wallets = pgTable("wallets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
-  dopeBalance: decimal("dope_balance", { precision: 10, scale: 8 }).default("0"),
-  xlmBalance: decimal("xlm_balance", { precision: 10, scale: 8 }).default("0"),
+  dopeBalance: decimal("dope_balance", { precision: 18, scale: 8 }).default("0"),
+  xlmBalance: decimal("xlm_balance", { precision: 18, scale: 8 }).default("0"),
   lastUpdated: timestamp("last_updated").default(sql`now()`),
 });
 

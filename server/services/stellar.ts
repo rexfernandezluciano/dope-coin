@@ -21,6 +21,66 @@ const networkPassphrase = STELLAR_NETWORK === "mainnet"
 console.log(`DOPE Issuer: ${dopeIssuerKeypair.publicKey()}`);
 console.log(`DOPE Distributor: ${dopeDistributorKeypair.publicKey()}`);
 
+// Initialize platform accounts on startup
+async function initializePlatformAccounts() {
+  if (STELLAR_NETWORK === "testnet") {
+    try {
+      // Fund issuer account
+      await server.friendbot(dopeIssuerKeypair.publicKey()).call();
+      console.log(`DOPE Issuer funded via friendbot`);
+      
+      // Fund distributor account  
+      await server.friendbot(dopeDistributorKeypair.publicKey()).call();
+      console.log(`DOPE Distributor funded via friendbot`);
+
+      // Wait for accounts to propagate
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Create initial DOPE token issuance to distributor
+      const issuerAccount = await server.loadAccount(dopeIssuerKeypair.publicKey());
+      const distributorAccount = await server.loadAccount(dopeDistributorKeypair.publicKey());
+      const dopeAsset = new Asset("DOPE", dopeIssuerKeypair.publicKey());
+      
+      // Distributor trusts the DOPE asset
+      const trustTransaction = new TransactionBuilder(distributorAccount, {
+        fee: "100",
+        networkPassphrase,
+      })
+        .addOperation(Operation.changeTrust({
+          asset: dopeAsset,
+        }))
+        .setTimeout(30)
+        .build();
+      
+      trustTransaction.sign(dopeDistributorKeypair);
+      await server.submitTransaction(trustTransaction);
+      
+      // Issue initial DOPE supply to distributor
+      const issueTransaction = new TransactionBuilder(issuerAccount, {
+        fee: "100", 
+        networkPassphrase,
+      })
+        .addOperation(Operation.payment({
+          destination: dopeDistributorKeypair.publicKey(),
+          asset: dopeAsset,
+          amount: "1000000", // 1M DOPE initial supply
+        }))
+        .setTimeout(30)
+        .build();
+        
+      issueTransaction.sign(dopeIssuerKeypair);
+      await server.submitTransaction(issueTransaction);
+      
+      console.log("DOPE token platform setup completed");
+    } catch (error) {
+      console.error("Error initializing platform accounts:", error.message);
+    }
+  }
+}
+
+// Initialize platform accounts
+initializePlatformAccounts();
+
 export class StellarService {
   generateKeypair(): Keypair {
     return Keypair.random();
@@ -122,11 +182,30 @@ export class StellarService {
         .build();
 
       transaction.sign(userKeypair);
+      
+      // Check if trustline already exists
+      const balances = account.balances;
+      const existingTrustline = balances.find(balance => 
+        balance.asset_type === "credit_alphanum4" && 
+        balance.asset_code === "DOPE" &&
+        balance.asset_issuer === dopeIssuerKeypair.publicKey()
+      );
+      
+      if (existingTrustline) {
+        console.log(`DOPE trustline already exists for user ${userId}`);
+        return;
+      }
+      
       await server.submitTransaction(transaction);
-
       console.log(`DOPE token trustline created for user ${userId}`);
     } catch (error) {
-      console.error("Error creating user token:", error);
+      console.error("Error creating user token:", error.message);
+      if (error.response?.data) {
+        console.error("Stellar response:", JSON.stringify(error.response.data, null, 2));
+      }
+      if (error.response?.data?.extras?.result_codes) {
+        console.error("Transaction result codes:", error.response.data.extras.result_codes);
+      }
       // Don't throw error to prevent blocking user registration
     }
   }
