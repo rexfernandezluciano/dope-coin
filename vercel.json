@@ -1,15 +1,18 @@
 {
-  "version": 2,
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "builds": [
     {
       "src": "server/index.ts",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "dist/public/**",
-      "use": "@vercel/static"
+      "use": "@vercel/node",
+      "config": {
+        "maxDuration": 30,
+        "runtime": "nodejs22.x",
+        "installCommand": "npm install",
+      }
     }
   ],
+  "installCommand": "npm install",
+  "buildCommand": "npm run build",
   "routes": [
     {
       "src": "/api/(.*)",
