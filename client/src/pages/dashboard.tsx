@@ -17,7 +17,7 @@ export default function Dashboard() {
   const { data: dashboardData, isLoading } = useQuery({
     queryKey: ["/api/protected/dashboard"],
     refetchInterval: 30000,
-  });
+  }) as any;
 
   if (isLoading) {
     return (
@@ -66,7 +66,7 @@ export default function Dashboard() {
                 <div className="text-right">
                   <div className="text-sm text-muted-foreground">Mining Rate</div>
                   <div className="text-lg font-semibold text-success" data-testid="mining-rate">
-                    {dashboardData?.mining?.rate || "0.50"}/hour
+                    {(dashboardData?.miningRate || 0.05).toFixed(2)}/hour
                   </div>
                 </div>
               </div>

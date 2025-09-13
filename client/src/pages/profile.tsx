@@ -21,7 +21,7 @@ export default function ProfilePage() {
 
   const { data: profileData, isLoading } = useQuery({
     queryKey: ["/api/protected/profile"],
-  });
+  }) as any;
 
   const updateProfile = useMutation({
     mutationFn: (data: typeof formData) =>

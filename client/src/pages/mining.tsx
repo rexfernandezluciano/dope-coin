@@ -1,4 +1,4 @@
-
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,24 +7,37 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { AuthService } from "@/lib/auth";
 import { Pickaxe, Play, Square, Award, TrendingUp, Clock } from "lucide-react";
+import { formatTime } from "../utils/format-utils";
 
 export default function Mining() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [claimableBalances, setClaimableBalances] = useState([]);
 
   const { data: miningStatus, isLoading } = useQuery({
     queryKey: ["/api/protected/mining/status"],
     refetchInterval: 5000,
-  });
+  }) as any;
 
   const { data: dashboardData } = useQuery({
     queryKey: ["/api/protected/dashboard"],
-  });
+  }) as any;
+
+  const { data: rewardsData } = useQuery({
+    queryKey: ["/api/protected/mining/claimable"],
+  }) as any;
+
+  useEffect(() => {
+    setClaimableBalances(rewardsData?.balance);
+  }, [claimableBalances]);
 
   const startMining = useMutation({
-    mutationFn: () => AuthService.authenticatedRequest("POST", "/api/protected/mining/start"),
+    mutationFn: () =>
+      AuthService.authenticatedRequest("POST", "/api/protected/mining/start"),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/protected/mining/status"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/protected/mining/status"],
+      });
       toast({
         title: "Mining started",
         description: "Your mining session has begun!",
@@ -40,9 +53,12 @@ export default function Mining() {
   });
 
   const stopMining = useMutation({
-    mutationFn: () => AuthService.authenticatedRequest("POST", "/api/protected/mining/stop"),
+    mutationFn: () =>
+      AuthService.authenticatedRequest("POST", "/api/protected/mining/stop"),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/protected/mining/status"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/protected/mining/status"],
+      });
       toast({
         title: "Mining stopped",
         description: "Your mining session has been stopped.",
@@ -57,20 +73,35 @@ export default function Mining() {
     },
   });
 
-  const claimReward = useMutation({
-    mutationFn: () => AuthService.authenticatedRequest("POST", "/api/protected/mining/claim"),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/protected/mining/status"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/protected/wallet"] });
+  const claimClaimableBalance = useMutation({
+    mutationFn: () => {
+      if (rewardsData?.balance.length <= 0) {
+        toast({
+          title: "Claim Balance",
+          description: "There's no claimable balances yet.",
+          variant: "destructive",
+        });
+
+        return Promise.reject("There's no claimable balances yet.");
+      }
+      return AuthService.authenticatedRequest(
+        "POST",
+        "/api/protected/mining/claimable",
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/protected/mining/claimable"],
+      });
       toast({
-        title: "Reward claimed!",
-        description: `You earned ${data.reward?.amount || 0} DOPE tokens!`,
+        title: "Claimed",
+        description: "Your claimable balance has been sent to your wallet.",
       });
     },
     onError: (error) => {
       toast({
-        title: "Failed to claim reward",
-        description: error.message,
+        title: "Error",
+        description: error.message || "There's no claimable balances yet.",
         variant: "destructive",
       });
     },
@@ -98,7 +129,6 @@ export default function Mining() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8" data-testid="mining-page">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
         {/* Mining Control */}
         <Card>
           <CardHeader>
@@ -111,18 +141,28 @@ export default function Mining() {
             <div className="text-center">
               <div className="w-32 h-32 mx-auto rounded-full bg-gradient-to-br from-secondary to-accent p-1 mb-4">
                 <div className="w-full h-full rounded-full bg-card flex items-center justify-center">
-                  <Pickaxe className={`w-16 h-16 ${isActive ? 'text-success animate-pulse' : 'text-muted-foreground'}`} />
+                  <Pickaxe
+                    className={`w-16 h-16 ${isActive ? "text-success animate-pulse" : "text-muted-foreground"}`}
+                  />
                 </div>
               </div>
-              
-              <Badge variant={isActive ? "default" : "secondary"} className="mb-4">
+
+              <Badge
+                variant={isActive ? "default" : "secondary"}
+                className="mb-4"
+              >
                 {isActive ? "Mining Active" : "Mining Inactive"}
               </Badge>
-              
-              <div className="text-2xl font-bold text-success mb-2" data-testid="current-earned">
+
+              <div
+                className="text-2xl font-bold text-success mb-2"
+                data-testid="current-earned"
+              >
                 {currentEarned.toFixed(4)} DOPE
               </div>
-              <div className="text-sm text-muted-foreground">Current Session Earnings</div>
+              <div className="text-sm text-muted-foreground">
+                Current Session Earnings
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -143,7 +183,7 @@ export default function Mining() {
                 <Play className="w-4 h-4 mr-2" />
                 {startMining.isPending ? "Starting..." : "Start"}
               </Button>
-              
+
               <Button
                 onClick={() => stopMining.mutate()}
                 disabled={!isActive || stopMining.isPending}
@@ -157,14 +197,24 @@ export default function Mining() {
             </div>
 
             <Button
-              onClick={() => claimReward.mutate()}
-              disabled={currentEarned === 0 || claimReward.isPending}
+              onClick={() => claimClaimableBalance.mutate()}
+              disabled={claimableBalances?.length > 0 ? false : true}
               className="w-full"
               data-testid="button-claim-reward"
             >
               <Award className="w-4 h-4 mr-2" />
-              {claimReward.isPending ? "Claiming..." : "Claim Reward"}
+              {claimClaimableBalance.isPending
+                ? "Claiming..."
+                : `Claim ${claimableBalances?.length || "0"} Balances`}
             </Button>
+            <p className="text-sm mt-0">
+              You can claim your claimable balances within 24 hours after it was
+              sent to your account.{" "}
+              <a href="/help/claimable-balance" className="font-bold text-primary">
+                Learn More
+              </a>
+              .
+            </p>
           </CardContent>
         </Card>
 
@@ -181,15 +231,17 @@ export default function Mining() {
               <div className="text-center p-4 bg-gradient-to-br from-secondary/20 to-secondary/10 rounded-lg">
                 <Clock className="w-6 h-6 text-secondary mx-auto mb-2" />
                 <div className="text-lg font-bold text-secondary">
-                  {dashboardData?.mining?.rate || "0.25"}
+                  {(dashboardData?.miningRate || 0.05).toFixed(2)}
                 </div>
                 <div className="text-sm text-muted-foreground">DOPE/hour</div>
               </div>
-              
+
               <div className="text-center p-4 bg-gradient-to-br from-accent/20 to-accent/10 rounded-lg">
                 <Award className="w-6 h-6 text-accent mx-auto mb-2" />
                 <div className="text-lg font-bold text-accent">
-                  {parseFloat(dashboardData?.wallet?.dopeBalance || "0").toFixed(2)}
+                  {parseFloat(
+                    dashboardData?.wallet?.dopeBalance || "0",
+                  ).toFixed(2)}
                 </div>
                 <div className="text-sm text-muted-foreground">Total DOPE</div>
               </div>
@@ -197,28 +249,38 @@ export default function Mining() {
 
             <div className="space-y-3 pt-4 border-t border-border">
               <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Mining Level</span>
-                <span className="text-sm font-medium">{dashboardData?.user?.level || 1}</span>
+                <span className="text-sm text-muted-foreground">
+                  Mining Level
+                </span>
+                <span className="text-sm font-medium">
+                  {dashboardData?.user?.level || 1}
+                </span>
               </div>
-              
+
               <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Session Status</span>
+                <span className="text-sm text-muted-foreground">
+                  Session Status
+                </span>
                 <Badge variant={isActive ? "default" : "secondary"}>
                   {isActive ? "Active" : "Inactive"}
                 </Badge>
               </div>
-              
+
               <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Next Reward</span>
+                <span className="text-sm text-muted-foreground">
+                  Next Reward
+                </span>
                 <span className="text-sm font-medium">
-                  {miningStatus?.nextReward ? `${miningStatus.nextReward}s` : "N/A"}
+                  {miningStatus?.nextReward
+                    ? `${formatTime(miningStatus.nextReward)}`
+                    : "N/A"}
                 </span>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
-      
+
       {/* Mining Instructions */}
       <Card className="mt-6">
         <CardHeader>
@@ -231,23 +293,29 @@ export default function Mining() {
                 <Play className="w-6 h-6 text-primary" />
               </div>
               <h4 className="font-medium">Start Mining</h4>
-              <p className="text-sm text-muted-foreground">Click start to begin your mining session</p>
+              <p className="text-sm text-muted-foreground">
+                Click start to begin your mining session
+              </p>
             </div>
-            
+
             <div className="space-y-2">
               <div className="w-12 h-12 rounded-full bg-secondary/20 flex items-center justify-center mx-auto">
                 <Clock className="w-6 h-6 text-secondary" />
               </div>
               <h4 className="font-medium">Earn Rewards</h4>
-              <p className="text-sm text-muted-foreground">Accumulate DOPE tokens over time</p>
+              <p className="text-sm text-muted-foreground">
+                Accumulate DOPE tokens over time
+              </p>
             </div>
-            
+
             <div className="space-y-2">
               <div className="w-12 h-12 rounded-full bg-success/20 flex items-center justify-center mx-auto">
                 <Award className="w-6 h-6 text-success" />
               </div>
               <h4 className="font-medium">Claim Tokens</h4>
-              <p className="text-sm text-muted-foreground">Claim your earned tokens to your wallet</p>
+              <p className="text-sm text-muted-foreground">
+                Claim your earned tokens to your wallet
+              </p>
             </div>
           </div>
         </CardContent>

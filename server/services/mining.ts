@@ -2,7 +2,7 @@ import { storage } from "../storage";
 import { stellarService } from "./stellar";
 import Decimal from "decimal.js";
 
-const BASE_MINING_RATE = new Decimal(0.25); // DOPE per hour
+const BASE_MINING_RATE = new Decimal(0.05); // DOPE per hour
 const MINING_SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 const REWARD_INTERVAL = 60 * 60 * 1000; // 1 hour in milliseconds
 const MIN_SESSION_COOLDOWN = 30 * 60 * 1000; // 30 minutes cooldown between sessions
@@ -28,7 +28,10 @@ export class MiningService {
       }
 
       // Enhanced mining rate calculation with network effects
-      const miningRate = await this.calculateEnhancedMiningRate(userId, user.level || 1);
+      const miningRate = await this.calculateEnhancedMiningRate(
+        userId,
+        user.level || 1,
+      );
 
       const session = await storage.createMiningSession({
         userId,
@@ -56,24 +59,39 @@ export class MiningService {
       }
 
       const endTime = new Date();
-      const miningDuration = endTime.getTime() - new Date(session.startTime).getTime();
+      const miningDuration =
+        endTime.getTime() - new Date(session.startTime).getTime();
       const hoursMinned = miningDuration / (60 * 60 * 1000);
-      const totalShouldHaveEarned = hoursMinned * parseFloat(session.rate);
+
+      // Add validation for rate
+      const rate = parseFloat(session.rate);
+      if (isNaN(rate)) {
+        throw new Error("Invalid mining rate");
+      }
+
+      const totalShouldHaveEarned = hoursMinned * rate;
       const alreadyIssued = parseFloat(session.totalEarned || "0");
+
+      // Add validation for calculated amounts
+      if (isNaN(totalShouldHaveEarned) || isNaN(alreadyIssued)) {
+        throw new Error("Invalid earnings calculation");
+      }
 
       // Calculate only the amount owed (not yet issued)
       const amountOwed = Math.max(0, totalShouldHaveEarned - alreadyIssued);
 
       const updatedSession = await storage.updateMiningSession(session.id, {
         endTime,
-        totalEarned: totalShouldHaveEarned.toFixed(8), // Ensure this is a string with fixed decimal places
+        totalEarned: totalShouldHaveEarned.toFixed(7),
         isActive: false,
         progress: 100,
       });
 
       // Issue only the incremental DOPE tokens that haven't been claimed yet
-      if (amountOwed > 0) {
-        await stellarService.issueDopeTokens(userId, amountOwed.toFixed(8));
+      if (amountOwed > 0 && !isNaN(amountOwed)) {
+        const amountString = amountOwed.toFixed(7);
+        console.log(`Issuing ${amountString} DOPE tokens to user ${userId}`);
+        await stellarService.issueDopeTokens(userId, amountString);
       }
 
       return updatedSession;
@@ -100,16 +118,17 @@ export class MiningService {
       const startTime = new Date(session.startTime);
       const elapsedTime = now.getTime() - startTime.getTime();
       const sessionDuration = MINING_SESSION_DURATION;
-      
+
       // Calculate progress (0-100)
       const progress = Math.min((elapsedTime / sessionDuration) * 100, 100);
-      
+
       // Calculate current earnings
       const hoursElapsed = elapsedTime / (60 * 60 * 1000);
-      const currentEarned = hoursElapsed * parseFloat(session.rate);
-      
+      const currentEarned = hoursElapsed * parseFloat(session.rate || "0");
+
       // Calculate next reward time
-      const lastRewardTime = Math.floor(elapsedTime / REWARD_INTERVAL) * REWARD_INTERVAL;
+      const lastRewardTime =
+        Math.floor(elapsedTime / REWARD_INTERVAL) * REWARD_INTERVAL;
       const nextRewardTime = lastRewardTime + REWARD_INTERVAL;
       const timeToNextReward = Math.max(0, nextRewardTime - elapsedTime);
 
@@ -137,16 +156,19 @@ export class MiningService {
       const now = new Date();
       const elapsedTime = now.getTime() - new Date(session.startTime).getTime();
       const rewardsPossible = Math.floor(elapsedTime / REWARD_INTERVAL);
-      const rewardsClaimed = Math.floor(parseFloat(session.totalEarned || "0") / parseFloat(session.rate));
-      
+      const rewardsClaimed = Math.floor(
+        parseFloat(session.totalEarned || "0") / parseFloat(session.rate),
+      );
+
       const unclaimedRewards = rewardsPossible - rewardsClaimed;
-      
+
       if (unclaimedRewards <= 0) {
         throw new Error("No rewards available to claim");
       }
 
       const rewardAmount = unclaimedRewards * parseFloat(session.rate);
-      const newTotalEarned = parseFloat(session.totalEarned || "0") + rewardAmount;
+      const newTotalEarned =
+        parseFloat(session.totalEarned || "0") + rewardAmount;
 
       // Update session
       await storage.updateMiningSession(session.id, {
@@ -169,49 +191,93 @@ export class MiningService {
     }
   }
 
+  async claimUnclaimedRewards(userId: string): Promise<void> {
+    try {
+      if (!userId) {
+        throw new Error("User ID is required");
+      }
+
+      const claimableBalances =
+        await stellarService.getClaimableBalances(userId);
+
+      if (Array.isArray(claimableBalances) && claimableBalances.length > 0) {
+        claimableBalances.forEach(async (balance) => {
+          await stellarService.claimBalance(userId, balance.id);
+          await storage.updateWallet(userId, {
+            dopeBalance: balance.amount
+          })
+        });
+      }
+    } catch (error) {
+      console.error("Error claiming unclaimed rewards:", error);
+    }
+  }
+
+  async getClaimbaleBalances(userId: string): Promise<any[]> {
+    try {
+      if (!userId) {
+        throw new Error("User ID is required");
+      }
+      const claimableBalances =
+        await stellarService.getClaimableBalances(userId);
+      return claimableBalances;
+    } catch (error) {
+      return [];
+    }
+  }
+
   private calculateMiningRate(level: number): number {
     // Increase mining rate by 10% per level
     return BASE_MINING_RATE.times(Math.pow(1.1, level - 1)).toNumber();
   }
 
-  private async checkLevelProgression(userId: string, totalEarned: number): Promise<void> {
+  private async checkLevelProgression(
+    userId: string,
+    totalEarned: number,
+  ): Promise<void> {
     try {
       const user = await storage.getUser(userId);
       if (!user) return;
 
+      const currentLevel = user.level || 1;
       // Level progression: 10 DOPE per level
       const newLevel = Math.floor(totalEarned / 10) + 1;
-      
-      if (newLevel > user.level) {
-        await storage.updateUserLevel(userId, newLevel);
-        
+
+      if (newLevel > currentLevel) {
+        await storage.updateUser(userId, { level: newLevel });
+
         // Give level up bonus
-        const levelUpBonus = (newLevel - user.level) * 2; // 2 DOPE per level gained
+        const levelUpBonus = (newLevel - currentLevel) * 2; // 2 DOPE per level gained
         await storage.addReferralBonus(userId, levelUpBonus.toString());
-        
-        console.log(`User ${userId} leveled up to level ${newLevel}! Bonus: ${levelUpBonus} DOPE`);
+
+        console.log(
+          `User ${userId} leveled up to level ${newLevel}! Bonus: ${levelUpBonus} DOPE`,
+        );
       }
     } catch (error) {
       console.error("Error checking level progression:", error);
     }
   }
 
-  private async calculateEnhancedMiningRate(userId: string, level: number): Promise<number> {
+  private async calculateEnhancedMiningRate(
+    userId: string,
+    level: number,
+  ): Promise<number> {
     // Start with base level rate
     let rate = this.calculateMiningRate(level);
-    
+
     // Network effect bonus - higher bonus when network is smaller
     const networkBonus = await this.calculateNetworkEffect();
     rate *= networkBonus;
-    
+
     // Referral bonus - bonus for users who have referred others
     const referralBonus = await this.calculateReferralBonus(userId);
-    rate *= (1 + referralBonus);
-    
+    rate *= 1 + referralBonus;
+
     // Activity bonus - bonus for users who actively mine
     const activityBonus = await this.calculateActivityBonus(userId);
-    rate *= (1 + activityBonus);
-    
+    rate *= 1 + activityBonus;
+
     return Number(rate.toFixed(8));
   }
 
@@ -243,7 +309,8 @@ export class MiningService {
     try {
       // Check user's mining activity in the last 7 days
       const recentActivity = await this.getRecentMiningActivity(userId);
-      if (recentActivity >= 5) { // 5 or more mining sessions in 7 days
+      if (recentActivity >= 5) {
+        // 5 or more mining sessions in 7 days
         return 0.2; // 20% bonus for active miners
       }
       return 0;
@@ -260,15 +327,20 @@ export class MiningService {
       if (recentSessions.length > 0) {
         const lastSession = recentSessions[0];
         if (lastSession.endTime) {
-          const timeSinceLastSession = Date.now() - new Date(lastSession.endTime).getTime();
+          const timeSinceLastSession =
+            Date.now() - new Date(lastSession.endTime).getTime();
           if (timeSinceLastSession < MIN_SESSION_COOLDOWN) {
-            const remainingCooldown = Math.ceil((MIN_SESSION_COOLDOWN - timeSinceLastSession) / 1000 / 60);
-            throw new Error(`Mining cooldown active. Please wait ${remainingCooldown} minutes before starting a new session.`);
+            const remainingCooldown = Math.ceil(
+              (MIN_SESSION_COOLDOWN - timeSinceLastSession) / 1000 / 60,
+            );
+            throw new Error(
+              `Mining cooldown active. Please wait ${remainingCooldown} minutes before starting a new session.`,
+            );
           }
         }
       }
     } catch (error: unknown) {
-      if (error instanceof Error && error.message.includes('Mining cooldown')) {
+      if (error instanceof Error && error.message.includes("Mining cooldown")) {
         throw error;
       }
       console.error("Error validating session cooldown:", error);
@@ -294,7 +366,10 @@ export class MiningService {
     }
   }
 
-  private async getRecentCompletedSessions(userId: string, limit: number): Promise<any[]> {
+  private async getRecentCompletedSessions(
+    userId: string,
+    limit: number,
+  ): Promise<any[]> {
     try {
       return await storage.getRecentMiningSessionsByUser(userId, limit);
     } catch (error) {
@@ -323,6 +398,9 @@ export class MiningService {
 export const miningService = new MiningService();
 
 // Update network stats every 5 minutes
-setInterval(() => {
-  miningService.updateNetworkStats();
-}, 5 * 60 * 1000);
+setInterval(
+  () => {
+    miningService.updateNetworkStats();
+  },
+  5 * 60 * 1000,
+);

@@ -8,7 +8,7 @@ export function WalletCard() {
   const { data: wallet, isLoading } = useQuery({
     queryKey: ["/api/protected/wallet"],
     refetchInterval: 30000, // Update every 30 seconds
-  });
+  }) as any;
 
   const navigate = useLocation()[1];
 
@@ -33,7 +33,7 @@ export function WalletCard() {
 
   const dopeBalance = parseFloat(wallet?.dopeBalance || "0");
   const xlmBalance = parseFloat(wallet?.xlmBalance || "0");
-  const usdValue = (dopeBalance * 0.1 + xlmBalance * 0.12).toFixed(2); // Mock exchange rates
+  const usdValue = (dopeBalance * 0.1 + xlmBalance * 0.006).toFixed(2);
 
   return (
     <Card data-testid="wallet-card">

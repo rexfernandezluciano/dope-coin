@@ -40,6 +40,7 @@ export const transactions = pgTable("transactions", {
   amount: decimal("amount", { precision: 18, scale: 8 }).notNull(),
   fromAddress: text("from_address"),
   toAddress: text("to_address"),
+  assetType: text("asset_type").notNull(),
   stellarTxId: text("stellar_tx_id"),
   status: text("status").default("pending"), // 'pending', 'completed', 'failed'
   metadata: jsonb("metadata"),
@@ -58,6 +59,7 @@ export const networkStats = pgTable("network_stats", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   activeMiners: integer("active_miners").default(0),
   totalSupply: decimal("total_supply", { precision: 15, scale: 8 }).default("0"),
+  miningRate: decimal("mining_rate", { precision: 18, scale: 8 }).default("0.05"),
   lastBlockTime: timestamp("last_block_time"),
   updatedAt: timestamp("updated_at").default(sql`now()`),
 });

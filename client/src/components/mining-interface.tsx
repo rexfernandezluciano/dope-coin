@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AuthService } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Pickaxe, Play, Pause } from "lucide-react";
+import { formatTime } from "../utils/format-utils";
 
 export function MiningInterface() {
   const queryClient = useQueryClient();
@@ -14,7 +15,7 @@ export function MiningInterface() {
   const { data: miningStatus, isLoading } = useQuery({
     queryKey: ["/api/protected/mining/status"],
     refetchInterval: 5000, // Update every 5 seconds
-  });
+  }) as any;
 
   const startMining = useMutation({
     mutationFn: () => AuthService.authenticatedRequest("POST", "/api/protected/mining/start"),
@@ -60,7 +61,7 @@ export function MiningInterface() {
       queryClient.invalidateQueries({ queryKey: ["/api/protected/wallet"] });
       toast({
         title: "Reward claimed",
-        description: "Mining rewards have been added to your wallet!",
+        description: "Mining rewards have been added to your account!",
       });
     },
     onError: (error) => {
@@ -86,11 +87,7 @@ export function MiningInterface() {
     return () => clearInterval(timer);
   }, []);
 
-  const formatTime = (ms: number) => {
-    const minutes = Math.floor(ms / (1000 * 60));
-    const seconds = Math.floor((ms % (1000 * 60)) / 1000);
-    return `${minutes}m ${seconds}s`;
-  };
+  
 
   if (isLoading) {
     return (

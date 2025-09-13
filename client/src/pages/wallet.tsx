@@ -2,13 +2,10 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { AuthService } from "@/lib/auth";
-import { Wallet, Send, ArrowUpRight, ArrowDownLeft, Copy } from "lucide-react";
+import { Wallet, ArrowUpRight, ArrowDownLeft, Copy } from "lucide-react";
+import { getActivityLabel, getActivityIcon } from "../utils/activity-utils";
 
 export default function WalletPage() {
   const { toast } = useToast();
@@ -22,12 +19,12 @@ export default function WalletPage() {
   const { data: walletData, isLoading } = useQuery({
     queryKey: ["/api/protected/wallet"],
     refetchInterval: 30000,
-  });
+  }) as any;
 
   const { data: transactions } = useQuery({
     queryKey: ["/api/protected/transactions"],
     queryFn: () => AuthService.authenticatedRequest("GET", "/api/protected/transactions?limit=5"),
-  });
+  }) as any;
 
   const sendTokens = useMutation({
     mutationFn: (data: typeof sendForm) => 
@@ -124,15 +121,11 @@ export default function WalletPage() {
                   <div key={tx.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
                     <div className="flex items-center space-x-3">
                       <div className="p-2 bg-background rounded-full">
-                        {tx.type === "transfer" ? (
-                          tx.toAddress ? <ArrowUpRight className="w-4 h-4 text-destructive" /> : <ArrowDownLeft className="w-4 h-4 text-success" />
-                        ) : (
-                          <Copy className="w-4 h-4 text-primary" />
-                        )}
+                        {getActivityIcon(tx.type)}
                       </div>
                       <div>
                         <div className="font-medium">
-                          {tx.type === "transfer" ? (tx.toAddress ? "Sent" : "Received") : tx.type}
+                          {getActivityLabel(tx.type)}
                         </div>
                         <div className="text-sm text-muted-foreground">
                           {new Date(tx.createdAt).toLocaleDateString()}
@@ -144,7 +137,7 @@ export default function WalletPage() {
                         {tx.type === "transfer" && tx.toAddress ? "-" : "+"}{parseFloat(tx.amount).toFixed(4)} {tx.assetType}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {tx.status}
+                        {tx.status.toUpperCase()}
                       </div>
                     </div>
                   </div>

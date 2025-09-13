@@ -1,58 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, ArrowUp, UserPlus } from "lucide-react";
+import { formatTimeAgo } from "../utils/format-utils";
+import { getActivityIcon, getActivityLabel } from "../utils/activity-utils";
 
 export function ActivityFeed() {
   const { data: transactions, isLoading } = useQuery({
     queryKey: ["/api/protected/transactions"],
     queryParam: { limit: 5 },
-  });
-
-  const getActivityIcon = (type: string) => {
-    switch (type) {
-      case "mining_reward":
-        return <Plus className="text-success text-sm" />;
-      case "send":
-      case "receive":
-        return <ArrowUp className="text-accent text-sm" />;
-      case "referral_bonus":
-        return <UserPlus className="text-secondary text-sm" />;
-      default:
-        return <Plus className="text-success text-sm" />;
-    }
-  };
-
-  const getActivityLabel = (type: string) => {
-    switch (type) {
-      case "mining_reward":
-        return "Mining Reward";
-      case "send":
-        return "Sent Tokens";
-      case "receive":
-        return "Received Tokens";
-      case "referral_bonus":
-        return "Referral Bonus";
-      default:
-        return "Transaction";
-    }
-  };
-
-  const formatTimeAgo = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffDays > 0) {
-      return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-    } else if (diffHours > 0) {
-      return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-    } else {
-      return "Less than an hour ago";
-    }
-  };
+  }) as any;
 
   if (isLoading) {
     return (

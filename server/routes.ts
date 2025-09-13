@@ -15,7 +15,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/auth/register", rateLimiter, async (req, res) => {
     try {
       const validatedData = registerSchema.parse(req.body);
-      
+
       // Check if user already exists
       const existingUser = await storage.getUserByEmail(validatedData.email);
       if (existingUser) {
@@ -25,7 +25,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate referral code if provided
       let referrerUser = null;
       if (validatedData.referralCode) {
-        referrerUser = await storage.getUserByReferralCode(validatedData.referralCode);
+        referrerUser = await storage.getUserByReferralCode(
+          validatedData.referralCode,
+        );
         if (!referrerUser) {
           return res.status(400).json({ message: "Invalid referral code" });
         }
@@ -33,12 +35,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Hash password
       const hashedPassword = await bcrypt.hash(validatedData.password, 10);
-      
+
       // Create Stellar keypair
       const stellarKeypair = stellarService.generateKeypair();
-      
+
       // Generate referral code
-      const referralCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const referralCode = Math.random()
+        .toString(36)
+        .substring(2, 8)
+        .toUpperCase();
 
       const userData = {
         username: validatedData.username,
@@ -52,19 +57,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       const user = await storage.createUser(userData);
-      
+
       // Initialize wallet
       await storage.createWallet({ userId: user.id });
-      
-      // Create DOPE token for user if needed
-      await stellarService.createUserToken(user.id);
+
+      // Create DOPE trustline for new user
+      await stellarService.createAccountWithDopeTrustline(
+        stellarKeypair,
+        "1.0",
+      );
 
       // Give referral bonus to referrer if applicable
       if (referrerUser) {
         try {
           const referralBonusAmount = "1.0"; // 1 DOPE bonus for successful referral
           await storage.addReferralBonus(referrerUser.id, referralBonusAmount);
-          console.log(`Referral bonus of ${referralBonusAmount} DOPE given to user ${referrerUser.id}`);
+          console.log(
+            `Referral bonus of ${referralBonusAmount} DOPE given to user ${referrerUser.id}`,
+          );
         } catch (error) {
           console.error("Error giving referral bonus:", error);
           // Continue registration even if referral bonus fails
@@ -72,7 +82,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const token = jwtService.generateToken(user.id);
-      
+
       res.status(201).json({
         message: "User created successfully",
         token,
@@ -87,7 +97,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Validation error", errors: error.errors });
+        return res
+          .status(400)
+          .json({ message: "Validation error", errors: error.errors });
       }
       console.error("Registration error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -97,19 +109,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/auth/login", rateLimiter, async (req, res) => {
     try {
       const validatedData = loginSchema.parse(req.body);
-      
+
       const user = await storage.getUserByEmail(validatedData.email);
       if (!user) {
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
-      const isValidPassword = await bcrypt.compare(validatedData.password, user.password);
+      const isValidPassword = await bcrypt.compare(
+        validatedData.password,
+        user.password,
+      );
       if (!isValidPassword) {
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
       const token = jwtService.generateToken(user.id);
-      
+
       res.json({
         message: "Login successful",
         token,
@@ -124,7 +139,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Validation error", errors: error.errors });
+        return res
+          .status(400)
+          .json({ message: "Validation error", errors: error.errors });
       }
       console.error("Login error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -200,7 +217,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdAt: updatedUser.createdAt,
         updatedAt: updatedUser.updatedAt,
       };
-      
+
       res.json({
         message: "Profile updated successfully",
         user: safeUpdatedUser,
@@ -222,7 +239,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Mining started successfully", session });
     } catch (error: any) {
       console.error("Mining start error:", error.message);
-      if (error.message.includes('Mining cooldown')) {
+      if (error.message.includes("Mining cooldown")) {
         res.status(400).json({ message: error.message });
       } else {
         res.status(500).json({ message: "Internal server error" });
@@ -240,10 +257,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Mining stopped successfully", session });
     } catch (error: any) {
       console.error("Mining stop error:", error.message);
-      if (error.message.includes('No active mining session')) {
+      if (error.message.includes("No active mining session")) {
         res.status(400).json({ message: error.message });
       } else {
-        res.status(500).json({ message: "Internal server error: " + error.message });
+        res
+          .status(500)
+          .json({ message: "Internal server error: " + error.message });
       }
     }
   });
@@ -272,11 +291,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Reward claimed successfully", reward });
     } catch (error: any) {
       console.error("Mining claim error:", error.message);
-      if (error.message.includes('No rewards available') || error.message.includes('No active mining session')) {
+      if (
+        error.message.includes("No rewards available") ||
+        error.message.includes("No active mining session")
+      ) {
         res.status(400).json({ message: error.message });
       } else {
         res.status(500).json({ message: "Internal server error" });
       }
+    }
+  });
+
+  app.get("/api/protected/mining/claimable", async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const claimbleBalances = await miningService.getClaimbaleBalances(userId);
+
+      if (!claimbleBalances) {
+        return res.status(404).json({ message: "No claimable balances found" });
+      }
+
+      return res.json({ balance: claimbleBalances });
+    } catch (error) {
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/protected/mining/claimable", async (req, res) => {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    try {
+      await miningService.claimUnclaimedRewards(userId);
+      return res.json({ message: "Rewards claimed successfully" });
+    } catch (error) {
+      return res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -287,12 +343,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
-      
+
       // Get latest XLM balance from Stellar
       const xlmBalance = await stellarService.getXLMBalance(userId);
       // Get latest DOPE balance from Stellar
       const dopeBalance = await stellarService.getDOPEBalance(userId);
-      
+
       // Update wallet with latest balance
       const updatedWallet = await storage.updateWallet(userId, {
         xlmBalance: xlmBalance.toString(),
@@ -300,7 +356,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lastUpdated: new Date(),
       });
 
-      res.json(updatedWallet);
+      if (updatedWallet) {
+        return res.json(updatedWallet);
+      }
+
+      res.json({
+        xlmBalance: xlmBalance.toString(),
+        dopeBalance: dopeBalance.toString(),
+        lastUpdated: new Date(),
+      });
     } catch (error) {
       console.error("Wallet fetch error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -319,8 +383,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid parameters" });
       }
 
-      const transaction = await stellarService.sendTokens(userId, toAddress, amount, assetType);
-      
+      const transaction = await stellarService.sendTokens(
+        userId,
+        toAddress,
+        amount,
+        assetType,
+      );
+
       res.json({
         message: "Transaction sent",
         transaction,
@@ -340,12 +409,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
-      
+
       const transactions = await storage.getTransactions(userId, page, limit);
       res.json(transactions);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Transactions fetch error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      res
+        .status(500)
+        .json({ message: "Internal server error: " + error.message });
     }
   });
 
@@ -357,11 +428,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const stats = await storage.getUserStats(userId);
-      res.json(stats);
-    } catch (error) {
+      const stats: any = await storage.getUserStats(userId);
+      res.json({
+        id: stats.id,
+        activeMiners: stats.activeMiners,
+        totalSupply: await stellarService.getCirculatingSupply(),
+        miningRate: stats.miningRate,
+        lastBlockTime: stats.lastBlockTime,
+        updatedAt: stats.updatedAt,
+      });
+    } catch (error: any) {
       console.error("User stats error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      res
+        .status(500)
+        .json({ message: "Internal server error: " + error.message });
     }
   });
 
@@ -379,7 +459,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         totalReferrals,
         activeReferrals: activeReferrals.length,
-        referrals: activeReferrals.map(user => ({
+        referrals: activeReferrals.map((user) => ({
           id: user.id,
           username: user.username,
           fullName: user.fullName,
@@ -397,8 +477,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Network stats
   app.get("/api/network/stats", async (req, res) => {
     try {
-      const stats = await storage.getNetworkStats();
-      res.json(stats);
+      const stats: any = await storage.getNetworkStats();
+      res.json({
+        id: stats.id,
+        activeMiners: stats.activeMiners,
+        totalSupply: await stellarService.getCirculatingSupply(),
+        miningRate: stats.miningRate,
+        lastBlockTime: stats.lastBlockTime,
+        updatedAt: stats.updatedAt,
+      });
     } catch (error) {
       console.error("Network stats error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -407,38 +494,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Dashboard data
   // Email verification endpoints
-  app.post("/api/protected/send-verification", rateLimiter, async (req, res) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
+  app.post(
+    "/api/protected/send-verification",
+    rateLimiter,
+    async (req, res) => {
+      try {
+        const userId = req.user?.id;
+        if (!userId) {
+          return res.status(401).json({ message: "Unauthorized" });
+        }
 
-      const user = await storage.getUser(userId);
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
+        const user = await storage.getUser(userId);
+        if (!user) {
+          return res.status(404).json({ message: "User not found" });
+        }
 
-      if (user.isVerified) {
-        return res.status(400).json({ message: "Email already verified" });
-      }
+        if (user.isVerified) {
+          return res.status(400).json({ message: "Email already verified" });
+        }
 
-      // In a real implementation, you would send an email here
-      // For now, we'll just mark as verified after 24 hours simulation
-      console.log(`Verification email would be sent to ${user.email}`);
-      
-      res.json({ message: "Verification email sent" });
-    } catch (error) {
-      console.error("Send verification error:", error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
+        // In a real implementation, you would send an email here
+        // For now, we'll just mark as verified after 24 hours simulation
+        console.log(`Verification email would be sent to ${user.email}`);
+
+        res.json({ message: "Verification email sent" });
+      } catch (error) {
+        console.error("Send verification error:", error);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    },
+  );
 
   app.post("/api/protected/verify-email", async (req, res) => {
     try {
       const userId = req.user?.id;
       const { code } = req.body;
-      
+
       if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -457,12 +548,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Give verification bonus
       await storage.addReferralBonus(userId, "5.0"); // 5 DOPE bonus for verification
 
-      res.json({ 
+      res.json({
         message: "Email verified successfully",
         user: {
           id: updatedUser.id,
           isVerified: updatedUser.isVerified,
-        }
+        },
       });
     } catch (error) {
       console.error("Verify email error:", error);
@@ -476,38 +567,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
-      
-      const [user, wallet, recentTransactions, networkStats] = await Promise.all([
-        storage.getUser(userId),
-        storage.getWallet(userId),
-        storage.getTransactions(userId, 1, 5),
-        storage.getNetworkStats(),
-      ]);
-      // Mock mining status for now
-      const miningStatus = { isActive: false, rate: "0.25" };
+
+      const [user, wallet, recentTransactions, networkStats] =
+        (await Promise.all([
+          storage.getUser(userId),
+          storage.getWallet(userId),
+          storage.getTransactions(userId, 1, 5),
+          storage.getNetworkStats(),
+        ])) as any;
+
+      const miningStatus = await miningService.getMiningStatus(userId);
 
       // Create safe user object without sensitive fields
-      const safeUser = user ? {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        fullName: user.fullName,
-        profilePicture: user.profilePicture,
-        stellarPublicKey: user.stellarPublicKey, // Keep public key, but not secret
-        isVerified: user.isVerified,
-        level: user.level,
-        referralCode: user.referralCode,
-        referredBy: user.referredBy,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-      } : null;
-      
+      const safeUser = user
+        ? {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            fullName: user.fullName,
+            profilePicture: user.profilePicture,
+            stellarPublicKey: user.stellarPublicKey, // Keep public key, but not secret
+            isVerified: user.isVerified,
+            level: user.level,
+            referralCode: user.referralCode,
+            referredBy: user.referredBy,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt,
+          }
+        : null;
+
+      // Get latest XLM balance from Stellar
+      const xlmBalance = await stellarService.getXLMBalance(userId);
+      // Get latest DOPE balance from Stellar
+      const dopeBalance = await stellarService.getDOPEBalance(userId);
+
       res.json({
         user: safeUser,
-        wallet,
+        wallet: {
+          xlmBalance: xlmBalance.toString(),
+          dopeBalance: dopeBalance.toString(),
+        },
         mining: miningStatus,
         recentTransactions,
-        networkStats,
+        networkStats: {
+          id: networkStats.id,
+          activeMiners: networkStats.activeMiners,
+          totalSupply: await stellarService.getCirculatingSupply(),
+          miningRate: networkStats.miningRate,
+          lastBlockTime: networkStats.lastBlockTime,
+          updatedAt: networkStats.updatedAt,
+        },
       });
     } catch (error) {
       console.error("Dashboard fetch error:", error);

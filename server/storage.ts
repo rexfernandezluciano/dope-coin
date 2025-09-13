@@ -12,7 +12,7 @@ import {
   type InsertTransaction,
   type Wallet,
   type InsertWallet,
-  type NetworkStats
+  type NetworkStats,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sum, count, sql, gte } from "drizzle-orm";
@@ -33,12 +33,25 @@ export interface IStorage {
 
   // Mining methods
   getActiveMiningSession(userId: string): Promise<MiningSession | undefined>;
-  createMiningSession(insertSession: InsertMiningSession): Promise<MiningSession>;
-  updateMiningSession(id: string, updates: Partial<MiningSession>): Promise<MiningSession>;
+  createMiningSession(
+    insertSession: InsertMiningSession,
+  ): Promise<MiningSession>;
+  updateMiningSession(
+    id: string,
+    updates: Partial<MiningSession>,
+  ): Promise<MiningSession>;
 
   // Transaction methods
   createTransaction(insertTransaction: InsertTransaction): Promise<Transaction>;
-  getTransactions(userId: string, page: number, limit: number): Promise<Transaction[]>;
+  getTransactions(
+    userId: string,
+    page: number,
+    limit: number,
+  ): Promise<Transaction[]>;
+  updateTransactionStatus(
+    claimableBalanceId: string,
+    status: string,
+  ): Promise<void>;
 
   // Stats methods
   getUserStats(userId: string): Promise<{
@@ -54,8 +67,14 @@ export interface IStorage {
   getTotalDopeSupply(): Promise<number>;
 
   // Enhanced mining methods
-  getCompletedMiningSessionsCount(userId: string, days: number): Promise<number>;
-  getRecentMiningSessionsByUser(userId: string, limit: number): Promise<MiningSession[]>;
+  getCompletedMiningSessionsCount(
+    userId: string,
+    days: number,
+  ): Promise<number>;
+  getRecentMiningSessionsByUser(
+    userId: string,
+    limit: number,
+  ): Promise<MiningSession[]>;
   getReferralCount(userId: string): Promise<number>;
   getActiveMiningSessionsCount(): Promise<number>;
 
@@ -71,7 +90,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.username, username));
     return user || undefined;
   }
 
@@ -81,10 +103,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values(insertUser)
-      .returning();
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
 
@@ -99,19 +118,22 @@ export class DatabaseStorage implements IStorage {
 
   // Wallet methods
   async getWallet(userId: string): Promise<Wallet | undefined> {
-    const [wallet] = await db.select().from(wallets).where(eq(wallets.userId, userId));
+    const [wallet] = await db
+      .select()
+      .from(wallets)
+      .where(eq(wallets.userId, userId));
     return wallet || undefined;
   }
 
   async createWallet(insertWallet: InsertWallet): Promise<Wallet> {
-    const [wallet] = await db
-      .insert(wallets)
-      .values(insertWallet)
-      .returning();
+    const [wallet] = await db.insert(wallets).values(insertWallet).returning();
     return wallet;
   }
 
-  async updateWallet(userId: string, updates: Partial<Wallet>): Promise<Wallet> {
+  async updateWallet(
+    userId: string,
+    updates: Partial<Wallet>,
+  ): Promise<Wallet> {
     const [wallet] = await db
       .update(wallets)
       .set(updates)
@@ -121,15 +143,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Mining methods
-  async getActiveMiningSession(userId: string): Promise<MiningSession | undefined> {
+  async getActiveMiningSession(
+    userId: string,
+  ): Promise<MiningSession | undefined> {
     const [session] = await db
       .select()
       .from(miningSessions)
-      .where(and(eq(miningSessions.userId, userId), eq(miningSessions.isActive, true)));
+      .where(
+        and(
+          eq(miningSessions.userId, userId),
+          eq(miningSessions.isActive, true),
+        ),
+      );
     return session || undefined;
   }
 
-  async createMiningSession(insertSession: InsertMiningSession): Promise<MiningSession> {
+  async createMiningSession(
+    insertSession: InsertMiningSession,
+  ): Promise<MiningSession> {
     const [session] = await db
       .insert(miningSessions)
       .values(insertSession)
@@ -137,7 +168,10 @@ export class DatabaseStorage implements IStorage {
     return session;
   }
 
-  async updateMiningSession(id: string, updates: Partial<MiningSession>): Promise<MiningSession> {
+  async updateMiningSession(
+    id: string,
+    updates: Partial<MiningSession>,
+  ): Promise<MiningSession> {
     const [session] = await db
       .update(miningSessions)
       .set(updates)
@@ -147,7 +181,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Transaction methods
-  async createTransaction(insertTransaction: InsertTransaction): Promise<Transaction> {
+  async createTransaction(
+    insertTransaction: InsertTransaction,
+  ): Promise<Transaction> {
     const [transaction] = await db
       .insert(transactions)
       .values(insertTransaction)
@@ -155,7 +191,11 @@ export class DatabaseStorage implements IStorage {
     return transaction;
   }
 
-  async getTransactions(userId: string, page: number, limit: number): Promise<Transaction[]> {
+  async getTransactions(
+    userId: string,
+    page: number,
+    limit: number,
+  ): Promise<Transaction[]> {
     const offset = (page - 1) * limit;
     return db
       .select()
@@ -164,6 +204,18 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(transactions.createdAt))
       .limit(limit)
       .offset(offset);
+  }
+
+  async updateTransactionStatus(
+    claimableBalanceId: string,
+    status: string,
+  ): Promise<void> {
+    await db
+      .update(transactions)
+      .set({ status })
+      .where(
+        sql`${transactions.metadata}->>'claimableBalanceId' = ${claimableBalanceId}`,
+      );
   }
 
   // Stats methods
@@ -184,7 +236,7 @@ export class DatabaseStorage implements IStorage {
       // Get total earned from transactions
       const [earningsResult] = await db
         .select({
-          totalEarned: sql<string>`COALESCE(SUM(CASE WHEN ${transactions.type} IN ('mining_reward', 'referral_bonus') THEN ${transactions.amount} ELSE 0 END), 0)`
+          totalEarned: sql<string>`COALESCE(SUM(CASE WHEN ${transactions.type} IN ('mining_reward', 'referral_bonus') THEN ${transactions.amount} ELSE 0 END), 0)`,
         })
         .from(transactions)
         .where(eq(transactions.userId, userId));
@@ -201,14 +253,14 @@ export class DatabaseStorage implements IStorage {
 
       const [streakResult] = await db
         .select({
-          streak: sql<number>`COUNT(DISTINCT DATE(${miningSessions.startTime}))`
+          streak: sql<number>`COUNT(DISTINCT DATE(${miningSessions.startTime}))`,
         })
         .from(miningSessions)
         .where(
           and(
             eq(miningSessions.userId, userId),
-            gte(miningSessions.startTime, sevenDaysAgo)
-          )
+            gte(miningSessions.startTime, sevenDaysAgo),
+          ),
         );
 
       return {
@@ -231,11 +283,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getNetworkStats(): Promise<NetworkStats | undefined> {
-    const [stats] = await db.select().from(networkStats).orderBy(desc(networkStats.updatedAt)).limit(1);
+    const [stats] = await db
+      .select()
+      .from(networkStats)
+      .orderBy(desc(networkStats.updatedAt))
+      .limit(1);
     return stats || undefined;
   }
 
-  async updateNetworkStats(updates: Partial<NetworkStats>): Promise<NetworkStats> {
+  async updateNetworkStats(
+    updates: Partial<NetworkStats>,
+  ): Promise<NetworkStats> {
     // First try to get existing stats
     const existingStats = await this.getNetworkStats();
 
@@ -248,10 +306,7 @@ export class DatabaseStorage implements IStorage {
       return stats;
     } else {
       // Create new stats record
-      const [stats] = await db
-        .insert(networkStats)
-        .values(updates)
-        .returning();
+      const [stats] = await db.insert(networkStats).values(updates).returning();
       return stats;
     }
   }
@@ -271,7 +326,10 @@ export class DatabaseStorage implements IStorage {
     return parseFloat(result[0]?.total?.toString() || "0");
   }
 
-  async getCompletedMiningSessionsCount(userId: string, days: number): Promise<number> {
+  async getCompletedMiningSessionsCount(
+    userId: string,
+    days: number,
+  ): Promise<number> {
     try {
       const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
       const [result] = await db
@@ -281,8 +339,8 @@ export class DatabaseStorage implements IStorage {
           and(
             eq(miningSessions.userId, userId),
             eq(miningSessions.isActive, false),
-            sql`${miningSessions.startTime} >= ${startDate}`
-          )
+            sql`${miningSessions.startTime} >= ${startDate}`,
+          ),
         );
       return result.count;
     } catch (error) {
@@ -291,7 +349,10 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async getRecentMiningSessionsByUser(userId: string, limit: number): Promise<MiningSession[]> {
+  async getRecentMiningSessionsByUser(
+    userId: string,
+    limit: number,
+  ): Promise<MiningSession[]> {
     try {
       const sessions = await db
         .select()
@@ -350,7 +411,7 @@ export class DatabaseStorage implements IStorage {
       // Update user's wallet balance
       const wallet = await this.getWallet(userId);
       if (wallet) {
-        const currentBalance = parseFloat(wallet.dopeBalance);
+        const currentBalance = parseFloat(wallet.dopeBalance || "0");
         const bonusAmount = parseFloat(amount);
         const newBalance = (currentBalance + bonusAmount).toString();
 
