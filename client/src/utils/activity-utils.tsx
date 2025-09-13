@@ -29,3 +29,18 @@ export const getActivityLabel = (type: string) => {
       return "Transaction";
   }
 };
+
+export const getStatusColor = (status: string) => {
+  switch (status.toLowerCase()) {
+    case "completed":
+    case "success":
+      return "default";
+    case "pending":
+      return "secondary";
+    case "failed":
+    case "error":
+      return "destructive";
+    default:
+      return "outline";
+  }
+};

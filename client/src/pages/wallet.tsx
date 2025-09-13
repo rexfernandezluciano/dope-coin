@@ -2,10 +2,11 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "../components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { AuthService } from "@/lib/auth";
-import { Wallet, ArrowUpRight, ArrowDownLeft, Copy } from "lucide-react";
-import { getActivityLabel, getActivityIcon } from "../utils/activity-utils";
+import { Wallet } from "lucide-react";
+import { getActivityLabel, getActivityIcon, getStatusColor } from "../utils/activity-utils";
 
 export default function WalletPage() {
   const { toast } = useToast();
@@ -137,7 +138,9 @@ export default function WalletPage() {
                         {tx.type === "transfer" && tx.toAddress ? "-" : "+"}{parseFloat(tx.amount).toFixed(4)} {tx.assetType}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {tx.status.toUpperCase()}
+                        <Badge variant={getStatusColor(tx.status)}>
+                          {tx.status.toUpperCase()}
+                        </Badge>
                       </div>
                     </div>
                   </div>
