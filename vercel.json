@@ -2,12 +2,18 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "builds": [
     {
+      "src": "client/**",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    },
+    {
       "src": "server/index.ts",
       "use": "@vercel/node",
       "config": {
         "maxDuration": 30,
-        "runtime": "nodejs22.x",
-        "installCommand": "npm install",
+        "runtime": "nodejs22.x"
       }
     }
   ],
@@ -15,8 +21,13 @@
   "buildCommand": "npm run build",
   "routes": [
     {
-      "src": "/(.*)",
+      "src": "/api/(.*)",
       "dest": "server/index.ts"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/dist/$1"
     }
-  ]
+  ],
+  "outputDirectory": "dist"
 }
