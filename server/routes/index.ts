@@ -7,7 +7,7 @@ import { rateLimiter } from "../middleware/rateLimiter.js";
 import { jwtService } from "../services/jwt.js";
 import { stellarService } from "../services/stellar.js";
 import { miningService } from "../services/mining.js";
-import { loginSchema, registerSchema } from "@shared/schema.js";";
+import { loginSchema, registerSchema } from "@shared/schema.js";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {

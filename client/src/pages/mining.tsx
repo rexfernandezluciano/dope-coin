@@ -29,7 +29,7 @@ export default function Mining() {
 
   useEffect(() => {
     setClaimableBalances(rewardsData?.balance);
-  }, [claimableBalances]);
+  }, [rewardsData, claimableBalances, setClaimableBalances]);
 
   const startMining = useMutation({
     mutationFn: () =>

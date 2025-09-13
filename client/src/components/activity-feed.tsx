@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.js";
 import { Button } from "@/components/ui/button.js";
 import { formatTimeAgo } from "../utils/format-utils.js";
-import { getActivityIcon, getActivityLabel } from "../utils/activity-utils.js";";
+import { getActivityIcon, getActivityLabel } from "../utils/activity-utils.js";
 
 export function ActivityFeed() {
   const { data: transactions, isLoading } = useQuery({

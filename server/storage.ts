@@ -210,12 +210,11 @@ export class DatabaseStorage implements IStorage {
     claimableBalanceId: string,
     status: string,
   ): Promise<void> {
+    const claimableBalanceIdExpr = sql<string>`(${transactions.metadata} ->> 'claimableBalanceId')`;
     await db
       .update(transactions)
       .set({ status })
-      .where(
-        sql`${transactions.metadata}->>'claimableBalanceId' = ${claimableBalanceId}`,
-      );
+      .where(eq(claimableBalanceIdExpr, claimableBalanceId));
   }
 
   // Stats methods
