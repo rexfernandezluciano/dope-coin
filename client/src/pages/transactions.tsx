@@ -14,7 +14,7 @@ export default function Transactions() {
   const { data: transactions, isLoading } = useQuery({
     queryKey: ["/api/protected/transactions", { page, limit }],
     queryFn: () => AuthService.authenticatedRequest("GET", `/api/protected/transactions?page=${page}&limit=${limit}`),
-  });
+  }) as any;
 
   const getTransactionIcon = (tx: any) => {
     if (tx.type === "transfer") {

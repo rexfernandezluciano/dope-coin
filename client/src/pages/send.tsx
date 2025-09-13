@@ -24,7 +24,7 @@ export default function SendPage() {
   const { data: walletData, isLoading } = useQuery({
     queryKey: ["/api/protected/wallet"],
     refetchInterval: 30000,
-  });
+  }) as any;
 
   const sendTokens = useMutation({
     mutationFn: (data: typeof sendForm) => 

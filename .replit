@@ -40,3 +40,12 @@ waitForPort = 5000
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[rules]
+
+[rules.formatter]
+
+[rules.formatter.fileExtensions]
+
+[rules.formatter.fileExtensions.".tsx"]
+id = "module:nodejs-20/formatter:prettier"

@@ -14,7 +14,7 @@ export default function ReferralsPage() {
 
   const { data: referralData, isLoading } = useQuery({
     queryKey: ["/api/protected/referrals"],
-  });
+  }) as any;
 
   const copyReferralCode = () => {
     if (user?.referralCode) {

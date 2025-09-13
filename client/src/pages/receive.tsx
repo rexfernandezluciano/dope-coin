@@ -19,7 +19,7 @@ export default function ReceivePage() {
   const { data: profileData, isLoading } = useQuery({
     queryKey: ["/api/protected/profile"],
     refetchInterval: 30000,
-  });
+  }) as any;
 
   const stellarAddress = profileData?.user?.stellarPublicKey || "";
 
