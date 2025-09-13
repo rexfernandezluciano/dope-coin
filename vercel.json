@@ -15,12 +15,8 @@
   "buildCommand": "npm run build",
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "server/index.ts"
-    },
-    {
       "src": "/(.*)",
-      "dest": "dist/public/index.html"
+      "dest": "server/index.ts"
     }
   ]
 }
