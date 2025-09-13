@@ -2,13 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "builds": [
     {
-      "src": "client/**",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
-    },
-    {
       "src": "server/index.ts",
       "use": "@vercel/node",
       "config": {
@@ -26,8 +19,7 @@
     },
     {
       "src": "/(.*)",
-      "dest": "/dist/$1"
+      "dest": "server/index.ts"
     }
-  ],
-  "outputDirectory": "dist"
+  ]
 }
