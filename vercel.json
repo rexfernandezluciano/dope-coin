@@ -19,7 +19,5 @@
       "src": "/(.*)",
       "dest": "dist/public/index.html"
     }
-  ],
-  "buildCommand": "npm run build",
-  "startCommand": "npm run start"
+  ]
 }
