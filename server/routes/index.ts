@@ -1,12 +1,12 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import bcrypt from "bcrypt";
-import { storage } from "./storage";
-import { authMiddleware } from "./middleware/auth";
-import { rateLimiter } from "./middleware/rateLimiter";
-import { jwtService } from "./services/jwt";
-import { stellarService } from "./services/stellar";
-import { miningService } from "./services/mining";
+import { storage } from "../storage";
+import { authMiddleware } from "../middleware/auth";
+import { rateLimiter } from "../middleware/rateLimiter";
+import { jwtService } from "../services/jwt";
+import { stellarService } from "../services/stellar";
+import { miningService } from "../services/mining";
 import { loginSchema, registerSchema } from "@shared/schema";
 import { z } from "zod";
 
