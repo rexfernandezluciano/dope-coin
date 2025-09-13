@@ -1,8 +1,8 @@
 
 import { useState } from "react";
-import { useAuth } from "@/hooks/use-auth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useAuth } from "@/hooks/use-auth.js";
+import { Button } from "@/components/ui/button.js";
+import { Input } from "@/components/ui/input.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLocation } from "wouter";
 

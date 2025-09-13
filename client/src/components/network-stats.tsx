@@ -1,12 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.js";
 import { Network } from "lucide-react";
 
 export function NetworkStats() {
   const { data: stats, isLoading } = useQuery({
     queryKey: ["/api/network/stats"],
     refetchInterval: 60000, // Update every minute
-  });
+  }) as any;
 
   if (isLoading) {
     return (

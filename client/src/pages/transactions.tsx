@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { AuthService } from "@/lib/auth";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.js";
+import { Button } from "@/components/ui/button.js";
+import { Badge } from "@/components/ui/badge.js";
+import { AuthService } from "@/lib/auth.js";
 import {
   History,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { getActivityIcon, getActivityLabel, getStatusColor } from "../utils/activity-utils";
+import { getActivityIcon, getActivityLabel, getStatusColor } from "../utils/activity-utils.js";
 
 export default function Transactions() {
   const [page, setPage] = useState(1);

@@ -1,12 +1,12 @@
 
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.js";
+import { Button } from "@/components/ui/button.js";
+import { Input } from "@/components/ui/input.js";
+import { Label } from "@/components/ui/label.js";
 import { Copy, Users, Gift, Clock } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast.js";
+import { useAuth } from "@/hooks/use-auth.js";
 
 export default function ReferralsPage() {
   const { toast } = useToast();

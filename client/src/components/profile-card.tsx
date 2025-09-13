@@ -1,6 +1,6 @@
-import { useAuth } from "@/hooks/use-auth";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/use-auth.js";
+import { Card, CardContent } from "@/components/ui/card.js";
+import { Button } from "@/components/ui/button.js";
 import { Shield, Edit } from "lucide-react";
 import { Link } from "wouter";
 

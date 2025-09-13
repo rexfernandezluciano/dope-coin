@@ -1,13 +1,13 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import bcrypt from "bcrypt";
-import { storage } from "../storage";
-import { authMiddleware } from "../middleware/auth";
-import { rateLimiter } from "../middleware/rateLimiter";
-import { jwtService } from "../services/jwt";
-import { stellarService } from "../services/stellar";
-import { miningService } from "../services/mining";
-import { loginSchema, registerSchema } from "@shared/schema";
+import { storage } from "../storage.js";
+import { authMiddleware } from "../middleware/auth.js";
+import { rateLimiter } from "../middleware/rateLimiter.js";
+import { jwtService } from "../services/jwt.js";
+import { stellarService } from "../services/stellar.js";
+import { miningService } from "../services/mining.js";
+import { loginSchema, registerSchema } from "@shared/schema.js";";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {

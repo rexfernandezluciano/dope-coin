@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { jwtService } from "../services/jwt";
+import { jwtService } from "../services/jwt.js";
 
 declare global {
   namespace Express {

@@ -1,5 +1,5 @@
-import { storage } from "../storage";
-import { stellarService } from "./stellar";
+import { storage } from "../storage.js";
+import { stellarService } from "./stellar.js";
 import Decimal from "decimal.js";
 
 const BASE_MINING_RATE = new Decimal(0.05); // DOPE per hour

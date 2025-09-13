@@ -1,13 +1,13 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
-import { AuthService } from "@/lib/auth";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.js";
+import { Button } from "@/components/ui/button.js";
+import { Input } from "@/components/ui/input.js";
+import { Label } from "@/components/ui/label.js";
+import { Badge } from "@/components/ui/badge.js";
+import { useToast } from "@/hooks/use-toast.js";
+import { AuthService } from "@/lib/auth.js";
 import { User, Mail, Shield, Copy, CheckCircle, AlertCircle } from "lucide-react";
 
 export default function ProfilePage() {

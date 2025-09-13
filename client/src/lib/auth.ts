@@ -1,14 +1,16 @@
-import { apiRequest } from "./queryClient";
-
 export class AuthService {
   private static getAuthHeaders() {
     const token = localStorage.getItem("token");
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
-  static async authenticatedRequest(method: string, url: string, data?: unknown) {
+  static async authenticatedRequest(
+    method: string,
+    url: string,
+    data?: unknown,
+  ) {
     const headers = this.getAuthHeaders();
-    
+
     const response = await fetch(url, {
       method,
       headers: {
@@ -26,7 +28,9 @@ export class AuthService {
         window.location.href = "/login";
         throw new Error("Unauthorized");
       }
-      const errorData = await response.json().catch(() => ({ message: response.statusText }));
+      const errorData = await response
+        .json()
+        .catch(() => ({ message: response.statusText }));
       throw new Error(errorData.message || "Request failed");
     }
 

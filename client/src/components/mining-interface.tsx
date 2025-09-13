@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { AuthService } from "@/lib/auth";
-import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button.js";
+import { Card, CardContent } from "@/components/ui/card.js";
+import { AuthService } from "@/lib/auth.js";
+import { useToast } from "@/hooks/use-toast.js";
 import { Pickaxe, Play, Pause } from "lucide-react";
-import { formatTime } from "../utils/format-utils";
+import { formatTime } from "../utils/format-utils.js";
 
 export function MiningInterface() {
   const queryClient = useQueryClient();

@@ -1,4 +1,4 @@
-import { Home, User, Wallet, History, Pickaxe, Users, Send, ArrowDownLeft } from "lucide-react";
+import { Home, Wallet, Pickaxe, Users } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
 export function MobileNav() {

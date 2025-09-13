@@ -1,12 +1,12 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "../components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
-import { AuthService } from "@/lib/auth";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.js";
+import { Badge } from "../components/ui/badge.js";
+import { useToast } from "@/hooks/use-toast.js";
+import { AuthService } from "@/lib/auth.js";
 import { Wallet } from "lucide-react";
-import { getActivityLabel, getActivityIcon, getStatusColor } from "../utils/activity-utils";
+import { getActivityLabel, getActivityIcon, getStatusColor } from "../utils/activity-utils.js";
 
 export default function WalletPage() {
   const { toast } = useToast();

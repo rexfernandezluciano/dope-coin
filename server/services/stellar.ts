@@ -9,7 +9,7 @@ import {
   LiquidityPoolAsset,
   getLiquidityPoolId,
 } from "@stellar/stellar-sdk";
-import { storage } from "../storage";
+import { storage } from "../storage.js";
 
 const STELLAR_NETWORK = process.env.STELLAR_NETWORK || "testnet";
 const STELLAR_SERVER_URL =
