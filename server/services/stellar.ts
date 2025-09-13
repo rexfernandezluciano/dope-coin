@@ -8,8 +8,7 @@ import {
   Claimant,
   LiquidityPoolAsset,
   getLiquidityPoolId,
-  BalanceLine,
-} from "stellar-sdk";
+} from "@stellar/stellar-sdk";
 import { storage } from "../storage";
 
 const STELLAR_NETWORK = process.env.STELLAR_NETWORK || "testnet";
@@ -1288,11 +1287,7 @@ export class StellarService {
     }
   }
 
-  private isCreditAsset(
-    balance: BalanceLine,
-  ): balance is
-    | BalanceLine<"credit_alphanum4">
-    | BalanceLine<"credit_alphanum12"> {
+  private isCreditAsset(balance: any) {
     return (
       balance.asset_type === "credit_alphanum4" ||
       balance.asset_type === "credit_alphanum12"
@@ -1309,7 +1304,8 @@ export class StellarService {
     while (true) {
       for (const account of page.records) {
         if (account.account_id === issuer) continue; // Skip issuing account
-        for (const balance of account.balances) {
+        const balances: any = account.balances;
+        for (const balance of balances) {
           if (
             this.isCreditAsset(balance) &&
             balance.asset_code === assetCode &&
