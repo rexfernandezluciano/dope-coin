@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "builds": [
     {
-      "src": "api/index.ts",
+      "src": "server/index.ts",
       "use": "@vercel/node",
       "config": {
         "maxDuration": 30,
