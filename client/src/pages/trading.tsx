@@ -139,12 +139,26 @@ export default function TradingPage() {
         throw new Error("Both XLM and DOPE amounts must be greater than 0");
       }
       
-      if (xlmAmount < 0.1) {
-        throw new Error("Minimum XLM amount is 0.1 (to cover fees)");
+      if (xlmAmount < 0.5) {
+        throw new Error("Minimum XLM amount is 0.5 XLM (to cover fees and reserves)");
       }
       
-      if (dopeAmount < 0.01) {
-        throw new Error("Minimum DOPE amount is 0.01");
+      if (dopeAmount < 0.1) {
+        throw new Error("Minimum DOPE amount is 0.1 DOPE");
+      }
+      
+      // Check user balances
+      if (walletBalance) {
+        const userXlm = parseFloat(walletBalance.xlmBalance);
+        const userDope = parseFloat(walletBalance.dopeBalance);
+        
+        if (userXlm < xlmAmount + 1.0) {
+          throw new Error(`Insufficient XLM. You have ${userXlm.toFixed(2)} XLM but need ${(xlmAmount + 1.0).toFixed(2)} XLM (including fees)`);
+        }
+        
+        if (userDope < dopeAmount) {
+          throw new Error(`Insufficient DOPE. You have ${userDope.toFixed(2)} DOPE but need ${dopeAmount} DOPE`);
+        }
       }
       
       const response = await apiRequest("POST", "/api/protected/liquidity/add", data);
@@ -215,6 +229,7 @@ export default function TradingPage() {
         tradeForm.setValue("sellAsset", { code: "DOPE", issuer: dopeIssuer });
         tradeForm.setValue("buyAsset", { type: "native" });
       }
+      tradeForm.setValue("tradingPair", selectedPair);
       liquidityForm.setValue("assetB", { code: "DOPE", issuer: dopeIssuer });
     }
   }, [dopeIssuer, selectedPair, tradeForm, liquidityForm]);
@@ -402,8 +417,8 @@ export default function TradingPage() {
                 {tradingPairs?.map((pair) => (
                   <div
                     key={pair.symbol}
-                    className={`p-3 border rounded-lg cursor-pointer hover:bg-muted transition-colors ${
-                      selectedPair === pair.symbol ? "bg-muted border-primary" : ""
+                    className={`p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors ${
+                      selectedPair === pair.symbol ? "bg-primary/10 border-primary ring-1 ring-primary" : "hover:border-muted-foreground"
                     }`}
                     onClick={() => {
                       setSelectedPair(pair.symbol);
@@ -419,13 +434,22 @@ export default function TradingPage() {
                           tradeForm.setValue("buyAsset", { type: "native" });
                         }
                       }
+                      
+                      // Clear amounts when switching pairs
+                      tradeForm.setValue("sellAmount", "");
+                      tradeForm.setValue("minBuyAmount", "");
                     }}
                     data-testid={`pair-${pair.symbol}`}
                   >
                     <div className="font-semibold">{pair.symbol}</div>
                     <div className="text-sm text-muted-foreground">
-                      {pair.baseAsset.code || "XLM"} / {pair.quoteAsset.code || "XLM"}
+                      {pair.baseAsset.code || "XLM"} → {pair.quoteAsset.code || "XLM"}
                     </div>
+                    {selectedPair === pair.symbol && (
+                      <div className="text-xs text-primary mt-1">
+                        ✓ Selected
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

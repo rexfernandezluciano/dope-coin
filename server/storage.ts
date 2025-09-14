@@ -48,6 +48,7 @@ export interface IStorage {
     page: number,
     limit: number,
   ): Promise<Transaction[]>;
+  getTransactionsByType(userId: string, type: string): Promise<Transaction[]>;
   updateTransactionStatus(
     claimableBalanceId: string,
     status: string,
@@ -193,8 +194,8 @@ export class DatabaseStorage implements IStorage {
 
   async getTransactions(
     userId: string,
-    page: number,
-    limit: number,
+    page: number = 1,
+    limit: number = 20,
   ): Promise<Transaction[]> {
     const offset = (page - 1) * limit;
     return db
@@ -204,6 +205,14 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(transactions.createdAt))
       .limit(limit)
       .offset(offset);
+  }
+
+  async getTransactionsByType(userId: string, type: string): Promise<Transaction[]> {
+    return db
+      .select()
+      .from(transactions)
+      .where(and(eq(transactions.userId, userId), eq(transactions.type, type)))
+      .orderBy(desc(transactions.createdAt));
   }
 
   async updateTransactionStatus(
