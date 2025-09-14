@@ -1,7 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "npm install --force",
+  "installCommand": "npm install",
   "buildCommand": "npm run build",
+  "postInstall": "rm -rf node_modules package-lock.json",
   "outputDirectory": "client/dist",
   "functions": {
     "api/**.ts": {
