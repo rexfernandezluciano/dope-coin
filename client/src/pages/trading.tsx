@@ -91,6 +91,11 @@ export default function TradingPage() {
     queryKey: ["/api/protected/liquidity/pools"],
   }) as { data: LiquidityPool[]; refetch: () => void; isLoading: boolean };
 
+  // Fetch wallet balance for validation
+  const { data: walletBalance } = useQuery({
+    queryKey: ["/api/protected/wallet"],
+  }) as { data: { xlmBalance: string; dopeBalance: string; gasBalance: string } };
+
   // Execute trade mutation
   const executeTradeMutation = useMutation({
     mutationFn: async (data: ExecuteTradeRequest) => {
@@ -118,6 +123,22 @@ export default function TradingPage() {
   // Add liquidity mutation
   const addLiquidityMutation = useMutation({
     mutationFn: async (data: AddLiquidityRequest) => {
+      // Validate amounts before sending
+      const xlmAmount = parseFloat(data.amountA);
+      const dopeAmount = parseFloat(data.amountB);
+      
+      if (xlmAmount <= 0 || dopeAmount <= 0) {
+        throw new Error("Both XLM and DOPE amounts must be greater than 0");
+      }
+      
+      if (xlmAmount < 0.1) {
+        throw new Error("Minimum XLM amount is 0.1 (to cover fees)");
+      }
+      
+      if (dopeAmount < 0.01) {
+        throw new Error("Minimum DOPE amount is 0.01");
+      }
+      
       const response = await apiRequest("POST", "/api/protected/liquidity/add", data);
       return response.json();
     },
@@ -131,9 +152,17 @@ export default function TradingPage() {
       liquidityForm.reset();
     },
     onError: (error: any) => {
+      let errorMessage = "Failed to add liquidity";
+      
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      
       toast({
         title: "Add Liquidity Failed",
-        description: error.message || "Failed to add liquidity",
+        description: errorMessage,
         variant: "destructive",
       });
     },
@@ -376,6 +405,11 @@ export default function TradingPage() {
                 <Droplets className="h-5 w-5" />
                 Add Liquidity
               </CardTitle>
+              {walletBalance && (
+                <div className="text-sm text-muted-foreground">
+                  Available: {parseFloat(walletBalance.xlmBalance).toFixed(2)} XLM • {parseFloat(walletBalance.dopeBalance).toFixed(2)} DOPE
+                </div>
+              )}
             </CardHeader>
             <CardContent>
               <Form {...liquidityForm}>

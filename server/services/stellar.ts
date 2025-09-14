@@ -814,36 +814,77 @@ export class StellarService {
       const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
       const account = await server.loadAccount(userKeypair.publicKey());
 
+      // Validate user has sufficient balances
+      const xlmBalance = account.balances.find(
+        (balance: any) => balance.asset_type === "native"
+      );
+      const dopeBalance = account.balances.find(
+        (balance: any) =>
+          balance.asset_type === "credit_alphanum4" &&
+          balance.asset_code === "DOPE" &&
+          balance.asset_issuer === dopeIssuerKeypair.publicKey()
+      );
+
+      const xlmAmount = parseFloat(xlmBalance?.balance || "0");
+      const dopeAmount = parseFloat(dopeBalance?.balance || "0");
+
+      // Check if user has sufficient XLM (including fees)
+      if (xlmAmount < parseFloat(amountA) + 0.1) {
+        throw new Error(`Insufficient XLM balance. You have ${xlmAmount} XLM but need ${parseFloat(amountA) + 0.1} XLM (including fees)`);
+      }
+
+      // Check if user has sufficient DOPE
+      if (dopeAmount < parseFloat(amountB)) {
+        throw new Error(`Insufficient DOPE balance. You have ${dopeAmount} DOPE but need ${amountB} DOPE`);
+      }
+
       // Create liquidity pool asset
       const poolAsset = new LiquidityPoolAsset(assetA, assetB, 30); // 30 basis points fee
       const poolId = getLiquidityPoolId("constant_product", poolAsset).toString(
         "hex",
       );
 
-      const transaction = new TransactionBuilder(account, {
-        fee: LIQUIDITY_FEE.toString(), // Higher fee for liquidity operations
-        networkPassphrase,
-      })
-        .addOperation(
+      // Check if user already has trustline for this pool
+      const existingPoolTrustline = account.balances.find(
+        (balance: any) =>
+          balance.asset_type === "liquidity_pool_shares" &&
+          balance.liquidity_pool_id === poolId
+      );
+
+      const operations = [];
+
+      // Add trustline operation only if it doesn't exist
+      if (!existingPoolTrustline) {
+        operations.push(
           Operation.changeTrust({
             asset: poolAsset,
             limit: "1000000",
-          }),
-        )
-        .addOperation(
-          Operation.liquidityPoolDeposit({
-            liquidityPoolId: poolId,
-            maxAmountA: amountA,
-            maxAmountB: amountB,
-            minPrice: minPrice,
-            maxPrice: maxPrice,
-          }),
-        )
-        .setTimeout(60)
-        .build();
+          })
+        );
+      }
 
-      transaction.sign(userKeypair);
-      const result = await server.submitTransaction(transaction);
+      // Add liquidity deposit operation
+      operations.push(
+        Operation.liquidityPoolDeposit({
+          liquidityPoolId: poolId,
+          maxAmountA: amountA,
+          maxAmountB: amountB,
+          minPrice: minPrice,
+          maxPrice: maxPrice,
+        })
+      );
+
+      const transaction = new TransactionBuilder(account, {
+        fee: (BASE_FEE * operations.length).toString(),
+        networkPassphrase,
+      });
+
+      operations.forEach(op => transaction.addOperation(op));
+      
+      const builtTransaction = transaction.setTimeout(60).build();
+      builtTransaction.sign(userKeypair);
+
+      const result = await server.submitTransaction(builtTransaction);
 
       // Record liquidity addition
       await storage.createTransaction({
@@ -879,9 +920,27 @@ export class StellarService {
         amountA,
         amountB,
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error adding liquidity:", error);
-      throw error;
+      
+      // Provide more specific error messages
+      if (error.response?.data?.extras?.result_codes) {
+        const resultCodes = error.response.data.extras.result_codes;
+        if (resultCodes.transaction === "tx_insufficient_balance") {
+          throw new Error("Insufficient balance for this operation");
+        }
+        if (resultCodes.operations?.includes("op_underfunded")) {
+          throw new Error("Insufficient funds to complete liquidity operation");
+        }
+        if (resultCodes.operations?.includes("op_line_full")) {
+          throw new Error("Asset balance limit exceeded");
+        }
+        if (resultCodes.operations?.includes("op_no_trust")) {
+          throw new Error("Missing trustline for liquidity pool");
+        }
+      }
+      
+      throw new Error(error.message || "Failed to add liquidity");
     }
   }
 
