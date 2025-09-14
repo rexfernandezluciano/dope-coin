@@ -165,6 +165,24 @@ export default function TradingPage() {
     },
   });
 
+  // Calculate expected receive amount based on sell amount
+  const calculateReceiveAmount = async (sellAmount: string, tradingPair: string) => {
+    if (!sellAmount || !tradingPair) return;
+    
+    try {
+      const response = await apiRequest("POST", "/api/protected/trade/calculate", {
+        sellAmount,
+        tradingPair
+      });
+      const result = await response.json();
+      
+      // Update the min receive amount field
+      tradeForm.setValue("minBuyAmount", (parseFloat(result.estimatedAmount) * 0.95).toFixed(6)); // 5% slippage
+    } catch (error) {
+      console.error("Error calculating receive amount:", error);
+    }
+  };
+
   const onTradeSubmit = (data: z.infer<typeof tradeFormSchema>) => {
     const { tradingPair, ...tradeData } = data;
     executeTradeMutation.mutate(tradeData);
@@ -248,6 +266,10 @@ export default function TradingPage() {
                               type="number"
                               placeholder="0.00"
                               step="0.01"
+                              onChange={(e) => {
+                                field.onChange(e);
+                                calculateReceiveAmount(e.target.value, selectedPair);
+                              }}
                             />
                           </FormControl>
                           <FormMessage />
@@ -332,6 +354,21 @@ export default function TradingPage() {
             <CardContent>
               <Form {...liquidityForm}>
                 <form onSubmit={liquidityForm.handleSubmit(onLiquiditySubmit)} className="space-y-4">
+                  <div className="mb-4">
+                    <Label>Liquidity Pool Pair</Label>
+                    <Select defaultValue="DOPE/XLM">
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select liquidity pair" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tradingPairs?.map((pair) => (
+                          <SelectItem key={pair.symbol} value={pair.symbol}>
+                            {pair.symbol}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
                       control={liquidityForm.control}

@@ -27,6 +27,17 @@ export class MiningService {
         throw new Error("User not found");
       }
 
+      // Check GAS balance - require 10 GAS to start mining
+      const gasBalance = await stellarService.getGASBalance(userId);
+      const requiredGas = 10;
+      
+      if (gasBalance < requiredGas) {
+        throw new Error(`Insufficient GAS. You need ${requiredGas} GAS to start mining. Current balance: ${gasBalance} GAS`);
+      }
+
+      // Deduct GAS fee for mining
+      await this.deductGasFee(userId, requiredGas);
+
       // Enhanced mining rate calculation with network effects
       const miningRate = await this.calculateEnhancedMiningRate(
         userId,
@@ -48,6 +59,42 @@ export class MiningService {
     } catch (error) {
       console.error("Error starting mining:", error);
       throw error;
+    }
+  }
+
+  private async deductGasFee(userId: string, gasAmount: number): Promise<void> {
+    try {
+      const user = await storage.getUser(userId);
+      if (!user?.stellarSecretKey) {
+        throw new Error("User stellar account not found");
+      }
+
+      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const account = await server.loadAccount(userKeypair.publicKey());
+      const gasAsset = new Asset("GAS", dopeIssuerKeypair.publicKey());
+
+      // Send GAS to a burn address (distributor for now)
+      const transaction = new TransactionBuilder(account, {
+        fee: BASE_FEE.toString(),
+        networkPassphrase,
+      })
+        .addOperation(
+          Operation.payment({
+            destination: dopeDistributorKeypair.publicKey(),
+            asset: gasAsset,
+            amount: gasAmount.toString(),
+          }),
+        )
+        .setTimeout(30)
+        .build();
+
+      transaction.sign(userKeypair);
+      await server.submitTransaction(transaction);
+
+      console.log(`Deducted ${gasAmount} GAS from user ${userId} for mining fee`);
+    } catch (error) {
+      console.error("Error deducting GAS fee:", error);
+      throw new Error("Failed to deduct GAS fee");
     }
   }
 

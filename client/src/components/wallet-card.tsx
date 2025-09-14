@@ -33,6 +33,7 @@ export function WalletCard() {
 
   const dopeBalance = parseFloat(wallet?.dopeBalance || "0");
   const xlmBalance = parseFloat(wallet?.xlmBalance || "0");
+  const gasBalance = parseFloat(wallet?.gasBalance || "0");
   const usdValue = "N/A"; //(dopeBalance * 0.1 + xlmBalance * 0.006).toFixed(2);
 
   return (
@@ -67,6 +68,27 @@ export function WalletCard() {
               <span className="font-medium" data-testid="usd-value">
                 {usdValue}
               </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <div className="text-center p-3 bg-primary/10 rounded-lg">
+              <div className="text-xl font-bold text-primary">
+                {parseFloat(wallet?.xlmBalance || "0").toFixed(2)}
+              </div>
+              <div className="text-xs text-muted-foreground">XLM</div>
+            </div>
+            <div className="text-center p-3 bg-secondary/10 rounded-lg">
+              <div className="text-xl font-bold text-secondary">
+                {parseFloat(wallet?.dopeBalance || "0").toFixed(2)}
+              </div>
+              <div className="text-xs text-muted-foreground">DOPE</div>
+            </div>
+            <div className="text-center p-3 bg-accent/10 rounded-lg">
+              <div className="text-xl font-bold text-accent">
+                {parseFloat(wallet?.gasBalance || "0").toFixed(0)}
+              </div>
+              <div className="text-xs text-muted-foreground">GAS</div>
             </div>
           </div>
 

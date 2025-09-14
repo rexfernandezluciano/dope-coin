@@ -178,6 +178,28 @@ export class StellarService {
     }
   }
 
+  async getGASBalance(userId: string): Promise<number> {
+    try {
+      const user = await storage.getUser(userId);
+      if (!user?.stellarPublicKey) {
+        throw new Error("User stellar account not found");
+      }
+
+      const account = await server.loadAccount(user.stellarPublicKey);
+      const gasBalance = account.balances.find(
+        (balance: any) =>
+          balance.asset_type === "credit_alphanum4" &&
+          balance.asset_code === "GAS" &&
+          balance.asset_issuer === dopeIssuerKeypair.publicKey(),
+      );
+
+      return parseFloat(gasBalance?.balance || "0");
+    } catch (error) {
+      console.error("Error fetching GAS balance:", error);
+      return 0;
+    }
+  }
+
   async fundAccount(publicKey: string): Promise<boolean> {
     if (STELLAR_NETWORK !== "testnet") return true;
 
@@ -221,40 +243,53 @@ export class StellarService {
 
       const account = await server.loadAccount(userKeypair.publicKey());
 
-      // Create DOPE asset with platform issuer
+      // Create DOPE and GAS assets with platform issuer
       const dopeAsset = new Asset("DOPE", dopeIssuerKeypair.publicKey());
+      const gasAsset = new Asset("GAS", dopeIssuerKeypair.publicKey());
 
-      // Create transaction to trust platform DOPE asset
-      const transaction = new TransactionBuilder(account, {
-        fee: BASE_FEE.toString(),
-        networkPassphrase,
-      })
-        .addOperation(
-          Operation.changeTrust({
-            asset: dopeAsset,
-          }),
-        )
-        .setTimeout(30)
-        .build();
-
-      transaction.sign(userKeypair);
-
-      // Check if trustline already exists
+      // Check existing trustlines
       const balances = account.balances;
-      const existingTrustline = balances.find(
+      const existingDopeTrustline = balances.find(
         (balance: any) =>
           balance.asset_type === "credit_alphanum4" &&
           balance.asset_code === "DOPE" &&
           balance.asset_issuer === dopeIssuerKeypair.publicKey(),
       );
+      
+      const existingGasTrustline = balances.find(
+        (balance: any) =>
+          balance.asset_type === "credit_alphanum4" &&
+          balance.asset_code === "GAS" &&
+          balance.asset_issuer === dopeIssuerKeypair.publicKey(),
+      );
 
-      if (existingTrustline) {
-        console.log(`DOPE trustline already exists for user ${userId}`);
+      const operations = [];
+      
+      if (!existingDopeTrustline) {
+        operations.push(Operation.changeTrust({ asset: dopeAsset }));
+      }
+      
+      if (!existingGasTrustline) {
+        operations.push(Operation.changeTrust({ asset: gasAsset }));
+      }
+
+      if (operations.length === 0) {
+        console.log(`All trustlines already exist for user ${userId}`);
         return;
       }
 
-      await server.submitTransaction(transaction);
-      console.log(`DOPE token trustline created for user ${userId}`);
+      const transaction = new TransactionBuilder(account, {
+        fee: (BASE_FEE * operations.length).toString(),
+        networkPassphrase,
+      });
+
+      operations.forEach(op => transaction.addOperation(op));
+      
+      const builtTransaction = transaction.setTimeout(30).build();
+      builtTransaction.sign(userKeypair);
+
+      await server.submitTransaction(builtTransaction);
+      console.log(`Token trustlines created for user ${userId}`);
     } catch (error: any) {
       console.error("Error creating user token:", error.message);
       if (error.response?.data) {
@@ -270,6 +305,72 @@ export class StellarService {
         );
       }
       // Don't throw error to prevent blocking user registration
+    }
+  }
+
+  /**
+   * Convert XLM to GAS tokens (1 XLM = 100 GAS)
+   */
+  async convertXLMToGAS(userId: string, xlmAmount: string): Promise<any> {
+    try {
+      const user = await storage.getUser(userId);
+      if (!user?.stellarSecretKey) {
+        throw new Error("User stellar account not found");
+      }
+
+      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const account = await server.loadAccount(userKeypair.publicKey());
+
+      const gasAsset = new Asset("GAS", dopeIssuerKeypair.publicKey());
+      const gasAmount = (parseFloat(xlmAmount) * 100).toString(); // 1 XLM = 100 GAS
+
+      // First send XLM to distributor
+      const transaction1 = new TransactionBuilder(account, {
+        fee: BASE_FEE.toString(),
+        networkPassphrase,
+      })
+        .addOperation(
+          Operation.payment({
+            destination: dopeDistributorKeypair.publicKey(),
+            asset: Asset.native(),
+            amount: xlmAmount,
+          }),
+        )
+        .setTimeout(30)
+        .build();
+
+      transaction1.sign(userKeypair);
+      await server.submitTransaction(transaction1);
+
+      // Then distributor sends GAS to user
+      const distributorAccount = await server.loadAccount(dopeDistributorKeypair.publicKey());
+      
+      const transaction2 = new TransactionBuilder(distributorAccount, {
+        fee: BASE_FEE.toString(),
+        networkPassphrase,
+      })
+        .addOperation(
+          Operation.payment({
+            destination: userKeypair.publicKey(),
+            asset: gasAsset,
+            amount: gasAmount,
+          }),
+        )
+        .setTimeout(30)
+        .build();
+
+      transaction2.sign(dopeDistributorKeypair);
+      const result = await server.submitTransaction(transaction2);
+
+      return {
+        hash: result.hash,
+        xlmAmount,
+        gasAmount,
+        status: "completed"
+      };
+    } catch (error) {
+      console.error("Error converting XLM to GAS:", error);
+      throw error;
     }
   }
 

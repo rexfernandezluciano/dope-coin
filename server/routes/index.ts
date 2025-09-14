@@ -7,12 +7,12 @@ import { rateLimiter } from "../middleware/rateLimiter.js";
 import { jwtService } from "../services/jwt.js";
 import { stellarService } from "../services/stellar.js";
 import { miningService } from "../services/mining.js";
-import { 
-  loginSchema, 
-  registerSchema, 
-  executeTradeSchema, 
-  addLiquiditySchema, 
-  removeLiquiditySchema, 
+import {
+  loginSchema,
+  registerSchema,
+  executeTradeSchema,
+  addLiquiditySchema,
+  removeLiquiditySchema,
   orderbookQuerySchema,
   updateProfileSchema,
   updateUsernameSchema,
@@ -349,36 +349,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Wallet routes
-  app.get("/api/protected/wallet", async (req, res) => {
+  app.get("/api/protected/wallet", rateLimiter, async (req, res) => {
     try {
       const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      // Get latest XLM balance from Stellar
-      const xlmBalance = await stellarService.getXLMBalance(userId);
-      // Get latest DOPE balance from Stellar
-      const dopeBalance = await stellarService.getDOPEBalance(userId);
-
-      // Update wallet with latest balance
-      const updatedWallet = await storage.updateWallet(userId, {
-        xlmBalance: xlmBalance.toString(),
-        dopeBalance: dopeBalance.toString(),
-        lastUpdated: new Date(),
-      });
-
-      if (updatedWallet) {
-        return res.json(updatedWallet);
-      }
+      const [xlmBalance, dopeBalance, gasBalance] = await Promise.all([
+        stellarService.getXLMBalance(userId),
+        stellarService.getDOPEBalance(userId),
+        stellarService.getGASBalance(userId),
+      ]);
 
       res.json({
         xlmBalance: xlmBalance.toString(),
         dopeBalance: dopeBalance.toString(),
-        lastUpdated: new Date(),
+        gasBalance: gasBalance.toString(),
       });
-    } catch (error) {
-      console.error("Wallet fetch error:", error);
+    } catch (error: any) {
+      console.error("Wallet error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -409,6 +399,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Send transaction error:", error);
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/protected/wallet/convert-gas", rateLimiter, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const { xlmAmount } = req.body;
+      if (!xlmAmount || parseFloat(xlmAmount) <= 0) {
+        return res.status(400).json({ message: "Invalid XLM amount" });
+      }
+
+      const result = await stellarService.convertXLMToGAS(userId, xlmAmount);
+      res.json(result);
+    } catch (error: any) {
+      console.error("GAS conversion error:", error);
+      res.status(500).json({ message: error.message || "Internal server error" });
     }
   });
 
@@ -647,7 +657,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/protected/liquidity/pool/:id", rateLimiter, async (req, res) => {
     try {
       const { id } = req.params;
-      
+
       if (!id || typeof id !== 'string' || id.trim() === '') {
         return res.status(400).json({ message: "Valid Pool ID is required" });
       }
@@ -669,7 +679,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const stats = await storage.getNetworkStats();
       const circulatingSupply = stats?.totalSupply || "0";
-      res.json({ 
+      res.json({
         totalSupply: circulatingSupply,
         circulatingSupply,
         maxSupply: "1000000000" // 1 billion DOPE max supply
