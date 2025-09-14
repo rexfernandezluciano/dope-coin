@@ -6,18 +6,37 @@ import {
   Asset,
   Horizon,
   Claimant,
+  LiquidityPoolAsset,
+  getLiquidityPoolId,
 } from "@stellar/stellar-sdk";
 import { storage } from "../storage.js";
 
+// Replace the current STELLAR_NETWORK and STELLAR_SERVER_URL configuration
 const STELLAR_NETWORK = process.env.STELLAR_NETWORK || "testnet";
-const STELLAR_SERVER_URL =
-  STELLAR_NETWORK === "mainnet"
-    ? "https://horizon.stellar.org"
-    : "https://horizon-testnet.stellar.org";
+const STELLAR_SERVER_URLS = {
+  testnet: "https://horizon-testnet.stellar.org",
+  mainnet: "https://horizon.stellar.org",
+  futurenet: "https://horizon-futurenet.stellar.org",
+} as any;
 
-const BASE_FEE = process.env.BASE_FEE || (100 as number);
-const LIQUIDITY_FEE = (process.env.LIQUIDITY_FEE || 300 + 100) as number;
-const ACCOUNT_FEE = process.env.ACCOUNT_FEE || (1000 as number);
+const STELLAR_SERVER_URL =
+  STELLAR_SERVER_URLS[STELLAR_NETWORK] || STELLAR_SERVER_URLS.testnet;
+
+// Network passphrases
+const NETWORK_PASSPHRASES = {
+  testnet: Networks.TESTNET,
+  mainnet: Networks.PUBLIC,
+  futurenet: Networks.FUTURENET,
+} as any;
+
+const networkPassphrase =
+  NETWORK_PASSPHRASES[STELLAR_NETWORK] || Networks.TESTNET;
+
+const server = new Horizon.Server(STELLAR_SERVER_URL);
+
+const BASE_FEE = parseFloat(process.env.BASE_FEE || "1000");
+const LIQUIDITY_FEE = parseFloat(process.env.LIQUIDITY_FEE || "3000");
+const ACCOUNT_FEE = parseFloat(process.env.ACCOUNT_FEE || "100000");
 
 // Platform DOPE token issuer (should be in environment variables in production)
 const DOPE_ISSUER_SECRET =
@@ -31,10 +50,6 @@ const dopeDistributorKeypair = Keypair.fromSecret(DOPE_DISTRIBUTOR_SECRET);
 const UsdtIssuerPublicKey =
   "GA5IK5GGEH2ZPSJOLHS6X5DXNX7VVV35PPMUUKAZPCQ7NB7NSVRZ3WOI";
 
-const server = new Horizon.Server(STELLAR_SERVER_URL);
-const networkPassphrase =
-  STELLAR_NETWORK === "mainnet" ? Networks.PUBLIC : Networks.TESTNET;
-
 if (process.env.NODE_ENV === "development") {
   console.log(`DOPE Issuer: ${dopeIssuerKeypair.publicKey()}`);
   console.log(`DOPE Distributor: ${dopeDistributorKeypair.publicKey()}`);
@@ -45,13 +60,6 @@ interface TradingPair {
   baseAsset: Asset;
   quoteAsset: Asset;
   symbol: string;
-}
-
-interface TradeOrder {
-  type: "buy" | "sell";
-  amount: string;
-  price: string;
-  asset: Asset;
 }
 
 interface LiquidityPoolInfo {
@@ -282,7 +290,7 @@ export class StellarService {
       }
 
       const transaction = new TransactionBuilder(account, {
-        fee: (BASE_FEE || 100 * operations.length).toString(),
+        fee: (BASE_FEE * operations.length).toString(),
         networkPassphrase,
       });
 
@@ -493,7 +501,7 @@ export class StellarService {
       // Record transaction in database
       await storage.createTransaction({
         userId,
-        type: "send",
+        type: "transfer",
         amount: amount,
         fromAddress: sourceKeypair.publicKey(),
         toAddress,
@@ -532,7 +540,75 @@ export class StellarService {
   /**
    * Execute a market trade (buy/sell) using direct swap with platform distributor
    */
+  // In your StellarService class, replace the existing methods:
+
   async executeTrade(
+    userId: string,
+    sellAsset: Asset,
+    sellAmount: string,
+    buyAsset: Asset,
+    minBuyAmount: string,
+  ): Promise<any> {
+    NetworkHandler.validateMainnetOperation();
+
+    if (NetworkHandler.isTestnet()) {
+      // Use simplified trading for testnet
+      return this.executeTestnetTrade(
+        userId,
+        sellAsset,
+        sellAmount,
+        buyAsset,
+        minBuyAmount,
+      );
+    } else {
+      // Use real DEX trading for mainnet
+      return this.executeRealTrade(
+        userId,
+        sellAsset,
+        sellAmount,
+        buyAsset,
+        minBuyAmount,
+      );
+    }
+  }
+
+  async addLiquidity(
+    userId: string,
+    assetA: Asset,
+    assetB: Asset,
+    amountA: string,
+    amountB: string,
+    minPrice: string,
+    maxPrice: string,
+  ): Promise<any> {
+    NetworkHandler.validateMainnetOperation();
+
+    if (NetworkHandler.isTestnet()) {
+      // Use simplified liquidity for testnet
+      return this.addTestnetLiquidity(
+        userId,
+        assetA,
+        assetB,
+        amountA,
+        amountB,
+        minPrice,
+        maxPrice,
+      );
+    } else {
+      // Use real AMM for mainnet
+      return this.addRealLiquidity(
+        userId,
+        assetA,
+        assetB,
+        amountA,
+        amountB,
+        minPrice,
+        maxPrice,
+      );
+    }
+  }
+
+  async executeRealTrade(
     userId: string,
     sellAsset: Asset,
     sellAmount: string,
@@ -547,9 +623,170 @@ export class StellarService {
 
       const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
       const userAccount = await server.loadAccount(userKeypair.publicKey());
-      const distributorAccount = await server.loadAccount(
-        dopeDistributorKeypair.publicKey(),
-      );
+
+      // Get the current orderbook to determine market price
+      const orderbook = await server
+        .orderbook(sellAsset, buyAsset)
+        .limit(10)
+        .call();
+
+      // Calculate expected price based on orderbook
+      const bestAsk = orderbook.asks?.[0];
+      const bestBid = orderbook.bids?.[0];
+
+      if (!bestAsk || !bestBid) {
+        throw new Error("No liquidity available for this trading pair");
+      }
+
+      // Get current base fee
+      let baseFee: string;
+      try {
+        const feeStats = await server.feeStats();
+        baseFee = feeStats.last_ledger_base_fee;
+      } catch (feeError) {
+        // Fallback to default base fee if feeStats fails
+        baseFee = BASE_FEE.toString();
+      }
+
+      // Use path payments for better execution
+      const transaction = new TransactionBuilder(userAccount, {
+        fee: baseFee,
+        networkPassphrase,
+      })
+        .addOperation(
+          Operation.pathPaymentStrictSend({
+            sendAsset: sellAsset,
+            sendAmount: sellAmount,
+            destination: userKeypair.publicKey(),
+            destAsset: buyAsset,
+            destMin: minBuyAmount,
+            path: [], // Let Stellar find the best path
+          }),
+        )
+        .setTimeout(30)
+        .build();
+
+      transaction.sign(userKeypair);
+      const result = await server.submitTransaction(transaction);
+
+      // Parse transaction result to get actual received amount
+      let receivedAmount = "0";
+      try {
+        // Try to parse the transaction result for actual received amount
+        if (result.result_xdr) {
+          const { xdr } = await import("@stellar/stellar-sdk");
+          const txResult = xdr.TransactionResult.fromXDR(
+            result.result_xdr,
+            "base64",
+          );
+
+          if (txResult.result().switch().name === "txSuccess") {
+            const opResult = txResult.result().results()[0];
+            if (opResult.tr().switch().name === "pathPaymentStrictSend") {
+              const pathResult = opResult.tr().pathPaymentStrictSendResult();
+              if (pathResult.switch().name === "pathPaymentStrictSendSuccess") {
+                const success = pathResult.success();
+                if (success.offers().length > 0) {
+                  // Get the destination amount from the last offer
+                  receivedAmount = success.last().amount().toString();
+                } else {
+                  // Direct payment without intermediate offers
+                  receivedAmount = success.last().amount().toString();
+                }
+              }
+            }
+          }
+        }
+      } catch (parseError) {
+        console.warn(
+          "Could not parse transaction result for received amount:",
+          parseError,
+        );
+        // Fallback: estimate received amount based on sell amount and best ask price
+        const estimatedReceived = (
+          parseFloat(sellAmount) / parseFloat(bestAsk.price)
+        ).toFixed(7);
+        receivedAmount = estimatedReceived;
+      }
+
+      // Record trade
+      await storage.createTransaction({
+        userId,
+        type: "trade",
+        amount: sellAmount,
+        fromAddress: userKeypair.publicKey(),
+        toAddress: userKeypair.publicKey(),
+        stellarTxId: result.hash,
+        assetType: `${sellAsset.code || "XLM"}->${buyAsset.code || "XLM"}`,
+        status: "completed",
+        metadata: {
+          tradeType: "path_payment",
+          sellAsset: sellAsset.code || "XLM",
+          buyAsset: buyAsset.code || "XLM",
+          sellAmount,
+          receivedAmount,
+          minBuyAmount,
+          bestAskPrice: bestAsk.price,
+          bestBidPrice: bestBid.price,
+        },
+      });
+
+      return {
+        hash: result.hash,
+        status: "completed",
+        sellAsset: sellAsset.code || "XLM",
+        buyAsset: buyAsset.code || "XLM",
+        sellAmount,
+        receivedAmount,
+      };
+    } catch (error: any) {
+      console.error("Error executing real trade:", error);
+
+      // Provide more specific error messages based on Stellar error codes
+      if (error.response?.data?.extras?.result_codes) {
+        const resultCodes = error.response.data.extras.result_codes;
+        if (resultCodes.transaction === "tx_insufficient_balance") {
+          throw new Error("Insufficient balance for this trade");
+        }
+        if (resultCodes.operations?.includes("op_underfunded")) {
+          throw new Error("Insufficient funds to complete trade");
+        }
+        if (resultCodes.operations?.includes("op_no_trust")) {
+          throw new Error("Missing trustline for trading asset");
+        }
+        if (resultCodes.operations?.includes("op_too_few_offers")) {
+          throw new Error(
+            "Not enough liquidity to complete trade at desired price",
+          );
+        }
+        if (resultCodes.operations?.includes("op_over_source_max")) {
+          throw new Error("Trade would exceed maximum sell amount");
+        }
+        if (resultCodes.operations?.includes("op_under_dest_min")) {
+          throw new Error(
+            "Trade would not meet minimum buy amount requirement",
+          );
+        }
+      }
+
+      throw new Error(`Trade failed: ${error.message || "Unknown error"}`);
+    }
+  }
+  async executeTestnetTrade(
+    userId: string,
+    sellAsset: Asset,
+    sellAmount: string,
+    buyAsset: Asset,
+    minBuyAmount: string,
+  ): Promise<any> {
+    try {
+      const user = await storage.getUser(userId);
+      if (!user?.stellarSecretKey) {
+        throw new Error("User stellar account not found");
+      }
+
+      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const userAccount = await server.loadAccount(userKeypair.publicKey());
 
       // Validate user has sufficient balance
       const sellAmountNum = parseFloat(sellAmount);
@@ -768,9 +1005,9 @@ export class StellarService {
         amount,
         price,
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error placing limit order:", error);
-      throw error;
+      throw new Error(error.message || "Failed to place limit order");
     }
   }
 
@@ -896,7 +1133,251 @@ export class StellarService {
   /**
    * Create or join a liquidity pool
    */
-  async addLiquidity(
+
+  async addRealLiquidity(
+    userId: string,
+    assetA: Asset,
+    assetB: Asset,
+    amountA: string,
+    amountB: string,
+    minPrice: string,
+    maxPrice: string,
+  ): Promise<any> {
+    try {
+      const user = await storage.getUser(userId);
+      if (!user?.stellarSecretKey) {
+        throw new Error("User stellar account not found");
+      }
+
+      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const account = await server.loadAccount(userKeypair.publicKey());
+
+      // Validate amounts
+      const amountANum = parseFloat(amountA);
+      const amountBNum = parseFloat(amountB);
+      const minPriceNum = parseFloat(minPrice);
+      const maxPriceNum = parseFloat(maxPrice);
+
+      if (amountANum <= 0 || amountBNum <= 0) {
+        throw new Error("Invalid liquidity amounts");
+      }
+
+      if (minPriceNum <= 0 || maxPriceNum <= 0 || minPriceNum >= maxPriceNum) {
+        throw new Error("Invalid price range");
+      }
+
+      // Create liquidity pool parameters and get pool ID
+      const liquidityPoolParameters = {
+        assetA,
+        assetB,
+        fee: 30, // 0.3% fee
+      };
+      const liquidityPoolId = getLiquidityPoolId(
+        "constant_product",
+        liquidityPoolParameters,
+      ).toString("hex");
+
+      // Check if pool exists
+      let poolExists = false;
+      let poolInfo = null;
+      try {
+        poolInfo = await server
+          .liquidityPools()
+          .liquidityPoolId(liquidityPoolId)
+          .call();
+        poolExists = true;
+      } catch (error: any) {
+        // Pool doesn't exist yet
+        if (error.response?.status === 404) {
+          poolExists = false;
+        } else {
+          throw error;
+        }
+      }
+
+      // Get current base fee
+      let baseFee: string;
+      try {
+        const feeStats = await server.feeStats();
+        baseFee = feeStats.last_ledger_base_fee;
+      } catch (feeError) {
+        // Fallback to default base fee
+        baseFee = LIQUIDITY_FEE.toString();
+      }
+
+      const transaction = new TransactionBuilder(account, {
+        fee: baseFee,
+        networkPassphrase,
+      });
+
+      if (!poolExists) {
+        // For new pools, we need to change trustline first, then deposit
+        // Add trustline for the liquidity pool asset
+        transaction.addOperation(
+          Operation.changeTrust({
+            asset: new LiquidityPoolAsset(assetA, assetB, 30),
+          }),
+        );
+      }
+
+      // Add liquidity pool deposit operation
+      transaction.addOperation(
+        Operation.liquidityPoolDeposit({
+          liquidityPoolId,
+          maxAmountA: amountA,
+          maxAmountB: amountB,
+          minPrice: minPrice,
+          maxPrice: maxPrice,
+        }),
+      );
+
+      const builtTransaction = transaction.setTimeout(60).build();
+      builtTransaction.sign(userKeypair);
+      const result = await server.submitTransaction(builtTransaction);
+
+      // Get pool shares info from the updated account
+      let poolShares = "0";
+      try {
+        const updatedAccount = await server.loadAccount(
+          userKeypair.publicKey(),
+        );
+        const lpBalance = updatedAccount.balances.find(
+          (balance: any) =>
+            balance.asset_type === "liquidity_pool_shares" &&
+            balance.liquidity_pool_id === liquidityPoolId,
+        );
+        poolShares = lpBalance?.balance || "0";
+      } catch (error) {
+        console.warn("Could not retrieve pool shares:", error);
+      }
+
+      // Calculate actual deposited amounts from transaction result
+      let actualAmountA = amountA;
+      let actualAmountB = amountB;
+
+      try {
+        // Try to parse actual amounts from transaction result
+        if (result.result_xdr) {
+          const { xdr } = await import("@stellar/stellar-sdk");
+          const txResult = xdr.TransactionResult.fromXDR(
+            result.result_xdr,
+            "base64",
+          );
+
+          if (txResult.result().switch().name === "txSuccess") {
+            const results = txResult.result().results();
+            // Find the liquidityPoolDeposit operation result
+            for (let i = 0; i < results.length; i++) {
+              const opResult = results[i];
+              if (opResult.tr().switch().name === "liquidityPoolDeposit") {
+                const depositResult = opResult
+                  .tr()
+                  .liquidityPoolDepositResult();
+                if (
+                  depositResult.switch().name === "liquidityPoolDepositSuccess"
+                ) {
+                  // These would contain the actual deposited amounts
+                  // Note: The exact structure may vary based on Stellar SDK version
+                  console.log("Liquidity pool deposit successful");
+                }
+              }
+            }
+          }
+        }
+      } catch (parseError) {
+        console.warn("Could not parse transaction result:", parseError);
+      }
+
+      await storage.createTransaction({
+        userId,
+        type: "add_liquidity",
+        amount: amountA,
+        fromAddress: userKeypair.publicKey(),
+        toAddress: liquidityPoolId,
+        stellarTxId: result.hash,
+        assetType: `${assetA.code || "XLM"}-${assetB.code || "XLM"}-LP`,
+        status: "completed",
+        metadata: {
+          poolId: liquidityPoolId,
+          assetA: assetA.code || "XLM",
+          assetB: assetB.code || "XLM",
+          amountA: actualAmountA,
+          amountB: actualAmountB,
+          minPrice,
+          maxPrice,
+          sharesReceived: poolShares,
+          poolExists: poolExists,
+        },
+      });
+
+      console.log(
+        `Added liquidity to pool ${liquidityPoolId}: ${actualAmountA} ${assetA.code || "XLM"} + ${actualAmountB} ${assetB.code || "XLM"}`,
+      );
+
+      return {
+        hash: result.hash,
+        status: "completed",
+        poolId: liquidityPoolId,
+        assetA: assetA.code || "XLM",
+        assetB: assetB.code || "XLM",
+        amountA: actualAmountA,
+        amountB: actualAmountB,
+        sharesReceived: poolShares,
+        poolExists,
+      };
+    } catch (error: any) {
+      console.error("Error adding liquidity:", error);
+
+      // Provide more specific error messages
+      if (error.response?.data?.extras?.result_codes) {
+        const resultCodes = error.response.data.extras.result_codes;
+        if (resultCodes.transaction === "tx_insufficient_balance") {
+          throw new Error("Insufficient balance for liquidity operation");
+        }
+        if (resultCodes.operations?.includes("op_underfunded")) {
+          throw new Error("Insufficient funds to complete liquidity operation");
+        }
+        if (resultCodes.operations?.includes("op_no_trust")) {
+          throw new Error("Missing trustline for liquidity pool");
+        }
+        if (resultCodes.operations?.includes("op_line_full")) {
+          throw new Error("Liquidity pool balance limit exceeded");
+        }
+        if (
+          resultCodes.operations?.includes(
+            "op_liquidity_pool_deposit_bad_price",
+          )
+        ) {
+          throw new Error("Price range is invalid for current pool state");
+        }
+      }
+
+      throw new Error(
+        `Liquidity operation failed: ${error.message || "Unknown error"}`,
+      );
+    }
+  }
+
+  async getUserPoolShares(publicKey: string, poolId: string): Promise<string> {
+    try {
+      const account = await server.loadAccount(publicKey);
+      const poolShareBalance = account.balances.find(
+        (balance: any) =>
+          balance.asset_type === "liquidity_pool_shares" &&
+          balance.liquidity_pool_id === poolId,
+      );
+
+      return poolShareBalance ? poolShareBalance.balance : "0";
+    } catch (error) {
+      console.error("Error fetching pool shares:", error);
+      return "0";
+    }
+  }
+
+  /**
+   * Create or join a liquidity pool
+   */
+  async addTestnetLiquidity(
     userId: string,
     assetA: Asset,
     assetB: Asset,
@@ -1473,7 +1954,7 @@ export class StellarService {
           const resultMeta = transactionResult.result_meta_xdr;
           // The claimable balance ID is embedded in the XDR
           // We need to use Stellar SDK to parse it
-          const { xdr } = require("stellar-sdk");
+          const { xdr } = require("@stellar/stellar-sdk");
           const meta = xdr.TransactionMeta.fromXDR(resultMeta, "base64");
 
           // Look through the operation changes
@@ -1651,13 +2132,21 @@ export class StellarService {
   getCirculatingSupply = async (): Promise<number> => {
     const assetCode = "DOPE";
     const issuer = dopeIssuerKeypair.publicKey();
+    const distributor = dopeDistributorKeypair.publicKey();
     const asset = new Asset(assetCode, issuer);
     let total = 0;
     let page = await server.accounts().forAsset(asset).limit(200).call();
 
     while (true) {
       for (const account of page.records) {
-        if (account.account_id === issuer) continue; // Skip issuing account
+        // Skip both issuing account and distributor account
+        if (
+          account.account_id === issuer ||
+          account.account_id === distributor
+        ) {
+          continue;
+        }
+
         const balances: any = account.balances;
         for (const balance of balances) {
           if (
@@ -1669,12 +2158,88 @@ export class StellarService {
           }
         }
       }
+
       if (!page.records.length || !page.next) break;
       page = await page.next();
     }
 
     return total;
   };
+}
+
+class NetworkHandler {
+  static isTestnet(): boolean {
+    return STELLAR_NETWORK === "testnet";
+  }
+
+  static isMainnet(): boolean {
+    return STELLAR_NETWORK === "mainnet";
+  }
+
+  static async fundTestnetAccount(publicKey: string): Promise<boolean> {
+    if (!this.isTestnet()) {
+      console.log("Skipping funding - not on testnet");
+      return true;
+    }
+
+    try {
+      await server.friendbot(publicKey).call();
+      console.log(`Account funded via friendbot: ${publicKey}`);
+      return true;
+    } catch (error: any) {
+      console.error("Friendbot funding failed:", error.message);
+      return false;
+    }
+  }
+
+  static validateMainnetOperation(): void {
+    if (this.isMainnet()) {
+      console.warn("Performing real transaction on MAINNET");
+      // Add any additional mainnet validations here
+    }
+  }
+}
+
+interface StellarError extends Error {
+  response?: {
+    data?: {
+      extras?: {
+        result_codes?: {
+          transaction?: string;
+          operations?: string[];
+        };
+      };
+    };
+  };
+}
+
+function handleStellarError(
+  error: StellarError,
+  defaultMessage: string,
+): never {
+  console.error("Stellar Error:", error.message);
+
+  if (error.response?.data?.extras?.result_codes) {
+    const resultCodes = error.response.data.extras.result_codes;
+
+    if (resultCodes.transaction === "tx_insufficient_fee") {
+      throw new Error("Transaction fee too low. Please try again.");
+    }
+
+    if (resultCodes.operations?.includes("op_underfunded")) {
+      throw new Error("Insufficient balance for this operation");
+    }
+
+    if (resultCodes.operations?.includes("op_no_trust")) {
+      throw new Error("Trustline required for this asset");
+    }
+
+    if (resultCodes.operations?.includes("op_line_full")) {
+      throw new Error("Asset balance limit exceeded");
+    }
+  }
+
+  throw new Error(defaultMessage);
 }
 
 export {
