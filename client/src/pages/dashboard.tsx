@@ -1,13 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card.js";
-import { MiningInterface } from "@/components/mining-interface.js";
-import { WalletCard } from "@/components/wallet-card.js";
-import { ActivityFeed } from "@/components/activity-feed.js";
-import { ProfileCard } from "@/components/profile-card.js";
-import { NetworkStats } from "@/components/network-stats.js";
-import { useAuth } from "@/hooks/use-auth.js";
-import { Button } from "@/components/ui/button.js";
-import { UserPlus, History, Lock, HelpCircle, BarChart3, Droplets } from "lucide-react";
+import { Card, CardContent } from "../components/ui/card.js";
+import { MiningInterface } from "../components/mining-interface.js";
+import { WalletCard } from "../components/wallet-card.js";
+import { ActivityFeed } from "../components/activity-feed.js";
+import { ProfileCard } from "../components/profile-card.js";
+import { NetworkStats } from "../components/network-stats.js";
+import { useAuth } from "../hooks/use-auth.js";
+import { Button } from "../components/ui/button.js";
+import { UserPlus, History, HelpCircle, BarChart3 } from "lucide-react";
 import { useLocation } from "wouter";
 
 export default function Dashboard() {

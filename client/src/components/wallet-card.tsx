@@ -1,26 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.js";
-import { Button } from "@/components/ui/button.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.js";
+import { Button } from "../components/ui/button.js";
 import { Wallet, Send, QrCode, Loader2, Fuel, AlertTriangle } from "lucide-react";
 import { useLocation } from "wouter";
 import { useState } from "react";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Input } from "../components/ui/input.js";
+import { Label } from "../components/ui/label.js";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog.js";
+import { Badge } from "../components/ui/badge.js";
+import { Separator } from "../components/ui/separator.js";
+import { Alert, AlertDescription } from "../components/ui/alert.js";
 import { useMutation } from "@tanstack/react-query";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-
-interface WalletCardProps {
-  wallet: {
-    xlmBalance: string;
-    dopeBalance: string;
-    gasBalance?: string;
-  };
-}
+import { useToast } from "../hooks/use-toast.js";
+import { apiRequest, queryClient } from "../lib/queryClient.js";
 
 export const WalletCard = () => {
   const { toast } = useToast();

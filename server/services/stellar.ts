@@ -6,8 +6,6 @@ import {
   Asset,
   Horizon,
   Claimant,
-  LiquidityPoolAsset,
-  getLiquidityPoolId,
 } from "@stellar/stellar-sdk";
 import { storage } from "../storage.js";
 
@@ -280,7 +278,7 @@ export class StellarService {
       }
 
       const transaction = new TransactionBuilder(account, {
-        fee: (BASE_FEE * operations.length).toString(),
+        fee: (BASE_FEE || 100 * operations.length).toString(),
         networkPassphrase,
       });
 
@@ -1649,5 +1647,7 @@ export class StellarService {
     return total;
   };
 }
+
+export { server, BASE_FEE, networkPassphrase, dopeIssuerKeypair, dopeDistributorKeypair };
 
 export const stellarService = new StellarService();

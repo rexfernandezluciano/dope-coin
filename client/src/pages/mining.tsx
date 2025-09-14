@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.js";
-import { Button } from "@/components/ui/button.js";
-import { Progress } from "@/components/ui/progress.js";
-import { Badge } from "@/components/ui/badge.js";
-import { useToast } from "@/hooks/use-toast.js";
-import { AuthService } from "@/lib/auth.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.js";
+import { Button } from "../components/ui/button.js";
+import { Progress } from "../components/ui/progress.js";
+import { Badge } from "../components/ui/badge.js";
+import { useToast } from "../hooks/use-toast.js";
+import { AuthService } from "../lib/auth.js";
 import { Pickaxe, Play, Square, Award, TrendingUp, Clock } from "lucide-react";
 import { formatTime } from "../utils/format-utils.js";
 

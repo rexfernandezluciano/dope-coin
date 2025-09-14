@@ -1,5 +1,18 @@
+import {
+  Keypair,
+  TransactionBuilder,
+  Operation,
+  Asset,
+} from "@stellar/stellar-sdk";
 import { storage } from "../storage.js";
-import { stellarService } from "./stellar.js";
+import {
+  stellarService,
+  server,
+  dopeIssuerKeypair,
+  dopeDistributorKeypair,
+  networkPassphrase,
+  BASE_FEE,
+} from "./stellar.js";
 import { Decimal } from "decimal.js";
 
 const BASE_MINING_RATE = new Decimal(0.05); // DOPE per hour
@@ -30,9 +43,11 @@ export class MiningService {
       // Check GAS balance - require 10 GAS to start mining
       const gasBalance = await stellarService.getGASBalance(userId);
       const requiredGas = 10;
-      
+
       if (gasBalance < requiredGas) {
-        throw new Error(`Insufficient GAS. You need ${requiredGas} GAS to start mining. Current balance: ${gasBalance} GAS`);
+        throw new Error(
+          `Insufficient GAS. You need ${requiredGas} GAS to start mining. Current balance: ${gasBalance} GAS`,
+        );
       }
 
       // Deduct GAS fee for mining
@@ -91,7 +106,9 @@ export class MiningService {
       transaction.sign(userKeypair);
       await server.submitTransaction(transaction);
 
-      console.log(`Deducted ${gasAmount} GAS from user ${userId} for mining fee`);
+      console.log(
+        `Deducted ${gasAmount} GAS from user ${userId} for mining fee`,
+      );
     } catch (error) {
       console.error("Error deducting GAS fee:", error);
       throw new Error("Failed to deduct GAS fee");
@@ -251,7 +268,7 @@ export class MiningService {
         for (const balance of claimableBalances) {
           await stellarService.claimBalance(userId, balance.id);
           await storage.updateWallet(userId, {
-            dopeBalance: balance.amount
+            dopeBalance: balance.amount,
           });
         }
       }

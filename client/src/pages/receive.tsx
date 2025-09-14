@@ -1,14 +1,14 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.js";
-import { Button } from "@/components/ui/button.js";
-import { Input } from "@/components/ui/input.js";
-import { Label } from "@/components/ui/label.js";
-import { useToast } from "@/hooks/use-toast.js";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.js";
+import { Button } from "../components/ui/button.js";
+import { Input } from "../components/ui/input.js";
+import { Label } from "../components/ui/label.js";
+import { useToast } from "../hooks/use-toast.js";
 import { ArrowDownLeft, ArrowLeft, Copy, QrCode, Share } from "lucide-react";
 import { useLocation } from "wouter";
-import { useAuth } from "@/hooks/use-auth.js";
+import { useAuth } from "../hooks/use-auth.js";
 
 export default function ReceivePage() {
   const { toast } = useToast();

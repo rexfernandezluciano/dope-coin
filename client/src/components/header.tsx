@@ -1,7 +1,7 @@
 import { Bell, Coins } from "lucide-react";
 import { Link } from "wouter";
-import { useAuth } from "@/hooks/use-auth.js";
-import { Button } from "@/components/ui/button.js";
+import { useAuth } from "../hooks/use-auth.js";
+import { Button } from "../components/ui/button.js";
 
 export function Header() {
   const { user, logout } = useAuth();

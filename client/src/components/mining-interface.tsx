@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button.js";
-import { Card, CardContent } from "@/components/ui/card.js";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog.js";
-import { AuthService } from "@/lib/auth.js";
-import { useToast } from "@/hooks/use-toast.js";
+import { Button } from "../components/ui/button.js";
+import { Card, CardContent } from "../components/ui/card.js";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "../components/ui/alert-dialog.js";
+import { AuthService } from "../lib/auth.js";
+import { useToast } from "../hooks/use-toast.js";
 import { Pickaxe, Play, Pause } from "lucide-react";
 import { formatTime } from "../utils/format-utils.js";
 

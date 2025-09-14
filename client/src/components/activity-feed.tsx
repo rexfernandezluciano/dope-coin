@@ -4,8 +4,8 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card.js";
-import { Button } from "@/components/ui/button.js";
+} from "../components/ui/card.js";
+import { Button } from "../components/ui/button.js";
 import { useLocation } from "wouter";
 import { formatTimeAgo } from "../utils/format-utils.js";
 import { getActivityIcon, getActivityLabel } from "../utils/activity-utils.js";

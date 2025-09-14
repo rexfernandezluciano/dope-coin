@@ -4,7 +4,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card.js";
+} from "../components/ui/card.js";
 import { Network } from "lucide-react";
 import { formatNumber, formatTimeAgo } from "../utils/format-utils.js";
 
