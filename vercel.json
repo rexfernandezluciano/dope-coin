@@ -4,12 +4,12 @@
   "buildCommand": "npm run build",
   "outputDirectory": "client/dist",
   "functions": {
-    "dist/server/index.js": {
+    "api/server/index.js": {
       "maxDuration": 30
     }
   },
   "routes": [
-    { "src": "/api/(.*)", "dest": "/dist/server/index.js" },
+    { "src": "/api/(.*)", "dest": "/api/server/index.js" },
     { "src": "/(.*)", "dest": "/client/dist/$1" }
   ],
   "env": {
