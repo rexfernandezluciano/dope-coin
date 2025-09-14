@@ -2,7 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "npm install",
   "buildCommand": "npm run build",
-  "outputDirectory": "server/public",
   "rewrites": [{ "source": "/(.*)", "destination": "/server/index.ts" }],
   "env": {
     "NODE_ENV": "production"
