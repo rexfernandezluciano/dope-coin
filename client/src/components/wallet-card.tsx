@@ -213,14 +213,6 @@ export const WalletCard = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
-          <Button variant="outline" size="sm" className="w-full">
-            <Send className="w-4 h-4 mr-2" />
-            Send
-          </Button>
-          <Button variant="outline" size="sm" className="w-full">
-            <QrCode className="w-4 h-4 mr-2" />
-            Receive
-          </Button>
           <Dialog>
             <DialogTrigger asChild>
               <Button

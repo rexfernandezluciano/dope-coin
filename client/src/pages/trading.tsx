@@ -53,6 +53,11 @@ export default function TradingPage() {
   const { toast } = useToast();
   const [selectedPair, setSelectedPair] = useState<string>("DOPE/XLM");
 
+  // Fetch trading pairs
+  const { data: tradingPairs, isLoading: tradingPairsLoading } = useQuery({
+    queryKey: ["/api/protected/trade/pairs"],
+  }) as { data: TradingPair[]; isLoading: boolean };
+
   // Get DOPE issuer from trading pairs
   const dopeIssuer = tradingPairs?.find(pair => pair.baseAsset.issuer)?.baseAsset.issuer || "";
 
@@ -80,11 +85,6 @@ export default function TradingPage() {
       maxPrice: "",
     },
   });
-
-  // Fetch trading pairs
-  const { data: tradingPairs, isLoading: tradingPairsLoading } = useQuery({
-    queryKey: ["/api/protected/trade/pairs"],
-  }) as { data: TradingPair[]; isLoading: boolean };
 
   // Fetch user's liquidity pools
   const { data: liquidityPools, refetch: refetchPools, isLoading: poolsLoading } = useQuery({
