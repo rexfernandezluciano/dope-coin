@@ -7,5 +7,5 @@
   "env": {
     "NODE_ENV": "production"
   },
-  "framework": "Express.js"
+  "framework": "express"
 }
