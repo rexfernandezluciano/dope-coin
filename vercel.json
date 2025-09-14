@@ -10,7 +10,7 @@
       }
     }
   ],
-  "installCommand": "npm install",
+  "installCommand": "npm --production=false install",
   "buildCommand": "npm run build",
   "routes": [
     {
