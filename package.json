@@ -111,12 +111,6 @@
   "optionalDependencies": {
     "bufferutil": "^4.0.8"
   },
-  "overrides": {
-    "vite": {
-      "rollup": "npm:@rollup/wasm-node"
-    },
-    "rollup": "npm:@rollup/wasm-node"
-  },
   "engines": {
     "node": "22.x"
   }
