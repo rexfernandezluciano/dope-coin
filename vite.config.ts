@@ -30,15 +30,19 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor: ['react', 'react-dom'],
-          ui: ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-toast'],
-          stellar: ['@stellar/stellar-sdk'],
-          query: ['@tanstack/react-query'],
+          vendor: ["react", "react-dom"],
+          ui: [
+            "@radix-ui/react-dialog",
+            "@radix-ui/react-dropdown-menu",
+            "@radix-ui/react-toast",
+          ],
+          stellar: ["@stellar/stellar-sdk"],
+          query: ["@tanstack/react-query"],
         },
       },
     },
     chunkSizeWarningLimit: 1000,
-    minify: 'terser',
+    minify: "terser",
     terserOptions: {
       compress: {
         drop_console: true,
@@ -52,7 +56,8 @@ export default defineConfig({
       deny: ["**/.*"],
     },
     headers: {
-      'Cache-Control': 'no-cache',
+      "Cache-Control": "no-cache",
+      "Allow-Origin": "*",
     },
   },
 });

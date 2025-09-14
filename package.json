@@ -8,8 +8,8 @@
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build:server": "tsc --build server/tsconfig.json",
     "build:client": "vite build client",
-    "build": "npm run build:server && npm run build:client",
-    "start": "NODE_ENV=production tsx server/index.ts",
+    "build": "npm run build:client && npm run build:server",
+    "start": "NODE_ENV=production node dist/server/index.js",
     "check": "tsc",
     "db:push": "drizzle-kit push",
     "postInstall": "rm -rf node_modules package-lock.json"

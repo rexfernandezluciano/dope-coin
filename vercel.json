@@ -4,13 +4,13 @@
   "buildCommand": "npm run build",
   "outputDirectory": "client/dist",
   "functions": {
-    "api/**.ts": {
+    "dist/server/index.js": {
       "maxDuration": 30
     }
   },
   "routes": [
-    { "src": "/(.*)", "dest": "/client/dist/$1" },
-    { "src": "/api/(.*)", "dest": "/api/index.ts" }
+    { "src": "/api/(.*)", "dest": "/dist/server/index.js" },
+    { "src": "/(.*)", "dest": "/client/dist/$1" }
   ],
   "env": {
     "NODE_ENV": "production"
