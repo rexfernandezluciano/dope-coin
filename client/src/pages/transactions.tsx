@@ -9,7 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { getActivityIcon, getActivityLabel, getStatusColor } from "../utils/activity-utils.js";
+import { getActivityIcon, getActivityLabel, getStatusColor } from "../utils/activity-utils.js"
 
 export default function Transactions() {
   const [page, setPage] = useState(1);

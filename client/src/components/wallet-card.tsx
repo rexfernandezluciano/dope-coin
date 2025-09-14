@@ -33,7 +33,7 @@ export function WalletCard() {
 
   const dopeBalance = parseFloat(wallet?.dopeBalance || "0");
   const xlmBalance = parseFloat(wallet?.xlmBalance || "0");
-  const usdValue = (dopeBalance * 0.1 + xlmBalance * 0.006).toFixed(2);
+  const usdValue = "N/A"; //(dopeBalance * 0.1 + xlmBalance * 0.006).toFixed(2);
 
   return (
     <Card data-testid="wallet-card">
@@ -65,14 +65,14 @@ export function WalletCard() {
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">USD Value</span>
               <span className="font-medium" data-testid="usd-value">
-                ${usdValue}
+                {usdValue}
               </span>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3 pt-4">
             <Button
-              className="bg-secondary hover:bg-secondary/90 text-secondary-foreground"
+              className="bg-primary hover:bg-secondary/90 text-secondary-foreground"
               size="sm"
               data-testid="button-send"
               onClick={() => navigate("/send")}
@@ -82,6 +82,7 @@ export function WalletCard() {
             </Button>
             <Button
               variant="outline"
+              className="hover:bg-primary/10 hover:text-primary"
               size="sm"
               data-testid="button-receive"
               onClick={() => navigate("/receive")}
