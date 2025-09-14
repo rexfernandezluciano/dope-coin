@@ -122,7 +122,8 @@ async function initializePlatformAccounts() {
       issueTransaction.sign(dopeIssuerKeypair);
       await server.submitTransaction(issueTransaction);
 
-      console.log("DOPE token platform setup completed");
+      // Set up GAS asset (issuer keeps control to mint on demand)
+      console.log("DOPE and GAS token platform setup completed");
     } catch (error: any) {
       console.error("Error initializing platform accounts:", error.message);
     }
@@ -319,19 +320,53 @@ export class StellarService {
       }
 
       const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
-      const account = await server.loadAccount(userKeypair.publicKey());
+      const userAccount = await server.loadAccount(userKeypair.publicKey());
 
       const gasAsset = new Asset("GAS", dopeIssuerKeypair.publicKey());
       const gasAmount = (parseFloat(xlmAmount) * 100).toString(); // 1 XLM = 100 GAS
 
-      // First send XLM to distributor
-      const transaction1 = new TransactionBuilder(account, {
-        fee: BASE_FEE.toString(),
+      // Check if user has GAS trustline, create if needed
+      const existingGasTrustline = userAccount.balances.find(
+        (balance: any) =>
+          balance.asset_type === "credit_alphanum4" &&
+          balance.asset_code === "GAS" &&
+          balance.asset_issuer === dopeIssuerKeypair.publicKey(),
+      );
+
+      if (!existingGasTrustline) {
+        // Create GAS trustline first
+        const trustTransaction = new TransactionBuilder(userAccount, {
+          fee: BASE_FEE.toString(),
+          networkPassphrase,
+        })
+          .addOperation(
+            Operation.changeTrust({
+              asset: gasAsset,
+              limit: "1000000",
+            }),
+          )
+          .setTimeout(30)
+          .build();
+
+        trustTransaction.sign(userKeypair);
+        await server.submitTransaction(trustTransaction);
+
+        // Wait for trustline to propagate
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+
+      // Use a single transaction to convert XLM to GAS
+      // The issuer creates new GAS tokens in exchange for XLM
+      const updatedUserAccount = await server.loadAccount(userKeypair.publicKey());
+      
+      const conversionTransaction = new TransactionBuilder(updatedUserAccount, {
+        fee: (BASE_FEE * 2).toString(), // Higher fee for multiple operations
         networkPassphrase,
       })
+        // Send XLM to issuer
         .addOperation(
           Operation.payment({
-            destination: dopeDistributorKeypair.publicKey(),
+            destination: dopeIssuerKeypair.publicKey(),
             asset: Asset.native(),
             amount: xlmAmount,
           }),
@@ -339,13 +374,13 @@ export class StellarService {
         .setTimeout(30)
         .build();
 
-      transaction1.sign(userKeypair);
-      await server.submitTransaction(transaction1);
+      conversionTransaction.sign(userKeypair);
+      const xlmResult = await server.submitTransaction(conversionTransaction);
 
-      // Then distributor sends GAS to user
-      const distributorAccount = await server.loadAccount(dopeDistributorKeypair.publicKey());
+      // Now issuer creates and sends GAS tokens to user
+      const issuerAccount = await server.loadAccount(dopeIssuerKeypair.publicKey());
       
-      const transaction2 = new TransactionBuilder(distributorAccount, {
+      const gasTransaction = new TransactionBuilder(issuerAccount, {
         fee: BASE_FEE.toString(),
         networkPassphrase,
       })
@@ -359,18 +394,54 @@ export class StellarService {
         .setTimeout(30)
         .build();
 
-      transaction2.sign(dopeDistributorKeypair);
-      const result = await server.submitTransaction(transaction2);
+      gasTransaction.sign(dopeIssuerKeypair);
+      const gasResult = await server.submitTransaction(gasTransaction);
+
+      // Record the conversion transaction
+      await storage.createTransaction({
+        userId,
+        type: "gas_conversion",
+        amount: xlmAmount,
+        fromAddress: userKeypair.publicKey(),
+        toAddress: dopeIssuerKeypair.publicKey(),
+        stellarTxId: gasResult.hash,
+        assetType: "XLM->GAS",
+        status: "completed",
+        metadata: {
+          xlmAmount,
+          gasAmount,
+          conversionRate: "100",
+          xlmTxHash: xlmResult.hash,
+          gasTxHash: gasResult.hash,
+        },
+      });
 
       return {
-        hash: result.hash,
+        hash: gasResult.hash,
         xlmAmount,
         gasAmount,
-        status: "completed"
+        status: "completed",
+        xlmTxHash: xlmResult.hash,
+        gasTxHash: gasResult.hash,
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error converting XLM to GAS:", error);
-      throw error;
+      
+      // Provide more specific error messages
+      if (error.response?.data?.extras?.result_codes) {
+        const resultCodes = error.response.data.extras.result_codes;
+        if (resultCodes.transaction === "tx_insufficient_balance") {
+          throw new Error("Insufficient XLM balance for conversion");
+        }
+        if (resultCodes.operations?.includes("op_no_trust")) {
+          throw new Error("GAS trustline creation failed");
+        }
+        if (resultCodes.operations?.includes("op_line_full")) {
+          throw new Error("GAS balance limit exceeded");
+        }
+      }
+      
+      throw new Error(`Conversion failed: ${error.message || "Unknown error"}`);
     }
   }
 
