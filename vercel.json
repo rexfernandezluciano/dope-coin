@@ -3,16 +3,11 @@
   "installCommand": "npm install",
   "buildCommand": "npm run build",
   "outputDirectory": "server/public",
-  "functions": {
-    "api/index.ts": {
-      "maxDuration": 30
-    }
-  },
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/server/index.ts" },
-    { "src": "/(.*)", "dest": "/server/public/$1" }
-  ],
+  "rewrites": [{ "source": "/(.*)", "destination": "/server/index.ts" }],
   "env": {
     "NODE_ENV": "production"
+  },
+  "framework": {
+    "name": "Express.js"
   }
 }
