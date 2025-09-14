@@ -116,5 +116,8 @@
       "rollup": "npm:@rollup/wasm-node"
     },
     "rollup": "npm:@rollup/wasm-node"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }

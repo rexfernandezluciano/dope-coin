@@ -5,7 +5,6 @@
   "outputDirectory": "client/dist",
   "functions": {
     "api/**.ts": {
-      "runtime": "@vercel/node@22.x",
       "maxDuration": 30
     }
   },
