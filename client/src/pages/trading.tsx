@@ -66,8 +66,8 @@ export default function TradingPage() {
     resolver: zodResolver(tradeFormSchema),
     defaultValues: {
       tradingPair: selectedPair,
-      sellAsset: { type: "native" },
-      buyAsset: { code: "DOPE", issuer: dopeIssuer },
+      sellAsset: selectedPair === "XLM/DOPE" ? { type: "native" } : { code: "DOPE", issuer: dopeIssuer },
+      buyAsset: selectedPair === "XLM/DOPE" ? { code: "DOPE", issuer: dopeIssuer } : { type: "native" },
       sellAmount: "",
       minBuyAmount: "",
     },
@@ -197,21 +197,33 @@ export default function TradingPage() {
     },
   });
 
-  // Update forms when DOPE issuer is available
+  // Update forms when DOPE issuer is available or trading pair changes
   React.useEffect(() => {
     if (dopeIssuer) {
-      tradeForm.setValue("buyAsset", { code: "DOPE", issuer: dopeIssuer });
+      if (selectedPair === "XLM/DOPE") {
+        tradeForm.setValue("sellAsset", { type: "native" });
+        tradeForm.setValue("buyAsset", { code: "DOPE", issuer: dopeIssuer });
+      } else if (selectedPair === "DOPE/XLM") {
+        tradeForm.setValue("sellAsset", { code: "DOPE", issuer: dopeIssuer });
+        tradeForm.setValue("buyAsset", { type: "native" });
+      }
       liquidityForm.setValue("assetB", { code: "DOPE", issuer: dopeIssuer });
     }
-  }, [dopeIssuer, tradeForm, liquidityForm]);
+  }, [dopeIssuer, selectedPair, tradeForm, liquidityForm]);
 
   // Calculate expected receive amount based on sell amount
   const calculateReceiveAmount = async (sellAmount: string, tradingPair: string) => {
     if (!sellAmount || !tradingPair) return;
     
     try {
-      // Simple calculation for DOPE/XLM pair (1 XLM = 10 DOPE for demo)
-      const rate = tradingPair === "DOPE/XLM" ? 10 : 0.1;
+      // Simple calculation: 1 XLM = 10 DOPE, 1 DOPE = 0.1 XLM
+      let rate = 1;
+      if (tradingPair === "XLM/DOPE") {
+        rate = 10; // 1 XLM = 10 DOPE
+      } else if (tradingPair === "DOPE/XLM") {
+        rate = 0.1; // 1 DOPE = 0.1 XLM
+      }
+      
       const estimatedAmount = parseFloat(sellAmount) * rate;
       
       // Update the min receive amount field with 5% slippage
@@ -227,7 +239,7 @@ export default function TradingPage() {
     
     try {
       // Simple ratio calculation for demo (1 XLM = 10 DOPE)
-      const rate = selectedPair === "DOPE/XLM" ? 10 : 0.1;
+      const rate = 10; // Always XLM to DOPE ratio for liquidity
       const amountB = (parseFloat(amountA) * rate).toFixed(6);
       
       liquidityForm.setValue("amountB", amountB);
@@ -380,10 +392,23 @@ export default function TradingPage() {
                 {tradingPairs?.map((pair) => (
                   <div
                     key={pair.symbol}
-                    className="p-3 border rounded-lg cursor-pointer hover:bg-muted transition-colors"
+                    className={`p-3 border rounded-lg cursor-pointer hover:bg-muted transition-colors ${
+                      selectedPair === pair.symbol ? "bg-muted border-primary" : ""
+                    }`}
                     onClick={() => {
                       setSelectedPair(pair.symbol);
                       tradeForm.setValue("tradingPair", pair.symbol);
+                      
+                      // Update assets based on selected pair
+                      if (dopeIssuer) {
+                        if (pair.symbol === "XLM/DOPE") {
+                          tradeForm.setValue("sellAsset", { type: "native" });
+                          tradeForm.setValue("buyAsset", { code: "DOPE", issuer: dopeIssuer });
+                        } else if (pair.symbol === "DOPE/XLM") {
+                          tradeForm.setValue("sellAsset", { code: "DOPE", issuer: dopeIssuer });
+                          tradeForm.setValue("buyAsset", { type: "native" });
+                        }
+                      }
                     }}
                     data-testid={`pair-${pair.symbol}`}
                   >
@@ -416,16 +441,12 @@ export default function TradingPage() {
                 <form onSubmit={liquidityForm.handleSubmit(onLiquiditySubmit)} className="space-y-4">
                   <div className="mb-4">
                     <Label>Liquidity Pool Pair</Label>
-                    <Select defaultValue="DOPE/XLM">
+                    <Select defaultValue="XLM/DOPE">
                       <SelectTrigger>
                         <SelectValue placeholder="Select liquidity pair" />
                       </SelectTrigger>
                       <SelectContent>
-                        {tradingPairs?.map((pair) => (
-                          <SelectItem key={pair.symbol} value={pair.symbol}>
-                            {pair.symbol}
-                          </SelectItem>
-                        ))}
+                        <SelectItem value="XLM/DOPE">XLM/DOPE</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

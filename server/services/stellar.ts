@@ -360,7 +360,7 @@ export class StellarService {
       const updatedUserAccount = await server.loadAccount(userKeypair.publicKey());
       
       const conversionTransaction = new TransactionBuilder(updatedUserAccount, {
-        fee: (BASE_FEE * 2).toString(), // Higher fee for multiple operations
+        fee: BASE_FEE.toString(),
         networkPassphrase,
       })
         // Send XLM to issuer
@@ -371,7 +371,7 @@ export class StellarService {
             amount: xlmAmount,
           }),
         )
-        .setTimeout(30)
+        .setTimeout(60)
         .build();
 
       conversionTransaction.sign(userKeypair);
@@ -1094,8 +1094,11 @@ export class StellarService {
         quoteAsset: Asset.native(),
         symbol: "DOPE/XLM",
       },
-      // For now, only return DOPE/XLM pair since we don't have proper issuers for other assets
-      // Additional pairs can be added when proper issuer addresses are available
+      {
+        baseAsset: Asset.native(),
+        quoteAsset: dopeAsset,
+        symbol: "XLM/DOPE",
+      },
     ];
   }
 
