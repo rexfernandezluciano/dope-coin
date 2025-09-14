@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button.js";
 import { Card, CardContent } from "@/components/ui/card.js";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog.js";
 import { AuthService } from "@/lib/auth.js";
 import { useToast } from "@/hooks/use-toast.js";
 import { Pickaxe, Play, Pause } from "lucide-react";
@@ -11,6 +12,8 @@ export function MiningInterface() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [timeToNextReward, setTimeToNextReward] = useState(0);
+  const [showStartDialog, setShowStartDialog] = useState(false);
+  const [showStopDialog, setShowStopDialog] = useState(false);
 
   const { data: miningStatus, isLoading } = useQuery({
     queryKey: ["/api/protected/mining/status"],
@@ -145,26 +148,72 @@ export function MiningInterface() {
           
           <div className="flex gap-3 justify-center">
             {!miningStatus?.isActive ? (
-              <Button
-                onClick={() => startMining.mutate()}
-                disabled={startMining.isPending}
-                className="gradient-bg hover:opacity-90 text-white"
-                data-testid="button-start-mining"
-              >
-                <Play className="w-4 h-4 mr-2" />
-                {startMining.isPending ? "Starting..." : "Start Mining"}
-              </Button>
+              <AlertDialog open={showStartDialog} onOpenChange={setShowStartDialog}>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    disabled={startMining.isPending}
+                    className="gradient-bg hover:opacity-90 text-white"
+                    data-testid="button-start-mining"
+                  >
+                    <Play className="w-4 h-4 mr-2" />
+                    {startMining.isPending ? "Starting..." : "Start Mining"}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Start Mining Session</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to start mining DOPE Coins? This will begin a new mining session and you'll start earning rewards.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => {
+                        startMining.mutate();
+                        setShowStartDialog(false);
+                      }}
+                      disabled={startMining.isPending}
+                    >
+                      Start Mining
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             ) : (
               <>
-                <Button
-                  onClick={() => stopMining.mutate()}
-                  disabled={stopMining.isPending}
-                  variant="outline"
-                  data-testid="button-stop-mining"
-                >
-                  <Pause className="w-4 h-4 mr-2" />
-                  {stopMining.isPending ? "Stopping..." : "Stop Mining"}
-                </Button>
+                <AlertDialog open={showStopDialog} onOpenChange={setShowStopDialog}>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      disabled={stopMining.isPending}
+                      variant="outline"
+                      data-testid="button-stop-mining"
+                    >
+                      <Pause className="w-4 h-4 mr-2" />
+                      {stopMining.isPending ? "Stopping..." : "Stop Mining"}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Stop Mining Session</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Are you sure you want to stop mining? Your current rewards will be added to your wallet, but your mining session will end.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => {
+                          stopMining.mutate();
+                          setShowStopDialog(false);
+                        }}
+                        disabled={stopMining.isPending}
+                      >
+                        Stop Mining
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
                 <Button
                   onClick={() => claimReward.mutate()}
                   disabled={claimReward.isPending || timeToNextReward > 0}

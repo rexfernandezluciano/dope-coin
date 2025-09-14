@@ -6,10 +6,12 @@ import {
   CardTitle,
 } from "@/components/ui/card.js";
 import { Button } from "@/components/ui/button.js";
+import { useLocation } from "wouter";
 import { formatTimeAgo } from "../utils/format-utils.js";
 import { getActivityIcon, getActivityLabel } from "../utils/activity-utils.js";
 
 export function ActivityFeed() {
+  const [, navigate] = useLocation();
   const { data: transactions, isLoading } = useQuery({
     queryKey: ["/api/protected/transactions?limit=5"],
   }) as any;
@@ -100,6 +102,7 @@ export function ActivityFeed() {
         {transactions && transactions.length > 0 && (
           <Button
             variant="ghost"
+            onClick={() => navigate("/transactions")}
             className="w-full mt-4 text-primary hover:bg-primary hover:text-white"
             data-testid="button-view-all"
           >
