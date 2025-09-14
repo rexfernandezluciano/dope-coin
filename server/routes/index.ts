@@ -557,6 +557,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/protected/trade/calculate", rateLimiter, async (req, res) => {
+    try {
+      const { sellAmount, tradingPair } = req.body;
+      
+      if (!sellAmount || !tradingPair) {
+        return res.status(400).json({ message: "Missing required parameters" });
+      }
+
+      // Simple calculation for demo purposes
+      // In production, this would query real market data
+      const rate = tradingPair === "DOPE/XLM" ? 10 : 0.1; // 1 XLM = 10 DOPE
+      const estimatedAmount = (parseFloat(sellAmount) * rate).toFixed(6);
+
+      res.json({
+        sellAmount,
+        tradingPair,
+        estimatedAmount,
+        rate: rate.toString()
+      });
+    } catch (error: any) {
+      console.error("Trade calculation error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/protected/trade/orderbook", rateLimiter, async (req, res) => {
     try {
       const validatedQuery = orderbookQuerySchema.parse(req.query);

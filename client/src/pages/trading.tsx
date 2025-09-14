@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -53,13 +53,16 @@ export default function TradingPage() {
   const { toast } = useToast();
   const [selectedPair, setSelectedPair] = useState<string>("DOPE/XLM");
 
+  // Get DOPE issuer from trading pairs
+  const dopeIssuer = tradingPairs?.find(pair => pair.baseAsset.issuer)?.baseAsset.issuer || "";
+
   // Trade form
   const tradeForm = useForm<z.infer<typeof tradeFormSchema>>({
     resolver: zodResolver(tradeFormSchema),
     defaultValues: {
       tradingPair: selectedPair,
       sellAsset: { type: "native" },
-      buyAsset: { code: "DOPE", issuer: "DOPE_ISSUER" },
+      buyAsset: { code: "DOPE", issuer: dopeIssuer },
       sellAmount: "",
       minBuyAmount: "",
     },
@@ -70,7 +73,7 @@ export default function TradingPage() {
     resolver: zodResolver(liquidityFormSchema),
     defaultValues: {
       assetA: { type: "native" },
-      assetB: { code: "DOPE", issuer: "DOPE_ISSUER" },
+      assetB: { code: "DOPE", issuer: dopeIssuer },
       amountA: "",
       amountB: "",
       minPrice: "",
@@ -165,21 +168,44 @@ export default function TradingPage() {
     },
   });
 
+  // Update forms when DOPE issuer is available
+  React.useEffect(() => {
+    if (dopeIssuer) {
+      tradeForm.setValue("buyAsset", { code: "DOPE", issuer: dopeIssuer });
+      liquidityForm.setValue("assetB", { code: "DOPE", issuer: dopeIssuer });
+    }
+  }, [dopeIssuer, tradeForm, liquidityForm]);
+
   // Calculate expected receive amount based on sell amount
   const calculateReceiveAmount = async (sellAmount: string, tradingPair: string) => {
     if (!sellAmount || !tradingPair) return;
     
     try {
-      const response = await apiRequest("POST", "/api/protected/trade/calculate", {
-        sellAmount,
-        tradingPair
-      });
-      const result = await response.json();
+      // Simple calculation for DOPE/XLM pair (1 XLM = 10 DOPE for demo)
+      const rate = tradingPair === "DOPE/XLM" ? 10 : 0.1;
+      const estimatedAmount = parseFloat(sellAmount) * rate;
       
-      // Update the min receive amount field
-      tradeForm.setValue("minBuyAmount", (parseFloat(result.estimatedAmount) * 0.95).toFixed(6)); // 5% slippage
+      // Update the min receive amount field with 5% slippage
+      tradeForm.setValue("minBuyAmount", (estimatedAmount * 0.95).toFixed(6));
     } catch (error) {
       console.error("Error calculating receive amount:", error);
+    }
+  };
+
+  // Calculate liquidity amounts automatically
+  const calculateLiquidityAmount = (amountA: string, selectedPair: string) => {
+    if (!amountA || !selectedPair) return;
+    
+    try {
+      // Simple ratio calculation for demo (1 XLM = 10 DOPE)
+      const rate = selectedPair === "DOPE/XLM" ? 10 : 0.1;
+      const amountB = (parseFloat(amountA) * rate).toFixed(6);
+      
+      liquidityForm.setValue("amountB", amountB);
+      liquidityForm.setValue("minPrice", (rate * 0.95).toFixed(6)); // 5% slippage
+      liquidityForm.setValue("maxPrice", (rate * 1.05).toFixed(6)); // 5% slippage
+    } catch (error) {
+      console.error("Error calculating liquidity amount:", error);
     }
   };
 
@@ -268,7 +294,7 @@ export default function TradingPage() {
                               step="0.01"
                               onChange={(e) => {
                                 field.onChange(e);
-                                calculateReceiveAmount(e.target.value, selectedPair);
+                                calculateReceiveAmount(e.target.value, tradeForm.getValues("tradingPair"));
                               }}
                             />
                           </FormControl>
@@ -383,6 +409,10 @@ export default function TradingPage() {
                               type="number"
                               placeholder="0.00"
                               step="0.01"
+                              onChange={(e) => {
+                                field.onChange(e);
+                                calculateLiquidityAmount(e.target.value, "DOPE/XLM");
+                              }}
                             />
                           </FormControl>
                           <FormMessage />
