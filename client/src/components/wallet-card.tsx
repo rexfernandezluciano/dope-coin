@@ -26,6 +26,11 @@ export default function WalletCard({ wallet }: WalletCardProps) {
   const { toast } = useToast();
   const [convertAmount, setConvertAmount] = useState("");
 
+  const { isLoading } = useQuery({
+    queryKey: ["/api/protected/wallet"],
+    refetchInterval: 30000,
+  }) as any;
+
   const gasBalance = parseFloat(wallet.gasBalance || "0");
   const hasLowGas = gasBalance < 10; // Warning if less than 10 GAS
   const hasNoGas = gasBalance === 0; // Critical if no GAS
@@ -300,3 +305,5 @@ export default function WalletCard({ wallet }: WalletCardProps) {
     </Card>
   );
 }
+
+export const WalletCard = WalletCard;
