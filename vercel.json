@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "builds": [
     {
-      "src": "server/index.ts",
+      "src": "api/index.ts",
       "use": "@vercel/node",
       "config": {
         "maxDuration": 30,
@@ -12,14 +12,19 @@
   ],
   "installCommand": "npm --production=false install",
   "buildCommand": "npm run build",
+  "functions": {
+    "api/**/*.js": {
+      "excludeFiles": "node_modules/rollup/**"
+    }
+  },
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "server/index.ts"
+      "dest": "api/index.ts"
     },
     {
       "src": "/(.*)",
-      "dest": "server/index.ts"
+      "dest": "api/index.ts"
     }
   ]
 }
