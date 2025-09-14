@@ -863,22 +863,8 @@ export class StellarService {
         quoteAsset: Asset.native(),
         symbol: "DOPE/XLM",
       },
-      {
-        baseAsset: dopeAsset,
-        quoteAsset: new Asset("USDT"),
-        symbol: "DOPE/USDT",
-      },
-      {
-        baseAsset: dopeAsset,
-        quoteAsset: new Asset("USDC"),
-        symbol: "DOPE/USDC",
-      },
-      {
-        baseAsset: dopeAsset,
-        quoteAsset: new Asset("PHP"),
-        symbol: "DOPE/PHP",
-      },
-      // Add more pairs as needed
+      // For now, only return DOPE/XLM pair since we don't have proper issuers for other assets
+      // Additional pairs can be added when proper issuer addresses are available
     ];
   }
 
