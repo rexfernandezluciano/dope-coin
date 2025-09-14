@@ -7,7 +7,7 @@ import { ProfileCard } from "@/components/profile-card.js";
 import { NetworkStats } from "@/components/network-stats.js";
 import { useAuth } from "@/hooks/use-auth.js";
 import { Button } from "@/components/ui/button.js";
-import { UserPlus, History, Lock, HelpCircle } from "lucide-react";
+import { UserPlus, History, Lock, HelpCircle, BarChart3, Droplets } from "lucide-react";
 import { useLocation } from "wouter";
 
 export default function Dashboard() {
@@ -100,12 +100,12 @@ export default function Dashboard() {
               <div className="grid grid-cols-2 gap-3">
                 <Button 
                   variant="outline"
-                  onClick={() => navigate("/referrals")}
+                  onClick={() => navigate("/trading")}
                   className="p-4 h-auto flex flex-col items-center hover:bg-muted transition-colors group"
-                  data-testid="action-invite"
+                  data-testid="action-trading"
                 >
-                  <UserPlus className="w-6 h-6 text-secondary mb-2 group-hover:scale-110 transition-transform" />
-                  <span className="text-sm font-medium">Invite</span>
+                  <BarChart3 className="w-6 h-6 text-primary mb-2 group-hover:scale-110 transition-transform" />
+                  <span className="text-sm font-medium">Trading</span>
                 </Button>
                 
                 <Button
@@ -118,24 +118,24 @@ export default function Dashboard() {
                   <span className="text-sm font-medium">History</span>
                 </Button>
                 
-                <Button
+                <Button 
                   variant="outline"
-                  onClick={() => navigate("/profile")}
+                  onClick={() => navigate("/referrals")}
                   className="p-4 h-auto flex flex-col items-center hover:bg-muted transition-colors group"
-                  data-testid="action-security"
+                  data-testid="action-invite"
                 >
-                  <Lock className="w-6 h-6 text-primary mb-2 group-hover:scale-110 transition-transform" />
-                  <span className="text-sm font-medium">Security</span>
+                  <UserPlus className="w-6 h-6 text-secondary mb-2 group-hover:scale-110 transition-transform" />
+                  <span className="text-sm font-medium">Invite</span>
                 </Button>
                 
                 <Button
                   variant="outline"
-                  onClick={() => window.open("mailto:support@dopecoin.app", "_blank")}
+                  onClick={() => navigate("/help")}
                   className="p-4 h-auto flex flex-col items-center hover:bg-muted transition-colors group"
-                  data-testid="action-support"
+                  data-testid="action-help"
                 >
-                  <HelpCircle className="w-6 h-6 text-muted-foreground mb-2 group-hover:scale-110 transition-transform" />
-                  <span className="text-sm font-medium">Support</span>
+                  <HelpCircle className="w-6 h-6 text-info mb-2 group-hover:scale-110 transition-transform" />
+                  <span className="text-sm font-medium">Help</span>
                 </Button>
               </div>
             </CardContent>
