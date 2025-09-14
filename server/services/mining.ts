@@ -1,6 +1,6 @@
 import { storage } from "../storage.js";
 import { stellarService } from "./stellar.js";
-import Decimal from "decimal.js";
+import { Decimal } from "decimal.js";
 
 const BASE_MINING_RATE = new Decimal(0.05); // DOPE per hour
 const MINING_SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
@@ -201,12 +201,12 @@ export class MiningService {
         await stellarService.getClaimableBalances(userId);
 
       if (Array.isArray(claimableBalances) && claimableBalances.length > 0) {
-        claimableBalances.forEach(async (balance) => {
+        for (const balance of claimableBalances) {
           await stellarService.claimBalance(userId, balance.id);
           await storage.updateWallet(userId, {
             dopeBalance: balance.amount
-          })
-        });
+          });
+        }
       }
     } catch (error) {
       console.error("Error claiming unclaimed rewards:", error);
