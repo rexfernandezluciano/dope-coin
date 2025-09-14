@@ -1,7 +1,7 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "../api",
+    "outDir": "../dist",
     "rootDir": "../",
     "incremental": true,
     "tsBuildInfoFile": "./.tsbuildinfo",
@@ -14,5 +14,5 @@
     "skipLibCheck": true,
     "composite": true
   },
-  "include": ["./**/*.ts", "../shared/schema.ts", "client/dist/**/*" ,"../vite.config.ts"]
+  "include": ["./**/*.ts", "../shared/schema.ts", "client/src/**/*" ,"../vite.config.ts"]
 }

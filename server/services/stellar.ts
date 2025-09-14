@@ -14,6 +14,7 @@ const STELLAR_SERVER_URL =
   STELLAR_NETWORK === "mainnet"
     ? "https://horizon.stellar.org"
     : "https://horizon-testnet.stellar.org";
+
 const BASE_FEE = process.env.BASE_FEE || (100 as number);
 const LIQUIDITY_FEE = (process.env.LIQUIDITY_FEE || 300 + 100) as number;
 const ACCOUNT_FEE = process.env.ACCOUNT_FEE || (1000 as number);
@@ -26,6 +27,9 @@ const DOPE_DISTRIBUTOR_SECRET =
 
 const dopeIssuerKeypair = Keypair.fromSecret(DOPE_ISSUER_SECRET);
 const dopeDistributorKeypair = Keypair.fromSecret(DOPE_DISTRIBUTOR_SECRET);
+
+const UsdtIssuerPublicKey =
+  "GA5IK5GGEH2ZPSJOLHS6X5DXNX7VVV35PPMUUKAZPCQ7NB7NSVRZ3WOI";
 
 const server = new Horizon.Server(STELLAR_SERVER_URL);
 const networkPassphrase =
@@ -254,7 +258,7 @@ export class StellarService {
           balance.asset_code === "DOPE" &&
           balance.asset_issuer === dopeIssuerKeypair.publicKey(),
       );
-      
+
       const existingGasTrustline = balances.find(
         (balance: any) =>
           balance.asset_type === "credit_alphanum4" &&
@@ -263,11 +267,11 @@ export class StellarService {
       );
 
       const operations = [];
-      
+
       if (!existingDopeTrustline) {
         operations.push(Operation.changeTrust({ asset: dopeAsset }));
       }
-      
+
       if (!existingGasTrustline) {
         operations.push(Operation.changeTrust({ asset: gasAsset }));
       }
@@ -282,8 +286,8 @@ export class StellarService {
         networkPassphrase,
       });
 
-      operations.forEach(op => transaction.addOperation(op));
-      
+      operations.forEach((op) => transaction.addOperation(op));
+
       const builtTransaction = transaction.setTimeout(30).build();
       builtTransaction.sign(userKeypair);
 
@@ -355,8 +359,10 @@ export class StellarService {
 
       // Use a single transaction to convert XLM to GAS
       // The issuer creates new GAS tokens in exchange for XLM
-      const updatedUserAccount = await server.loadAccount(userKeypair.publicKey());
-      
+      const updatedUserAccount = await server.loadAccount(
+        userKeypair.publicKey(),
+      );
+
       const conversionTransaction = new TransactionBuilder(updatedUserAccount, {
         fee: BASE_FEE.toString(),
         networkPassphrase,
@@ -376,8 +382,10 @@ export class StellarService {
       const xlmResult = await server.submitTransaction(conversionTransaction);
 
       // Now issuer creates and sends GAS tokens to user
-      const issuerAccount = await server.loadAccount(dopeIssuerKeypair.publicKey());
-      
+      const issuerAccount = await server.loadAccount(
+        dopeIssuerKeypair.publicKey(),
+      );
+
       const gasTransaction = new TransactionBuilder(issuerAccount, {
         fee: BASE_FEE.toString(),
         networkPassphrase,
@@ -424,7 +432,7 @@ export class StellarService {
       };
     } catch (error: any) {
       console.error("Error converting XLM to GAS:", error);
-      
+
       // Provide more specific error messages
       if (error.response?.data?.extras?.result_codes) {
         const resultCodes = error.response.data.extras.result_codes;
@@ -438,7 +446,7 @@ export class StellarService {
           throw new Error("GAS balance limit exceeded");
         }
       }
-      
+
       throw new Error(`Conversion failed: ${error.message || "Unknown error"}`);
     }
   }
@@ -539,7 +547,9 @@ export class StellarService {
 
       const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
       const userAccount = await server.loadAccount(userKeypair.publicKey());
-      const distributorAccount = await server.loadAccount(dopeDistributorKeypair.publicKey());
+      const distributorAccount = await server.loadAccount(
+        dopeDistributorKeypair.publicKey(),
+      );
 
       // Validate user has sufficient balance
       const sellAmountNum = parseFloat(sellAmount);
@@ -552,7 +562,7 @@ export class StellarService {
       // Check user balance for sell asset
       if (sellAsset.isNative()) {
         const xlmBalance = userAccount.balances.find(
-          (balance: any) => balance.asset_type === "native"
+          (balance: any) => balance.asset_type === "native",
         );
         if (parseFloat(xlmBalance?.balance || "0") < sellAmountNum + 0.1) {
           throw new Error("Insufficient XLM balance (including fees)");
@@ -562,7 +572,7 @@ export class StellarService {
           (balance: any) =>
             balance.asset_type === "credit_alphanum4" &&
             balance.asset_code === sellAsset.code &&
-            balance.asset_issuer === sellAsset.issuer
+            balance.asset_issuer === sellAsset.issuer,
         );
         if (parseFloat(assetBalance?.balance || "0") < sellAmountNum) {
           throw new Error(`Insufficient ${sellAsset.code} balance`);
@@ -580,7 +590,9 @@ export class StellarService {
       }
 
       if (expectedReceive < minBuyAmountNum) {
-        throw new Error(`Trade would receive ${expectedReceive.toFixed(6)} but minimum required is ${minBuyAmount}`);
+        throw new Error(
+          `Trade would receive ${expectedReceive.toFixed(6)} but minimum required is ${minBuyAmount}`,
+        );
       }
 
       const receiveAmount = expectedReceive.toFixed(7);
@@ -605,12 +617,17 @@ export class StellarService {
       const sellResult = await server.submitTransaction(userToDistributorTx);
 
       // 2. Distributor sends buy asset to user
-      const updatedDistributorAccount = await server.loadAccount(dopeDistributorKeypair.publicKey());
-      
-      const distributorToUserTx = new TransactionBuilder(updatedDistributorAccount, {
-        fee: BASE_FEE.toString(),
-        networkPassphrase,
-      })
+      const updatedDistributorAccount = await server.loadAccount(
+        dopeDistributorKeypair.publicKey(),
+      );
+
+      const distributorToUserTx = new TransactionBuilder(
+        updatedDistributorAccount,
+        {
+          fee: BASE_FEE.toString(),
+          networkPassphrase,
+        },
+      )
         .addOperation(
           Operation.payment({
             destination: userKeypair.publicKey(),
@@ -663,7 +680,7 @@ export class StellarService {
       };
     } catch (error: any) {
       console.error("Error executing trade:", error);
-      
+
       // Provide more specific error messages
       if (error.response?.data?.extras?.result_codes) {
         const resultCodes = error.response.data.extras.result_codes;
@@ -677,7 +694,7 @@ export class StellarService {
           throw new Error("Missing trustline for trading asset");
         }
       }
-      
+
       throw new Error(error.message || "Failed to execute trade");
     }
   }
@@ -916,13 +933,13 @@ export class StellarService {
 
       // Validate user has sufficient balances
       const xlmBalance = account.balances.find(
-        (balance: any) => balance.asset_type === "native"
+        (balance: any) => balance.asset_type === "native",
       );
       const dopeBalance = account.balances.find(
         (balance: any) =>
           balance.asset_type === "credit_alphanum4" &&
           balance.asset_code === "DOPE" &&
-          balance.asset_issuer === dopeIssuerKeypair.publicKey()
+          balance.asset_issuer === dopeIssuerKeypair.publicKey(),
       );
 
       const xlmAmount = parseFloat(xlmBalance?.balance || "0");
@@ -930,17 +947,21 @@ export class StellarService {
 
       // Check if user has sufficient XLM (including fees)
       if (xlmAmount < amountANum + 1.0) {
-        throw new Error(`Insufficient XLM balance. You have ${xlmAmount.toFixed(2)} XLM but need ${(amountANum + 1.0).toFixed(2)} XLM (including fees)`);
+        throw new Error(
+          `Insufficient XLM balance. You have ${xlmAmount.toFixed(2)} XLM but need ${(amountANum + 1.0).toFixed(2)} XLM (including fees)`,
+        );
       }
 
       // Check if user has sufficient DOPE
       if (dopeAmount < amountBNum) {
-        throw new Error(`Insufficient DOPE balance. You have ${dopeAmount.toFixed(2)} DOPE but need ${amountBNum} DOPE`);
+        throw new Error(
+          `Insufficient DOPE balance. You have ${dopeAmount.toFixed(2)} DOPE but need ${amountBNum} DOPE`,
+        );
       }
 
       // Use simple direct swap approach instead of liquidity pools for now
       // This will be more reliable on testnet
-      
+
       // Send XLM to distributor
       const xlmToDistributorTx = new TransactionBuilder(account, {
         fee: BASE_FEE.toString(),
@@ -960,7 +981,7 @@ export class StellarService {
       const xlmResult = await server.submitTransaction(xlmToDistributorTx);
 
       // Wait a moment
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Send DOPE to distributor
       const updatedAccount = await server.loadAccount(userKeypair.publicKey());
@@ -1023,7 +1044,7 @@ export class StellarService {
       };
     } catch (error: any) {
       console.error("Error adding liquidity:", error);
-      
+
       // Provide more specific error messages
       if (error.response?.data?.extras?.result_codes) {
         const resultCodes = error.response.data.extras.result_codes;
@@ -1040,7 +1061,7 @@ export class StellarService {
           throw new Error("Missing trustline for liquidity pool");
         }
       }
-      
+
       throw new Error(error.message || "Failed to add liquidity");
     }
   }
@@ -1157,8 +1178,11 @@ export class StellarService {
       }
 
       // Get liquidity transactions from our database
-      const liquidityTransactions = await storage.getTransactionsByType(userId, "add_liquidity");
-      
+      const liquidityTransactions = await storage.getTransactionsByType(
+        userId,
+        "add_liquidity",
+      );
+
       const pools = liquidityTransactions.map((tx: any) => {
         const metadata = tx.metadata || {};
         return {
@@ -1203,6 +1227,11 @@ export class StellarService {
         baseAsset: Asset.native(),
         quoteAsset: dopeAsset,
         symbol: "XLM/DOPE",
+      },
+      {
+        baseAsset: dopeAsset,
+        quoteAsset: new Asset("USDT", UsdtIssuerPublicKey),
+        symbol: "DOPE/USDT",
       },
     ];
   }
@@ -1648,6 +1677,12 @@ export class StellarService {
   };
 }
 
-export { server, BASE_FEE, networkPassphrase, dopeIssuerKeypair, dopeDistributorKeypair };
+export {
+  server,
+  BASE_FEE,
+  networkPassphrase,
+  dopeIssuerKeypair,
+  dopeDistributorKeypair,
+};
 
 export const stellarService = new StellarService();

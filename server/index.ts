@@ -1,10 +1,16 @@
 import express, { type Request, Response, NextFunction } from "express";
+import cors from "cors";
 import { registerRoutes } from "./routes/index.js";
 import { setupVite, serveStatic, log } from "./vite.js";
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Pretty print JSON responses
+app.set('json spaces', 2);
+
+app.use(cors());
 
 app.use((req, res, next) => {
   const start = Date.now();

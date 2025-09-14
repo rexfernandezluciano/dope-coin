@@ -553,7 +553,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(pairs);
     } catch (error: any) {
       console.error("Trading pairs error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      res.status(500).json({ message: "Internal server error: " + error.message });
     }
   });
 

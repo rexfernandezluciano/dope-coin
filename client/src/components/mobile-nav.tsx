@@ -20,7 +20,7 @@ export function MobileNav() {
               <div
                 className={`flex flex-col items-center py-2 px-1 rounded-lg transition-all duration-200 ${
                   location === href
-                    ? 'text-primary bg-accent/20'
+                    ? 'text-primary bg-accent/20 font-bold'
                     : 'text-muted-foreground hover:text-foreground hover:bg-accent/10'
                 }`}
                 data-testid={`nav-${label.toLowerCase()}`}

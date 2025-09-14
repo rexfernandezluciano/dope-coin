@@ -1,12 +1,30 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.js";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card.js";
 import { Button } from "../components/ui/button.js";
-import { Wallet, Send, QrCode, Loader2, Fuel, AlertTriangle } from "lucide-react";
+import {
+  Wallet,
+  Send,
+  QrCode,
+  Loader2,
+  Fuel,
+  AlertTriangle,
+} from "lucide-react";
 import { useLocation } from "wouter";
 import { useState } from "react";
 import { Input } from "../components/ui/input.js";
 import { Label } from "../components/ui/label.js";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../components/ui/dialog.js";
 import { Badge } from "../components/ui/badge.js";
 import { Separator } from "../components/ui/separator.js";
 import { Alert, AlertDescription } from "../components/ui/alert.js";
@@ -30,7 +48,11 @@ export const WalletCard = () => {
   // Conversion mutation
   const convertMutation = useMutation({
     mutationFn: async ({ xlmAmount }: { xlmAmount: string }) => {
-      const response = await apiRequest("POST", "/api/protected/wallet/convert-gas", { xlmAmount });
+      const response = await apiRequest(
+        "POST",
+        "/api/protected/wallet/convert-gas",
+        { xlmAmount },
+      );
       return response.json();
     },
     onSuccess: () => {
@@ -73,7 +95,7 @@ export const WalletCard = () => {
 
   const dopeBalance = parseFloat(wallet?.dopeBalance || "0");
   const xlmBalance = parseFloat(wallet?.xlmBalance || "0");
-  // const usdValue = "N/A"; //(dopeBalance * 0.1 + xlmBalance * 0.006).toFixed(2);
+  const usdValue = "$" + (xlmBalance * 0.402571).toFixed(2);
 
   return (
     <Card data-testid="wallet-card">
@@ -105,7 +127,7 @@ export const WalletCard = () => {
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">USD Value</span>
               <span className="font-medium" data-testid="usd-value">
-                N/A
+                {usdValue}
               </span>
             </div>
           </div>
@@ -159,32 +181,48 @@ export const WalletCard = () => {
         <div className="grid gap-4">
           <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">XLM Balance</p>
-              <p className="text-2xl font-bold">{parseFloat(wallet.xlmBalance).toFixed(2)}</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                XLM Balance
+              </p>
+              <p className="text-2xl font-bold">
+                {parseFloat(wallet.xlmBalance).toFixed(2)}
+              </p>
             </div>
             <Badge variant="secondary">XLM</Badge>
           </div>
 
           <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">DOPE Balance</p>
-              <p className="text-2xl font-bold">{parseFloat(wallet.dopeBalance).toFixed(2)}</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                DOPE Balance
+              </p>
+              <p className="text-2xl font-bold">
+                {parseFloat(wallet.dopeBalance).toFixed(2)}
+              </p>
             </div>
             <Badge variant="default">DOPE</Badge>
           </div>
 
           <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">GAS Balance</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                GAS Balance
+              </p>
               <p className="text-2xl font-bold">{gasBalance.toFixed(2)}</p>
               {hasLowGas && (
                 <p className="text-xs text-orange-500 mt-1">
-                  {hasNoGas ? "No GAS - Cannot mine!" : "Low GAS - Buy more to continue mining"}
+                  {hasNoGas
+                    ? "No GAS - Cannot mine!"
+                    : "Low GAS - Buy more to continue mining"}
                 </p>
               )}
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant={hasNoGas ? "destructive" : hasLowGas ? "secondary" : "outline"}>
+              <Badge
+                variant={
+                  hasNoGas ? "destructive" : hasLowGas ? "secondary" : "outline"
+                }
+              >
                 <Fuel className="w-3 h-3 mr-1" />
                 GAS
               </Badge>
@@ -197,8 +235,7 @@ export const WalletCard = () => {
               <AlertDescription>
                 {hasNoGas
                   ? "You need GAS tokens to mine DOPE. Convert XLM to GAS below."
-                  : "Your GAS is running low. Consider converting more XLM to GAS."
-                }
+                  : "Your GAS is running low. Consider converting more XLM to GAS."}
               </AlertDescription>
             </Alert>
           )}
@@ -220,7 +257,10 @@ export const WalletCard = () => {
               <DialogHeader>
                 <DialogTitle>Convert XLM to GAS</DialogTitle>
                 <p className="text-sm text-muted-foreground">
-                  GAS is required to mine DOPE tokens. Rate: 1 XLM = 100 GAS
+                  GAS is required to mine DOPE tokens.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Rate: 1 XLM = 100 GAS
                 </p>
               </DialogHeader>
 
@@ -238,7 +278,8 @@ export const WalletCard = () => {
                   />
                   {convertAmount && (
                     <p className="text-sm text-muted-foreground mt-1">
-                      You will receive: {(parseFloat(convertAmount || "0") * 100).toFixed(0)} GAS
+                      You will receive:{" "}
+                      {(parseFloat(convertAmount || "0") * 100).toFixed(0)} GAS
                     </p>
                   )}
                 </div>
@@ -268,18 +309,29 @@ export const WalletCard = () => {
                 </div>
 
                 <Button
-                  onClick={() => convertMutation.mutate({ xlmAmount: convertAmount })}
-                  disabled={!convertAmount || convertMutation.isPending || parseFloat(convertAmount) > parseFloat(wallet.xlmBalance)}
+                  onClick={() =>
+                    convertMutation.mutate({ xlmAmount: convertAmount })
+                  }
+                  disabled={
+                    !convertAmount ||
+                    convertMutation.isPending ||
+                    parseFloat(convertAmount) > parseFloat(wallet.xlmBalance)
+                  }
                   className="w-full"
                 >
                   {convertMutation.isPending && (
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   )}
-                  {convertMutation.isPending ? "Converting..." : "Convert to GAS"}
+                  {convertMutation.isPending
+                    ? "Converting..."
+                    : "Convert to GAS"}
                 </Button>
 
-                {parseFloat(convertAmount || "0") > parseFloat(wallet.xlmBalance) && (
-                  <p className="text-sm text-red-500">Insufficient XLM balance</p>
+                {parseFloat(convertAmount || "0") >
+                  parseFloat(wallet.xlmBalance) && (
+                  <p className="text-sm text-red-500">
+                    Insufficient XLM balance
+                  </p>
                 )}
               </div>
             </DialogContent>
@@ -288,4 +340,4 @@ export const WalletCard = () => {
       </CardContent>
     </Card>
   );
-}
+};

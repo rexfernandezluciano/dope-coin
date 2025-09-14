@@ -76,7 +76,7 @@ export function ActivityFeed() {
                     className={`font-semibold ${
                       transaction.type === "send"
                         ? "text-destructive"
-                        : "text-success"
+                        : "text-primary"
                     }`}
                     data-testid="activity-amount"
                   >
