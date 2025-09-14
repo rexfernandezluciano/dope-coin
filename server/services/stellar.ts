@@ -146,7 +146,7 @@ export class StellarService {
 
       const account = await server.loadAccount(user.stellarPublicKey);
       const xlmBalance = account.balances.find(
-        (balance) => balance.asset_type === "native",
+        (balance: any) => balance.asset_type === "native",
       );
 
       return parseFloat(xlmBalance?.balance || "0");
@@ -165,7 +165,7 @@ export class StellarService {
 
       const account = await server.loadAccount(user.stellarPublicKey);
       const dopeBalance = account.balances.find(
-        (balance) =>
+        (balance: any) =>
           balance.asset_type === "credit_alphanum4" &&
           balance.asset_code === "DOPE" &&
           balance.asset_issuer === dopeIssuerKeypair.publicKey(),
@@ -242,7 +242,7 @@ export class StellarService {
       // Check if trustline already exists
       const balances = account.balances;
       const existingTrustline = balances.find(
-        (balance) =>
+        (balance: any) =>
           balance.asset_type === "credit_alphanum4" &&
           balance.asset_code === "DOPE" &&
           balance.asset_issuer === dopeIssuerKeypair.publicKey(),
@@ -562,12 +562,12 @@ export class StellarService {
         .call();
 
       return {
-        bids: orderbook.bids.map((bid) => ({
+        bids: orderbook.bids.map((bid: any) => ({
           price: bid.price,
           amount: bid.amount,
           priceR: bid.price_r,
         })),
-        asks: orderbook.asks.map((ask) => ({
+        asks: orderbook.asks.map((ask: any) => ({
           price: ask.price,
           amount: ask.amount,
           priceR: ask.price_r,
@@ -604,7 +604,7 @@ export class StellarService {
         .forAccount(user.stellarPublicKey)
         .call();
 
-      return offers.records.map((offer) => ({
+      return offers.records.map((offer: any) => ({
         id: offer.id,
         selling: offer.selling,
         buying: offer.buying,
@@ -828,7 +828,7 @@ export class StellarService {
 
       // Filter for liquidity pool balances
       const poolBalances = account.balances.filter(
-        (balance) => balance.asset_type === "liquidity_pool_shares",
+        (balance: any) => balance.asset_type === "liquidity_pool_shares",
       );
 
       const poolsWithDetails = await Promise.all(
@@ -1010,7 +1010,7 @@ export class StellarService {
         // Check if trustline exists, create if needed
         const account = await server.loadAccount(user.stellarPublicKey);
         const existingTrustline = account.balances.find(
-          (balance) =>
+          (balance: any) =>
             balance.asset_type === "credit_alphanum4" &&
             balance.asset_code === "DOPE" &&
             balance.asset_issuer === dopeIssuerKeypair.publicKey(),
@@ -1273,7 +1273,7 @@ export class StellarService {
         .claimant(user.stellarPublicKey)
         .call();
 
-      return claimableBalances.records.map((cb) => ({
+      return claimableBalances.records.map((cb: any) => ({
         id: cb.id,
         asset: cb.asset,
         amount: cb.amount,
