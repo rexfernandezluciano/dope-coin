@@ -13,7 +13,11 @@ import {
   executeTradeSchema, 
   addLiquiditySchema, 
   removeLiquiditySchema, 
-  orderbookQuerySchema 
+  orderbookQuerySchema,
+  updateProfileSchema,
+  updateUsernameSchema,
+  sendVerificationEmailSchema,
+  verifyEmailSchema
 } from "../../shared/schema.js";
 import { Asset } from "@stellar/stellar-sdk";
 import z from "zod";
@@ -656,6 +660,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(pool);
     } catch (error: any) {
       console.error("Get liquidity pool error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Network supply endpoint
+  app.get("/api/network/supply", rateLimiter, async (req, res) => {
+    try {
+      const stats = await storage.getNetworkStats();
+      const circulatingSupply = stats?.totalSupply || "0";
+      res.json({ 
+        totalSupply: circulatingSupply,
+        circulatingSupply,
+        maxSupply: "1000000000" // 1 billion DOPE max supply
+      });
+    } catch (error: any) {
+      console.error("Network supply error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Profile update routes
+  app.patch("/api/protected/profile", rateLimiter, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const validatedData = updateProfileSchema.parse(req.body);
+      const { fullName, profilePicture } = validatedData;
+
+      // Update user profile
+      const updatedUser = await storage.updateUser(userId, {
+        fullName,
+        ...(profilePicture && { profilePicture })
+      });
+
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Return user without sensitive data
+      const { password, stellarSecretKey, ...safeUser } = updatedUser;
+      res.json({ message: "Profile updated successfully", user: safeUser });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Profile update error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/protected/username", rateLimiter, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const validatedData = updateUsernameSchema.parse(req.body);
+      const { username } = validatedData;
+
+      // Check if username is already taken
+      const existingUser = await storage.getUserByUsername(username);
+      if (existingUser && existingUser.id !== userId) {
+        return res.status(400).json({ message: "Username is already taken" });
+      }
+
+      // Update username
+      const updatedUser = await storage.updateUser(userId, { username });
+
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Return user without sensitive data
+      const { password, stellarSecretKey, ...safeUser } = updatedUser;
+      res.json({ message: "Username updated successfully", user: safeUser });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Username update error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

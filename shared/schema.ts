@@ -179,6 +179,45 @@ export const orderbookQuerySchema = z.object({
   buyAssetIssuer: z.string().optional(),
 });
 
+// Profile update schemas
+export const updateProfileSchema = z.object({
+  fullName: z.string().min(1, "Full name is required").max(100),
+  profilePicture: z.string().optional(), // Base64 encoded image
+});
+
+export const updateUsernameSchema = z.object({
+  username: z.string().min(3, "Username must be at least 3 characters").max(30).regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores"),
+});
+
+// Email verification schemas
+export const sendVerificationEmailSchema = z.object({
+  email: z.string().email("Valid email is required"),
+});
+
+export const verifyEmailSchema = z.object({
+  email: z.string().email("Valid email is required"),
+  code: z.string().length(6, "Verification code must be 6 digits").regex(/^\d{6}$/, "Verification code must be numeric"),
+});
+
+// Multi-step registration schemas
+export const registerStep1Schema = z.object({
+  email: z.string().email("Valid email is required"),
+  username: z.string().min(3, "Username must be at least 3 characters").max(30).regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores"),
+});
+
+export const registerStep2Schema = z.object({
+  fullName: z.string().min(1, "Full name is required").max(100),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  confirmPassword: z.string().min(6, "Password confirmation is required"),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
+});
+
+export const registerStep3Schema = z.object({
+  referralCode: z.string().optional(),
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -195,3 +234,10 @@ export type ExecuteTradeRequest = z.infer<typeof executeTradeSchema>;
 export type AddLiquidityRequest = z.infer<typeof addLiquiditySchema>;
 export type RemoveLiquidityRequest = z.infer<typeof removeLiquiditySchema>;
 export type OrderbookQuery = z.infer<typeof orderbookQuerySchema>;
+export type UpdateProfileRequest = z.infer<typeof updateProfileSchema>;
+export type UpdateUsernameRequest = z.infer<typeof updateUsernameSchema>;
+export type SendVerificationEmailRequest = z.infer<typeof sendVerificationEmailSchema>;
+export type VerifyEmailRequest = z.infer<typeof verifyEmailSchema>;
+export type RegisterStep1Request = z.infer<typeof registerStep1Schema>;
+export type RegisterStep2Request = z.infer<typeof registerStep2Schema>;
+export type RegisterStep3Request = z.infer<typeof registerStep3Schema>;
