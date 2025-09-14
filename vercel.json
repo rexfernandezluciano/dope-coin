@@ -1,14 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "npm install",
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "functions": {
-    "api/**/*.ts": {
-      "runtime": "@vercel/node@2",
-      "maxDuration": 30
+  "builds": [
+    {
+      "src": "api/**/*.ts",
+      "use": "@vercel/node"
     }
-  },
+  ],
+  "outputDirectory": "dist",
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1.ts" },
     { "src": "/(.*)", "dest": "/dist/$1" }
