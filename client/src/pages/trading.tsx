@@ -113,13 +113,13 @@ export default function TradingPage() {
     },
     onError: (error: any) => {
       let errorMessage = "Failed to execute trade";
-      
+
       if (error.message) {
         errorMessage = error.message;
       } else if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
       }
-      
+
       toast({
         title: "Trade Failed",
         description: errorMessage,
@@ -134,33 +134,33 @@ export default function TradingPage() {
       // Validate amounts before sending
       const xlmAmount = parseFloat(data.amountA);
       const dopeAmount = parseFloat(data.amountB);
-      
+
       if (xlmAmount <= 0 || dopeAmount <= 0) {
         throw new Error("Both XLM and DOPE amounts must be greater than 0");
       }
-      
+
       if (xlmAmount < 0.5) {
         throw new Error("Minimum XLM amount is 0.5 XLM (to cover fees and reserves)");
       }
-      
+
       if (dopeAmount < 0.1) {
         throw new Error("Minimum DOPE amount is 0.1 DOPE");
       }
-      
+
       // Check user balances
       if (walletBalance) {
         const userXlm = parseFloat(walletBalance.xlmBalance);
         const userDope = parseFloat(walletBalance.dopeBalance);
-        
+
         if (userXlm < xlmAmount + 1.0) {
           throw new Error(`Insufficient XLM. You have ${userXlm.toFixed(2)} XLM but need ${(xlmAmount + 1.0).toFixed(2)} XLM (including fees)`);
         }
-        
+
         if (userDope < dopeAmount) {
           throw new Error(`Insufficient DOPE. You have ${userDope.toFixed(2)} DOPE but need ${dopeAmount} DOPE`);
         }
       }
-      
+
       const response = await apiRequest("POST", "/api/protected/liquidity/add", data);
       return response.json();
     },
@@ -175,13 +175,13 @@ export default function TradingPage() {
     },
     onError: (error: any) => {
       let errorMessage = "Failed to add liquidity";
-      
+
       if (error.message) {
         errorMessage = error.message;
       } else if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
       }
-      
+
       toast({
         title: "Add Liquidity Failed",
         description: errorMessage,
@@ -237,11 +237,11 @@ export default function TradingPage() {
   // Calculate expected receive amount based on sell amount
   const calculateReceiveAmount = async (sellAmount: string, tradingPair: string) => {
     if (!sellAmount || !tradingPair) return;
-    
+
     try {
       const amount = parseFloat(sellAmount);
       if (isNaN(amount) || amount <= 0) return;
-      
+
       // Exchange rates: 1 XLM = 10 DOPE, 1 DOPE = 0.1 XLM
       let estimatedAmount = 0;
       if (tradingPair === "XLM/DOPE") {
@@ -249,7 +249,7 @@ export default function TradingPage() {
       } else if (tradingPair === "DOPE/XLM") {
         estimatedAmount = amount * 0.1; // DOPE to XLM
       }
-      
+
       // Set minimum receive amount with 2% slippage tolerance
       const minReceive = estimatedAmount * 0.98;
       tradeForm.setValue("minBuyAmount", minReceive.toFixed(7));
@@ -261,12 +261,12 @@ export default function TradingPage() {
   // Calculate liquidity amounts automatically
   const calculateLiquidityAmount = (amountA: string, selectedPair: string) => {
     if (!amountA || !selectedPair) return;
-    
+
     try {
       // Simple ratio calculation for demo (1 XLM = 10 DOPE)
       const rate = 10; // Always XLM to DOPE ratio for liquidity
       const amountB = (parseFloat(amountA) * rate).toFixed(6);
-      
+
       liquidityForm.setValue("amountB", amountB);
       liquidityForm.setValue("minPrice", (rate * 0.95).toFixed(6)); // 5% slippage
       liquidityForm.setValue("maxPrice", (rate * 1.05).toFixed(6)); // 5% slippage
@@ -423,7 +423,7 @@ export default function TradingPage() {
                     onClick={() => {
                       setSelectedPair(pair.symbol);
                       tradeForm.setValue("tradingPair", pair.symbol);
-                      
+
                       // Update assets based on selected pair
                       if (dopeIssuer) {
                         if (pair.symbol === "XLM/DOPE") {
@@ -434,7 +434,7 @@ export default function TradingPage() {
                           tradeForm.setValue("buyAsset", { type: "native" });
                         }
                       }
-                      
+
                       // Clear amounts when switching pairs
                       tradeForm.setValue("sellAmount", "");
                       tradeForm.setValue("minBuyAmount", "");
@@ -480,6 +480,7 @@ export default function TradingPage() {
                         <SelectValue placeholder="Select liquidity pair" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="DOPE/XLM">DOPE/XLM</SelectItem>
                         <SelectItem value="XLM/DOPE">XLM/DOPE</SelectItem>
                       </SelectContent>
                     </Select>
@@ -618,9 +619,9 @@ export default function TradingPage() {
                           {pool.poolInfo.fee / 100}% Fee
                         </Badge>
                       </div>
-                      
+
                       <Separator />
-                      
+
                       <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
                           <div className="text-muted-foreground">Your Balance</div>
@@ -639,7 +640,7 @@ export default function TradingPage() {
                           <div className="font-medium">{parseFloat(pool.poolInfo.reserves.assetB).toFixed(2)}</div>
                         </div>
                       </div>
-                      
+
                       <Button
                         variant="outline"
                         size="sm"

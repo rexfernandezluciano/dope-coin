@@ -990,7 +990,7 @@ export class StellarService {
       await storage.createTransaction({
         userId,
         type: "add_liquidity",
-        amount: `${amountA}:${amountB}`,
+        amount: amountA, // Store primary amount (XLM) as the main amount
         fromAddress: userKeypair.publicKey(),
         toAddress: poolId,
         stellarTxId: dopeResult.hash,

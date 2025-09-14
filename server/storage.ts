@@ -208,11 +208,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTransactionsByType(userId: string, type: string): Promise<Transaction[]> {
-    return db
-      .select()
-      .from(transactions)
-      .where(and(eq(transactions.userId, userId), eq(transactions.type, type)))
-      .orderBy(desc(transactions.createdAt));
+    try {
+      return await db
+        .select()
+        .from(transactions)
+        .where(and(eq(transactions.userId, userId), eq(transactions.type, type)))
+        .orderBy(desc(transactions.createdAt));
+    } catch (error) {
+      console.error(`Error getting transactions by type ${type}:`, error);
+      return [];
+    }
   }
 
   async updateTransactionStatus(
