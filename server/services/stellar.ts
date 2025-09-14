@@ -524,7 +524,7 @@ export class StellarService {
   // ============= TRADING METHODS =============
 
   /**
-   * Execute a market trade (buy/sell) using path payments
+   * Execute a market trade (buy/sell) using direct swap with platform distributor
    */
   async executeTrade(
     userId: string,
@@ -540,27 +540,91 @@ export class StellarService {
       }
 
       const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
-      const account = await server.loadAccount(userKeypair.publicKey());
+      const userAccount = await server.loadAccount(userKeypair.publicKey());
+      const distributorAccount = await server.loadAccount(dopeDistributorKeypair.publicKey());
 
-      const transaction = new TransactionBuilder(account, {
+      // Validate user has sufficient balance
+      const sellAmountNum = parseFloat(sellAmount);
+      const minBuyAmountNum = parseFloat(minBuyAmount);
+
+      if (sellAmountNum <= 0 || minBuyAmountNum <= 0) {
+        throw new Error("Invalid trade amounts");
+      }
+
+      // Check user balance for sell asset
+      if (sellAsset.isNative()) {
+        const xlmBalance = userAccount.balances.find(
+          (balance: any) => balance.asset_type === "native"
+        );
+        if (parseFloat(xlmBalance?.balance || "0") < sellAmountNum + 0.1) {
+          throw new Error("Insufficient XLM balance (including fees)");
+        }
+      } else {
+        const assetBalance = userAccount.balances.find(
+          (balance: any) =>
+            balance.asset_type === "credit_alphanum4" &&
+            balance.asset_code === sellAsset.code &&
+            balance.asset_issuer === sellAsset.issuer
+        );
+        if (parseFloat(assetBalance?.balance || "0") < sellAmountNum) {
+          throw new Error(`Insufficient ${sellAsset.code} balance`);
+        }
+      }
+
+      // Calculate exchange rate (1 XLM = 10 DOPE, 1 DOPE = 0.1 XLM)
+      let expectedReceive: number;
+      if (sellAsset.isNative() && buyAsset.code === "DOPE") {
+        expectedReceive = sellAmountNum * 10; // XLM to DOPE
+      } else if (sellAsset.code === "DOPE" && buyAsset.isNative()) {
+        expectedReceive = sellAmountNum * 0.1; // DOPE to XLM
+      } else {
+        throw new Error("Unsupported trading pair");
+      }
+
+      if (expectedReceive < minBuyAmountNum) {
+        throw new Error(`Trade would receive ${expectedReceive.toFixed(6)} but minimum required is ${minBuyAmount}`);
+      }
+
+      const receiveAmount = expectedReceive.toFixed(7);
+
+      // Execute the swap as two separate payments
+      // 1. User sends sell asset to distributor
+      const userToDistributorTx = new TransactionBuilder(userAccount, {
         fee: BASE_FEE.toString(),
         networkPassphrase,
       })
         .addOperation(
-          Operation.pathPaymentStrictSend({
-            sendAsset: sellAsset,
-            sendAmount: sellAmount,
-            destination: userKeypair.publicKey(), // Trade within same account
-            destAsset: buyAsset,
-            destMin: minBuyAmount,
-            path: [], // Direct trade, no intermediate assets
+          Operation.payment({
+            destination: dopeDistributorKeypair.publicKey(),
+            asset: sellAsset,
+            amount: sellAmount,
           }),
         )
-        .setTimeout(30)
+        .setTimeout(60)
         .build();
 
-      transaction.sign(userKeypair);
-      const result = await server.submitTransaction(transaction);
+      userToDistributorTx.sign(userKeypair);
+      const sellResult = await server.submitTransaction(userToDistributorTx);
+
+      // 2. Distributor sends buy asset to user
+      const updatedDistributorAccount = await server.loadAccount(dopeDistributorKeypair.publicKey());
+      
+      const distributorToUserTx = new TransactionBuilder(updatedDistributorAccount, {
+        fee: BASE_FEE.toString(),
+        networkPassphrase,
+      })
+        .addOperation(
+          Operation.payment({
+            destination: userKeypair.publicKey(),
+            asset: buyAsset,
+            amount: receiveAmount,
+          }),
+        )
+        .setTimeout(60)
+        .build();
+
+      distributorToUserTx.sign(dopeDistributorKeypair);
+      const buyResult = await server.submitTransaction(distributorToUserTx);
 
       // Record trade transaction
       await storage.createTransaction({
@@ -569,33 +633,54 @@ export class StellarService {
         amount: sellAmount,
         fromAddress: userKeypair.publicKey(),
         toAddress: userKeypair.publicKey(),
-        stellarTxId: result.hash,
+        stellarTxId: buyResult.hash,
         assetType: `${sellAsset.code || "XLM"}->${buyAsset.code || "XLM"}`,
         status: "completed",
         metadata: {
-          tradeType: "market",
+          tradeType: "swap",
           sellAsset: sellAsset.code || "XLM",
           buyAsset: buyAsset.code || "XLM",
           sellAmount,
+          receiveAmount,
           minBuyAmount,
+          sellTxHash: sellResult.hash,
+          buyTxHash: buyResult.hash,
+          exchangeRate: sellAsset.isNative() ? "10" : "0.1",
         },
       });
 
       console.log(
-        `Trade executed: ${sellAmount} ${sellAsset.code || "XLM"} -> ${buyAsset.code || "XLM"}`,
+        `Trade executed: ${sellAmount} ${sellAsset.code || "XLM"} -> ${receiveAmount} ${buyAsset.code || "XLM"}`,
       );
 
       return {
-        hash: result.hash,
+        hash: buyResult.hash,
         status: "completed",
         sellAsset: sellAsset.code || "XLM",
         buyAsset: buyAsset.code || "XLM",
         sellAmount,
-        minBuyAmount,
+        receiveAmount,
+        sellTxHash: sellResult.hash,
+        buyTxHash: buyResult.hash,
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error executing trade:", error);
-      throw error;
+      
+      // Provide more specific error messages
+      if (error.response?.data?.extras?.result_codes) {
+        const resultCodes = error.response.data.extras.result_codes;
+        if (resultCodes.transaction === "tx_insufficient_balance") {
+          throw new Error("Insufficient balance for this trade");
+        }
+        if (resultCodes.operations?.includes("op_underfunded")) {
+          throw new Error("Insufficient funds to complete trade");
+        }
+        if (resultCodes.operations?.includes("op_no_trust")) {
+          throw new Error("Missing trustline for trading asset");
+        }
+      }
+      
+      throw new Error(error.message || "Failed to execute trade");
     }
   }
 

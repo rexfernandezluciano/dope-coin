@@ -102,19 +102,27 @@ export default function TradingPage() {
       const response = await apiRequest("POST", "/api/protected/trade/execute", data);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast({
         title: "Trade Successful",
-        description: "Your trade has been executed successfully.",
+        description: `Swapped ${data.result?.sellAmount} ${data.result?.sellAsset} for ${data.result?.receiveAmount} ${data.result?.buyAsset}`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/protected/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/protected/transactions"] });
       tradeForm.reset();
     },
     onError: (error: any) => {
+      let errorMessage = "Failed to execute trade";
+      
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      
       toast({
         title: "Trade Failed",
-        description: error.message || "Failed to execute trade",
+        description: errorMessage,
         variant: "destructive",
       });
     },
@@ -216,18 +224,20 @@ export default function TradingPage() {
     if (!sellAmount || !tradingPair) return;
     
     try {
-      // Simple calculation: 1 XLM = 10 DOPE, 1 DOPE = 0.1 XLM
-      let rate = 1;
+      const amount = parseFloat(sellAmount);
+      if (isNaN(amount) || amount <= 0) return;
+      
+      // Exchange rates: 1 XLM = 10 DOPE, 1 DOPE = 0.1 XLM
+      let estimatedAmount = 0;
       if (tradingPair === "XLM/DOPE") {
-        rate = 10; // 1 XLM = 10 DOPE
+        estimatedAmount = amount * 10; // XLM to DOPE
       } else if (tradingPair === "DOPE/XLM") {
-        rate = 0.1; // 1 DOPE = 0.1 XLM
+        estimatedAmount = amount * 0.1; // DOPE to XLM
       }
       
-      const estimatedAmount = parseFloat(sellAmount) * rate;
-      
-      // Update the min receive amount field with 5% slippage
-      tradeForm.setValue("minBuyAmount", (estimatedAmount * 0.95).toFixed(6));
+      // Set minimum receive amount with 2% slippage tolerance
+      const minReceive = estimatedAmount * 0.98;
+      tradeForm.setValue("minBuyAmount", minReceive.toFixed(7));
     } catch (error) {
       console.error("Error calculating receive amount:", error);
     }
