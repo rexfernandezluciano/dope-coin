@@ -7,7 +7,15 @@ import { rateLimiter } from "../middleware/rateLimiter.js";
 import { jwtService } from "../services/jwt.js";
 import { stellarService } from "../services/stellar.js";
 import { miningService } from "../services/mining.js";
-import { loginSchema, registerSchema } from "../../shared/schema.js";
+import { 
+  loginSchema, 
+  registerSchema, 
+  executeTradeSchema, 
+  addLiquiditySchema, 
+  removeLiquiditySchema, 
+  orderbookQuerySchema 
+} from "../../shared/schema.js";
+import { Asset } from "@stellar/stellar-sdk";
 import z from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -488,6 +496,166 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Network stats error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Trading routes
+  app.post("/api/protected/trade/execute", rateLimiter, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const validatedData = executeTradeSchema.parse(req.body);
+      const { sellAsset, sellAmount, buyAsset, minBuyAmount } = validatedData;
+
+      // Convert schema assets to Stellar SDK assets
+      const stellarSellAsset = sellAsset.type === "native" ? Asset.native() : new Asset(sellAsset.code!, sellAsset.issuer!);
+      const stellarBuyAsset = buyAsset.type === "native" ? Asset.native() : new Asset(buyAsset.code!, buyAsset.issuer!);
+
+      const result = await stellarService.executeTrade(
+        userId,
+        stellarSellAsset,
+        sellAmount,
+        stellarBuyAsset,
+        minBuyAmount,
+      );
+
+      res.json({ message: "Trade executed successfully", result });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Trade execution error:", error);
+      res.status(500).json({ message: error.message || "Internal server error" });
+    }
+  });
+
+  app.get("/api/protected/trade/pairs", rateLimiter, async (req, res) => {
+    try {
+      const pairs = await stellarService.getDOPETradingPairs();
+      res.json(pairs);
+    } catch (error: any) {
+      console.error("Trading pairs error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/protected/trade/orderbook", rateLimiter, async (req, res) => {
+    try {
+      const validatedQuery = orderbookQuerySchema.parse(req.query);
+      const { sellAssetCode, sellAssetIssuer, buyAssetCode, buyAssetIssuer } = validatedQuery;
+
+      const sellAsset = sellAssetCode === "XLM" ? Asset.native() : new Asset(sellAssetCode, sellAssetIssuer);
+      const buyAsset = buyAssetCode === "XLM" ? Asset.native() : new Asset(buyAssetCode, buyAssetIssuer);
+
+      const orderbook = await stellarService.getOrderbook(sellAsset, buyAsset);
+      res.json(orderbook);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Orderbook error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Liquidity pool routes
+  app.post("/api/protected/liquidity/add", rateLimiter, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const validatedData = addLiquiditySchema.parse(req.body);
+      const { assetA, assetB, amountA, amountB, minPrice, maxPrice } = validatedData;
+
+      // Convert schema assets to Stellar SDK assets
+      const stellarAssetA = assetA.type === "native" ? Asset.native() : new Asset(assetA.code!, assetA.issuer!);
+      const stellarAssetB = assetB.type === "native" ? Asset.native() : new Asset(assetB.code!, assetB.issuer!);
+
+      const result = await stellarService.addLiquidity(
+        userId,
+        stellarAssetA,
+        stellarAssetB,
+        amountA,
+        amountB,
+        minPrice,
+        maxPrice,
+      );
+
+      res.json({ message: "Liquidity added successfully", result });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Add liquidity error:", error);
+      res.status(500).json({ message: error.message || "Internal server error" });
+    }
+  });
+
+  app.post("/api/protected/liquidity/remove", rateLimiter, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const validatedData = removeLiquiditySchema.parse(req.body);
+      const { poolId, amount, minAmountA, minAmountB } = validatedData;
+
+      const result = await stellarService.removeLiquidity(
+        userId,
+        poolId,
+        amount,
+        minAmountA,
+        minAmountB,
+      );
+
+      res.json({ message: "Liquidity removed successfully", result });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Remove liquidity error:", error);
+      res.status(500).json({ message: error.message || "Internal server error" });
+    }
+  });
+
+  app.get("/api/protected/liquidity/pools", rateLimiter, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const pools = await stellarService.getUserLiquidityPools(userId);
+      res.json(pools);
+    } catch (error: any) {
+      console.error("Liquidity pools error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/protected/liquidity/pool/:id", rateLimiter, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      if (!id || typeof id !== 'string' || id.trim() === '') {
+        return res.status(400).json({ message: "Valid Pool ID is required" });
+      }
+
+      const pool = await stellarService.getLiquidityPool(id);
+      if (!pool) {
+        return res.status(404).json({ message: "Pool not found" });
+      }
+
+      res.json(pool);
+    } catch (error: any) {
+      console.error("Get liquidity pool error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

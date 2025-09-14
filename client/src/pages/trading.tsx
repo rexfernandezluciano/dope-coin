@@ -1,0 +1,517 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { useToast } from "@/hooks/use-toast";
+import { TrendingUp, TrendingDown, BarChart3, Droplets, Plus, Minus, Loader2 } from "lucide-react";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { executeTradeSchema, addLiquiditySchema, removeLiquiditySchema } from "@shared/schema";
+import type { ExecuteTradeRequest, AddLiquidityRequest, RemoveLiquidityRequest } from "@shared/schema";
+import { z } from "zod";
+
+interface TradingPair {
+  baseAsset: any;
+  quoteAsset: any;
+  symbol: string;
+}
+
+interface LiquidityPool {
+  poolId: string;
+  balance: string;
+  poolInfo: {
+    id: string;
+    assets: {
+      assetA: string;
+      assetB: string;
+    };
+    reserves: {
+      assetA: string;
+      assetB: string;
+    };
+    totalShares: string;
+    fee: number;
+  };
+}
+
+// Form schemas with validation
+const tradeFormSchema = executeTradeSchema.extend({
+  tradingPair: z.string().min(1, "Please select a trading pair"),
+});
+
+const liquidityFormSchema = addLiquiditySchema;
+
+export default function TradingPage() {
+  const { toast } = useToast();
+  const [selectedPair, setSelectedPair] = useState<string>("DOPE/XLM");
+
+  // Trade form
+  const tradeForm = useForm<z.infer<typeof tradeFormSchema>>({
+    resolver: zodResolver(tradeFormSchema),
+    defaultValues: {
+      tradingPair: selectedPair,
+      sellAsset: { type: "native" },
+      buyAsset: { code: "DOPE", issuer: "DOPE_ISSUER" },
+      sellAmount: "",
+      minBuyAmount: "",
+    },
+  });
+
+  // Liquidity form
+  const liquidityForm = useForm<AddLiquidityRequest>({
+    resolver: zodResolver(liquidityFormSchema),
+    defaultValues: {
+      assetA: { type: "native" },
+      assetB: { code: "DOPE", issuer: "DOPE_ISSUER" },
+      amountA: "",
+      amountB: "",
+      minPrice: "",
+      maxPrice: "",
+    },
+  });
+
+  // Fetch trading pairs
+  const { data: tradingPairs, isLoading: tradingPairsLoading } = useQuery({
+    queryKey: ["/api/protected/trade/pairs"],
+  }) as { data: TradingPair[]; isLoading: boolean };
+
+  // Fetch user's liquidity pools
+  const { data: liquidityPools, refetch: refetchPools, isLoading: poolsLoading } = useQuery({
+    queryKey: ["/api/protected/liquidity/pools"],
+  }) as { data: LiquidityPool[]; refetch: () => void; isLoading: boolean };
+
+  // Execute trade mutation
+  const executeTradeMutation = useMutation({
+    mutationFn: async (data: ExecuteTradeRequest) => {
+      const response = await apiRequest("POST", "/api/protected/trade/execute", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Trade Successful",
+        description: "Your trade has been executed successfully.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/protected/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/protected/transactions"] });
+      tradeForm.reset();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Trade Failed",
+        description: error.message || "Failed to execute trade",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Add liquidity mutation
+  const addLiquidityMutation = useMutation({
+    mutationFn: async (data: AddLiquidityRequest) => {
+      const response = await apiRequest("POST", "/api/protected/liquidity/add", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Liquidity Added",
+        description: "Your liquidity has been added successfully.",
+      });
+      refetchPools();
+      queryClient.invalidateQueries({ queryKey: ["/api/protected/wallet"] });
+      liquidityForm.reset();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Add Liquidity Failed",
+        description: error.message || "Failed to add liquidity",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Remove liquidity mutation
+  const removeLiquidityMutation = useMutation({
+    mutationFn: async ({ poolId, amount }: { poolId: string; amount: string }) => {
+      const data: RemoveLiquidityRequest = {
+        poolId,
+        amount,
+        minAmountA: "0.1",
+        minAmountB: "0.1",
+      };
+      const response = await apiRequest("POST", "/api/protected/liquidity/remove", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Liquidity Removed",
+        description: "Your liquidity has been removed successfully.",
+      });
+      refetchPools();
+      queryClient.invalidateQueries({ queryKey: ["/api/protected/wallet"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Remove Liquidity Failed",
+        description: error.message || "Failed to remove liquidity",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const onTradeSubmit = (data: z.infer<typeof tradeFormSchema>) => {
+    const { tradingPair, ...tradeData } = data;
+    executeTradeMutation.mutate(tradeData);
+  };
+
+  const onLiquiditySubmit = (data: AddLiquidityRequest) => {
+    addLiquidityMutation.mutate(data);
+  };
+
+  if (tradingPairsLoading) {
+    return (
+      <div className="container mx-auto p-6 flex items-center justify-center min-h-96">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading trading data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto p-6 space-y-6" data-testid="trading-page">
+      <div className="flex items-center gap-3">
+        <BarChart3 className="h-8 w-8 text-primary" />
+        <h1 className="text-3xl font-bold">Trading & Liquidity</h1>
+      </div>
+
+      <Tabs defaultValue="trading" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="trading" data-testid="tab-trading">Trading</TabsTrigger>
+          <TabsTrigger value="liquidity" data-testid="tab-liquidity">Liquidity Pools</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="trading" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5" />
+                Trade DOPE Tokens
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Form {...tradeForm}>
+                <form onSubmit={tradeForm.handleSubmit(onTradeSubmit)} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={tradeForm.control}
+                      name="tradingPair"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Trading Pair</FormLabel>
+                          <Select value={field.value} onValueChange={field.onChange}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-trading-pair">
+                                <SelectValue placeholder="Select trading pair" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {tradingPairs?.map((pair) => (
+                                <SelectItem key={pair.symbol} value={pair.symbol}>
+                                  {pair.symbol}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={tradeForm.control}
+                      name="sellAmount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Amount to Sell</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              data-testid="input-trade-amount"
+                              type="number"
+                              placeholder="0.00"
+                              step="0.01"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={tradeForm.control}
+                      name="minBuyAmount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Minimum to Receive</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              data-testid="input-min-receive"
+                              type="number"
+                              placeholder="0.00"
+                              step="0.01"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <div className="flex items-end">
+                      <Button
+                        type="submit"
+                        disabled={executeTradeMutation.isPending}
+                        className="w-full"
+                        data-testid="button-execute-trade"
+                      >
+                        {executeTradeMutation.isPending && (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        )}
+                        {executeTradeMutation.isPending ? "Executing..." : "Execute Trade"}
+                      </Button>
+                    </div>
+                  </div>
+                </form>
+              </Form>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Available Trading Pairs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {tradingPairs?.map((pair) => (
+                  <div
+                    key={pair.symbol}
+                    className="p-3 border rounded-lg cursor-pointer hover:bg-muted transition-colors"
+                    onClick={() => {
+                      setSelectedPair(pair.symbol);
+                      tradeForm.setValue("tradingPair", pair.symbol);
+                    }}
+                    data-testid={`pair-${pair.symbol}`}
+                  >
+                    <div className="font-semibold">{pair.symbol}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {pair.baseAsset.code || "XLM"} / {pair.quoteAsset.code || "XLM"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="liquidity" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Droplets className="h-5 w-5" />
+                Add Liquidity
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Form {...liquidityForm}>
+                <form onSubmit={liquidityForm.handleSubmit(onLiquiditySubmit)} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={liquidityForm.control}
+                      name="amountA"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>XLM Amount</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              data-testid="input-liquidity-xlm"
+                              type="number"
+                              placeholder="0.00"
+                              step="0.01"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={liquidityForm.control}
+                      name="amountB"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>DOPE Amount</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              data-testid="input-liquidity-dope"
+                              type="number"
+                              placeholder="0.00"
+                              step="0.01"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={liquidityForm.control}
+                      name="minPrice"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Min Price</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              data-testid="input-min-price"
+                              type="number"
+                              placeholder="0.00"
+                              step="0.01"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={liquidityForm.control}
+                      name="maxPrice"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Max Price</FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              data-testid="input-max-price"
+                              type="number"
+                              placeholder="0.00"
+                              step="0.01"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={addLiquidityMutation.isPending}
+                    className="w-full"
+                    data-testid="button-add-liquidity"
+                  >
+                    {addLiquidityMutation.isPending && (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    )}
+                    <Plus className="w-4 h-4 mr-2" />
+                    {addLiquidityMutation.isPending ? "Adding..." : "Add Liquidity"}
+                  </Button>
+                </form>
+              </Form>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Your Liquidity Positions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {poolsLoading ? (
+                <div className="text-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+                  <p className="text-muted-foreground">Loading liquidity pools...</p>
+                </div>
+              ) : liquidityPools && liquidityPools.length > 0 ? (
+                <div className="space-y-4">
+                  {liquidityPools.map((pool) => (
+                    <div
+                      key={pool.poolId}
+                      className="p-4 border rounded-lg space-y-3"
+                      data-testid={`pool-${pool.poolId}`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-semibold">
+                            {pool.poolInfo.assets.assetA} / {pool.poolInfo.assets.assetB}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            Pool ID: {pool.poolId.slice(0, 8)}...
+                          </div>
+                        </div>
+                        <Badge variant="outline">
+                          {pool.poolInfo.fee / 100}% Fee
+                        </Badge>
+                      </div>
+                      
+                      <Separator />
+                      
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <div className="text-muted-foreground">Your Balance</div>
+                          <div className="font-medium">{parseFloat(pool.balance).toFixed(6)} LP</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Pool Size</div>
+                          <div className="font-medium">{parseFloat(pool.poolInfo.totalShares).toFixed(2)}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">{pool.poolInfo.assets.assetA} Reserve</div>
+                          <div className="font-medium">{parseFloat(pool.poolInfo.reserves.assetA).toFixed(2)}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">{pool.poolInfo.assets.assetB} Reserve</div>
+                          <div className="font-medium">{parseFloat(pool.poolInfo.reserves.assetB).toFixed(2)}</div>
+                        </div>
+                      </div>
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => removeLiquidityMutation.mutate({ poolId: pool.poolId, amount: pool.balance })}
+                        disabled={removeLiquidityMutation.isPending}
+                        className="w-full"
+                        data-testid={`button-remove-liquidity-${pool.poolId}`}
+                      >
+                        {removeLiquidityMutation.isPending && (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        )}
+                        <Minus className="w-4 h-4 mr-2" />
+                        {removeLiquidityMutation.isPending ? "Removing..." : "Remove Liquidity"}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground" data-testid="no-pools">
+                  <Droplets className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No liquidity positions found</p>
+                  <p className="text-sm">Add liquidity to start earning fees</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

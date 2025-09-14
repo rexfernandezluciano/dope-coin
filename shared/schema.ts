@@ -140,6 +140,45 @@ export const registerSchema = insertUserSchema.pick({
   path: ["confirmPassword"],
 });
 
+// Trading and Liquidity schemas
+export const assetSchema = z.object({
+  type: z.literal("native").optional(),
+  code: z.string().optional(),
+  issuer: z.string().optional(),
+}).refine((data) => data.type === "native" || (data.code && data.issuer), {
+  message: "Asset must be native or have both code and issuer",
+});
+
+export const executeTradeSchema = z.object({
+  sellAsset: assetSchema,
+  sellAmount: z.string().regex(/^\d+(\.\d+)?$/, "Invalid amount format"),
+  buyAsset: assetSchema,
+  minBuyAmount: z.string().regex(/^\d+(\.\d+)?$/, "Invalid amount format"),
+});
+
+export const addLiquiditySchema = z.object({
+  assetA: assetSchema,
+  assetB: assetSchema,
+  amountA: z.string().regex(/^\d+(\.\d+)?$/, "Invalid amount format"),
+  amountB: z.string().regex(/^\d+(\.\d+)?$/, "Invalid amount format"),
+  minPrice: z.string().regex(/^\d+(\.\d+)?$/, "Invalid price format"),
+  maxPrice: z.string().regex(/^\d+(\.\d+)?$/, "Invalid price format"),
+});
+
+export const removeLiquiditySchema = z.object({
+  poolId: z.string().min(1, "Pool ID is required"),
+  amount: z.string().regex(/^\d+(\.\d+)?$/, "Invalid amount format"),
+  minAmountA: z.string().regex(/^\d+(\.\d+)?$/, "Invalid amount format"),
+  minAmountB: z.string().regex(/^\d+(\.\d+)?$/, "Invalid amount format"),
+});
+
+export const orderbookQuerySchema = z.object({
+  sellAssetCode: z.string().min(1, "Sell asset code is required"),
+  sellAssetIssuer: z.string().optional(),
+  buyAssetCode: z.string().min(1, "Buy asset code is required"),
+  buyAssetIssuer: z.string().optional(),
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -152,3 +191,7 @@ export type InsertWallet = z.infer<typeof insertWalletSchema>;
 export type NetworkStats = typeof networkStats.$inferSelect;
 export type LoginRequest = z.infer<typeof loginSchema>;
 export type RegisterRequest = z.infer<typeof registerSchema>;
+export type ExecuteTradeRequest = z.infer<typeof executeTradeSchema>;
+export type AddLiquidityRequest = z.infer<typeof addLiquiditySchema>;
+export type RemoveLiquidityRequest = z.infer<typeof removeLiquiditySchema>;
+export type OrderbookQuery = z.infer<typeof orderbookQuerySchema>;
