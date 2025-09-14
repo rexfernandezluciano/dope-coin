@@ -2,13 +2,28 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "builds": [
     {
-      "src": "api/**/*.ts",
+      "src": "server/index.ts",
       "use": "@vercel/node"
+    },
+    {
+      "src": "client/**/*",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
     }
   ],
-  "outputDirectory": "dist",
   "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1.ts" },
-    { "src": "/(.*)", "dest": "/dist/$1" }
-  ]
+    {
+      "src": "/api/(.*)",
+      "dest": "/server/index.ts"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/dist/$1"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
 }
