@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.js";
 import { Button } from "@/components/ui/button.js";
-import { Wallet, Send, QrCode, Repeat, Loader2, Fuel, AlertTriangle } from "lucide-react";
+import { Wallet, Send, QrCode, Loader2, Fuel, AlertTriangle } from "lucide-react";
 import { useLocation } from "wouter";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
@@ -22,16 +22,16 @@ interface WalletCardProps {
   };
 }
 
-export default function WalletCard({ wallet }: WalletCardProps) {
+export const WalletCard = () => {
   const { toast } = useToast();
   const [convertAmount, setConvertAmount] = useState("");
 
-  const { isLoading } = useQuery({
+  const { data: wallet, isLoading } = useQuery({
     queryKey: ["/api/protected/wallet"],
     refetchInterval: 30000,
   }) as any;
 
-  const gasBalance = parseFloat(wallet.gasBalance || "0");
+  const gasBalance = parseFloat(wallet?.gasBalance || "0");
   const hasLowGas = gasBalance < 10; // Warning if less than 10 GAS
   const hasNoGas = gasBalance === 0; // Critical if no GAS
 
@@ -168,7 +168,7 @@ export default function WalletCard({ wallet }: WalletCardProps) {
           <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
             <div>
               <p className="text-sm font-medium text-muted-foreground">XLM Balance</p>
-              <p className="text-2xl font-bold">{parseFloat(wallet.xlmBalance).toFixed(6)}</p>
+              <p className="text-2xl font-bold">{parseFloat(wallet.xlmBalance).toFixed(2)}</p>
             </div>
             <Badge variant="secondary">XLM</Badge>
           </div>
@@ -176,7 +176,7 @@ export default function WalletCard({ wallet }: WalletCardProps) {
           <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
             <div>
               <p className="text-sm font-medium text-muted-foreground">DOPE Balance</p>
-              <p className="text-2xl font-bold">{parseFloat(wallet.dopeBalance).toFixed(6)}</p>
+              <p className="text-2xl font-bold">{parseFloat(wallet.dopeBalance).toFixed(2)}</p>
             </div>
             <Badge variant="default">DOPE</Badge>
           </div>
@@ -305,5 +305,3 @@ export default function WalletCard({ wallet }: WalletCardProps) {
     </Card>
   );
 }
-
-export const WalletCard = WalletCard;
