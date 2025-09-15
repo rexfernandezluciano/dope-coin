@@ -51,7 +51,7 @@ export function ActivityFeed() {
             transactions.map((transaction: any) => (
               <div
                 key={transaction.id}
-                className="flex items-center space-x-4 p-3 rounded-lg hover:bg-muted/50 transition-colors"
+                className="flex items-center justify-between space-x-4 p-3 rounded-lg hover:bg-muted/50 transition-colors"
                 data-testid={`activity-item-${transaction.id}`}
               >
                 <div className="w-10 h-10 rounded-full bg-success/10 flex items-center justify-center">

@@ -494,7 +494,7 @@ export class StellarService {
       // Record transaction in database
       await storage.createTransaction({
         userId,
-        type: "transfer",
+        type: "send",
         amount: amount,
         fromAddress: sourceKeypair.publicKey(),
         toAddress,
@@ -533,7 +533,6 @@ export class StellarService {
   /**
    * Execute a market trade (buy/sell) using direct swap with platform distributor
    */
-  // In your StellarService class, replace the existing methods:
 
   async executeTrade(
     userId: string,
@@ -2173,7 +2172,7 @@ export class StellarService {
 
       // Check if trustline already exists
       const existingTrustline = distributorAccount.balances.find(
-        (balance) =>
+        (balance: any) =>
           balance.asset_code === "GAS" &&
           balance.asset_issuer === dopeIssuerKeypair.publicKey(),
       );

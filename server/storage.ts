@@ -52,7 +52,7 @@ export interface IStorage {
   updateTransactionStatus(
     claimableBalanceId: string,
     status: string,
-  ): Promise<void>;
+  ): Promise<boolean>;
 
   // Stats methods
   getUserStats(userId: string): Promise<{
@@ -228,12 +228,41 @@ export class DatabaseStorage implements IStorage {
   async updateTransactionStatus(
     claimableBalanceId: string,
     status: string,
-  ): Promise<void> {
-    const claimableBalanceIdExpr = sql<string>`(${transactions.metadata} ->> 'claimableBalanceId')::text`;
-    await db
-      .update(transactions)
-      .set({ status: status })
-      .where(eq(claimableBalanceIdExpr, claimableBalanceId));
+  ): Promise<boolean> {
+    try {
+      // First, let's verify the record exists
+      const existing = await db
+        .select({ id: transactions.id, currentStatus: transactions.status })
+        .from(transactions)
+        .where(sql`metadata->>'claimableBalanceId' = ${claimableBalanceId}`)
+        .limit(1);
+
+      if (existing.length === 0) {
+        console.log(
+          `No transaction found with claimableBalanceId: ${claimableBalanceId}`,
+        );
+        return false;
+      }
+
+      console.log(
+        `Found transaction ${existing[0].id} with current status: ${existing[0].currentStatus}`,
+      );
+
+      // Now update it
+      const result = await db
+        .update(transactions)
+        .set({
+          status: status
+        })
+        .where(sql`metadata->>'claimableBalanceId' = ${claimableBalanceId}`)
+        .returning({ id: transactions.id, newStatus: transactions.status });
+
+      console.log(`Updated ${result.length} transactions to status: ${status}`);
+      return result.length > 0;
+    } catch (error) {
+      console.error("Error updating transaction status:", error);
+      throw error;
+    }
   }
 
   // Stats methods
