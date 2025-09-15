@@ -17,7 +17,7 @@ import {
   updateProfileSchema,
   updateUsernameSchema,
   sendVerificationEmailSchema,
-  verifyEmailSchema
+  verifyEmailSchema,
 } from "../../shared/schema.js";
 import { Asset } from "@stellar/stellar-sdk";
 import z from "zod";
@@ -254,7 +254,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error.message.includes("Mining cooldown")) {
         res.status(400).json({ message: error.message });
       } else {
-        res.status(500).json({ message: "Internal server error: " + error.message });
+        res
+          .status(500)
+          .json({ message: "Internal server error: " + error.message });
       }
     }
   });
@@ -402,25 +404,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/protected/wallet/convert-gas", rateLimiter, async (req, res) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
+  app.post(
+    "/api/protected/wallet/convert-gas",
+    rateLimiter,
+    async (req, res) => {
+      try {
+        const userId = req.user?.id;
+        if (!userId) {
+          return res.status(401).json({ message: "Unauthorized" });
+        }
 
-      const { xlmAmount } = req.body;
-      if (!xlmAmount || parseFloat(xlmAmount) <= 0) {
-        return res.status(400).json({ message: "Invalid XLM amount" });
-      }
+        const { xlmAmount } = req.body;
+        if (!xlmAmount || parseFloat(xlmAmount) <= 0) {
+          return res.status(400).json({ message: "Invalid XLM amount" });
+        }
 
-      const result = await stellarService.convertXLMToGAS(userId, xlmAmount);
-      res.json(result);
-    } catch (error: any) {
-      console.error("GAS conversion error:", error);
-      res.status(500).json({ message: error.message || "Internal server error" });
-    }
-  });
+        const result = await stellarService.convertXLMToGAS(userId, xlmAmount);
+        res.json(result);
+      } catch (error: any) {
+        console.error("GAS conversion error:", error);
+        res
+          .status(500)
+          .json({ message: error.message || "Internal server error" });
+      }
+    },
+  );
 
   // Transaction history
   app.get("/api/protected/transactions", async (req, res) => {
@@ -526,8 +534,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { sellAsset, sellAmount, buyAsset, minBuyAmount } = validatedData;
 
       // Convert schema assets to Stellar SDK assets
-      const stellarSellAsset = sellAsset.type === "native" ? Asset.native() : new Asset(sellAsset.code!, sellAsset.issuer!);
-      const stellarBuyAsset = buyAsset.type === "native" ? Asset.native() : new Asset(buyAsset.code!, buyAsset.issuer!);
+      const stellarSellAsset =
+        sellAsset.type === "native"
+          ? Asset.native()
+          : new Asset(sellAsset.code!, sellAsset.issuer!);
+      const stellarBuyAsset =
+        buyAsset.type === "native"
+          ? Asset.native()
+          : new Asset(buyAsset.code!, buyAsset.issuer!);
 
       const result = await stellarService.executeTrade(
         userId,
@@ -540,10 +554,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Trade executed successfully", result });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Validation error", errors: error.errors });
+        return res
+          .status(400)
+          .json({ message: "Validation error", errors: error.errors });
       }
       console.error("Trade execution error:", error);
-      res.status(500).json({ message: error.message || "Internal server error" });
+      res
+        .status(500)
+        .json({ message: error.message || "Internal server error" });
     }
   });
 
@@ -553,14 +571,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(pairs);
     } catch (error: any) {
       console.error("Trading pairs error:", error);
-      res.status(500).json({ message: "Internal server error: " + error.message });
+      res
+        .status(500)
+        .json({ message: "Internal server error: " + error.message });
     }
   });
 
   app.post("/api/protected/trade/calculate", rateLimiter, async (req, res) => {
     try {
       const { sellAmount, tradingPair } = req.body;
-      
+
       if (!sellAmount || !tradingPair) {
         return res.status(400).json({ message: "Missing required parameters" });
       }
@@ -574,7 +594,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sellAmount,
         tradingPair,
         estimatedAmount,
-        rate: rate.toString()
+        rate: rate.toString(),
       });
     } catch (error: any) {
       console.error("Trade calculation error:", error);
@@ -585,16 +605,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/protected/trade/orderbook", rateLimiter, async (req, res) => {
     try {
       const validatedQuery = orderbookQuerySchema.parse(req.query);
-      const { sellAssetCode, sellAssetIssuer, buyAssetCode, buyAssetIssuer } = validatedQuery;
+      const { sellAssetCode, sellAssetIssuer, buyAssetCode, buyAssetIssuer } =
+        validatedQuery;
 
-      const sellAsset = sellAssetCode === "XLM" ? Asset.native() : new Asset(sellAssetCode, sellAssetIssuer);
-      const buyAsset = buyAssetCode === "XLM" ? Asset.native() : new Asset(buyAssetCode, buyAssetIssuer);
+      const sellAsset =
+        sellAssetCode === "XLM"
+          ? Asset.native()
+          : new Asset(sellAssetCode, sellAssetIssuer);
+      const buyAsset =
+        buyAssetCode === "XLM"
+          ? Asset.native()
+          : new Asset(buyAssetCode, buyAssetIssuer);
 
       const orderbook = await stellarService.getOrderbook(sellAsset, buyAsset);
       res.json(orderbook);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Validation error", errors: error.errors });
+        return res
+          .status(400)
+          .json({ message: "Validation error", errors: error.errors });
       }
       console.error("Orderbook error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -610,11 +639,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const validatedData = addLiquiditySchema.parse(req.body);
-      const { assetA, assetB, amountA, amountB, minPrice, maxPrice } = validatedData;
+      const { assetA, assetB, amountA, amountB, minPrice, maxPrice } =
+        validatedData;
 
       // Convert schema assets to Stellar SDK assets
-      const stellarAssetA = assetA.type === "native" ? Asset.native() : new Asset(assetA.code!, assetA.issuer!);
-      const stellarAssetB = assetB.type === "native" ? Asset.native() : new Asset(assetB.code!, assetB.issuer!);
+      const stellarAssetA =
+        assetA.type === "native"
+          ? Asset.native()
+          : new Asset(assetA.code!, assetA.issuer!);
+      const stellarAssetB =
+        assetB.type === "native"
+          ? Asset.native()
+          : new Asset(assetB.code!, assetB.issuer!);
 
       const result = await stellarService.addLiquidity(
         userId,
@@ -629,10 +665,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Liquidity added successfully", result });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Validation error", errors: error.errors });
+        return res
+          .status(400)
+          .json({ message: "Validation error", errors: error.errors });
       }
       console.error("Add liquidity error:", error);
-      res.status(500).json({ message: error.message || "Internal server error" });
+      res
+        .status(500)
+        .json({ message: error.message || "Internal server error" });
     }
   });
 
@@ -657,10 +697,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Liquidity removed successfully", result });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Validation error", errors: error.errors });
+        return res
+          .status(400)
+          .json({ message: "Validation error", errors: error.errors });
       }
       console.error("Remove liquidity error:", error);
-      res.status(500).json({ message: error.message || "Internal server error" });
+      res
+        .status(500)
+        .json({ message: error.message || "Internal server error" });
     }
   });
 
@@ -679,39 +723,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/protected/liquidity/pool/:id", rateLimiter, async (req, res) => {
-    try {
-      const { id } = req.params;
+  app.get(
+    "/api/protected/liquidity/pool/:id",
+    rateLimiter,
+    async (req, res) => {
+      try {
+        const { id } = req.params;
 
-      if (!id || typeof id !== 'string' || id.trim() === '') {
-        return res.status(400).json({ message: "Valid Pool ID is required" });
+        if (!id || typeof id !== "string" || id.trim() === "") {
+          return res.status(400).json({ message: "Valid Pool ID is required" });
+        }
+
+        const pool = await stellarService.getLiquidityPool(id);
+        if (!pool) {
+          return res.status(404).json({ message: "Pool not found" });
+        }
+
+        res.json(pool);
+      } catch (error: any) {
+        console.error("Get liquidity pool error:", error);
+        res.status(500).json({ message: "Internal server error" });
       }
-
-      const pool = await stellarService.getLiquidityPool(id);
-      if (!pool) {
-        return res.status(404).json({ message: "Pool not found" });
-      }
-
-      res.json(pool);
-    } catch (error: any) {
-      console.error("Get liquidity pool error:", error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
+    },
+  );
 
   // Network supply endpoint
   app.get("/api/network/supply", rateLimiter, async (req, res) => {
     try {
+      const query = req.query;
+
+      const totalSupply = await stellarService.getCirculatingSupply();
+      const maxSupply = 100000000;
+
+      if (query.type === "total")  {
+        return res.status(200).send(totalSupply.toString()); // Total Supply
+      }
+
+      if (query.type === "circulating") {
+        return res.status(200).send(totalSupply.toString()); // Total Circulating Supply
+      }
+
+      if (query.type === "max") {
+        return res.status(200).send(maxSupply.toString());
+      }
+
+      // Default response when no type is specified
       const stats = await storage.getNetworkStats();
       const circulatingSupply = stats?.totalSupply || "0";
+
       res.json({
         totalSupply: circulatingSupply,
         circulatingSupply,
-        maxSupply: "1000000000" // 1 billion DOPE max supply
+        maxSupply, // 100 million DOPE max supply
       });
     } catch (error: any) {
       console.error("Network supply error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      res
+        .status(500)
+        .json({ message: "Internal server error" });
     }
   });
 
@@ -729,7 +798,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update user profile
       const updatedUser = await storage.updateUser(userId, {
         fullName,
-        ...(profilePicture && { profilePicture })
+        ...(profilePicture && { profilePicture }),
       });
 
       if (!updatedUser) {
@@ -741,7 +810,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Profile updated successfully", user: safeUser });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Validation error", errors: error.errors });
+        return res
+          .status(400)
+          .json({ message: "Validation error", errors: error.errors });
       }
       console.error("Profile update error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -776,7 +847,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Username updated successfully", user: safeUser });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Validation error", errors: error.errors });
+        return res
+          .status(400)
+          .json({ message: "Validation error", errors: error.errors });
       }
       console.error("Username update error:", error);
       res.status(500).json({ message: "Internal server error" });

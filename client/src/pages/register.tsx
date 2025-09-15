@@ -72,8 +72,8 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen bg-background flex items-center justify-center md:p-4">
+      <Card className="w-full max-w-md rounded-none border-none md:rounded-lg md:border-1">
         <CardHeader className="text-center">
           <div className="flex items-center justify-center space-x-2 mb-4">
             <div className="w-10 h-10 rounded-full gradient-bg flex items-center justify-center">

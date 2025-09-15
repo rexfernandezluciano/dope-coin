@@ -30,8 +30,8 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen bg-white md:bg-background flex items-center justify-center p-0 md:p-4">
+      <Card className="w-full max-w-md rounded-none md:rounded-lg border-none md:border-1 shadow-none md:shadow-sm">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl gradient-text">Welcome Back</CardTitle>
           <CardDescription>

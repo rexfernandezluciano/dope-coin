@@ -207,12 +207,17 @@ export class DatabaseStorage implements IStorage {
       .offset(offset);
   }
 
-  async getTransactionsByType(userId: string, type: string): Promise<Transaction[]> {
+  async getTransactionsByType(
+    userId: string,
+    type: string,
+  ): Promise<Transaction[]> {
     try {
       return await db
         .select()
         .from(transactions)
-        .where(and(eq(transactions.userId, userId), eq(transactions.type, type)))
+        .where(
+          and(eq(transactions.userId, userId), eq(transactions.type, type)),
+        )
         .orderBy(desc(transactions.createdAt));
     } catch (error) {
       console.error(`Error getting transactions by type ${type}:`, error);
@@ -224,10 +229,10 @@ export class DatabaseStorage implements IStorage {
     claimableBalanceId: string,
     status: string,
   ): Promise<void> {
-    const claimableBalanceIdExpr = sql<string>`(${transactions.metadata} ->> 'claimableBalanceId')`;
+    const claimableBalanceIdExpr = sql<string>`(${transactions.metadata} ->> 'claimableBalanceId')::text`;
     await db
       .update(transactions)
-      .set({ status })
+      .set({ status: status })
       .where(eq(claimableBalanceIdExpr, claimableBalanceId));
   }
 

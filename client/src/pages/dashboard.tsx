@@ -7,7 +7,7 @@ import { ProfileCard } from "../components/profile-card.js";
 import { NetworkStats } from "../components/network-stats.js";
 import { useAuth } from "../hooks/use-auth.js";
 import { Button } from "../components/ui/button.js";
-import { UserPlus, History, HelpCircle, BarChart3 } from "lucide-react";
+import { UserPlus, History, HelpCircle, BarChart3, Gift } from "lucide-react";
 import { useLocation } from "wouter";
 
 export default function Dashboard() {
@@ -118,8 +118,8 @@ export default function Dashboard() {
                   className="p-4 h-auto flex flex-col items-center hover:bg-muted transition-colors group"
                   data-testid="action-invite"
                 >
-                  <UserPlus className="w-6 h-6 text-secondary mb-2 group-hover:scale-110 transition-transform" />
-                  <span className="text-sm font-medium">Invite</span>
+                  <Gift className="w-6 h-6 text-secondary mb-2 group-hover:scale-110 transition-transform" />
+                  <span className="text-sm font-medium">Earn</span>
                 </Button>
                 
                 <Button

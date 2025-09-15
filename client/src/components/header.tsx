@@ -22,7 +22,7 @@ export function Header() {
               <div className="w-8 h-8 rounded-full gradient-bg flex items-center justify-center">
                 <Coins className="text-white text-sm" />
               </div>
-              <span className="text-xl font-bold text-primary">DOPE Coin</span>
+              <span className="text-xl font-bold text-primary">DOPE Chain</span>
             </Link>
           </div>
 
@@ -50,11 +50,6 @@ export function Header() {
             <Link href="/referrals">
               <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
                 Referrals
-              </span>
-            </Link>
-            <Link href="/profile">
-              <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
-                Profile
               </span>
             </Link>
           </nav>
