@@ -23,6 +23,15 @@ const MAX_NETWORK_EFFECT_BONUS = new Decimal(2.0); // Maximum 2x bonus from netw
 const REFERRAL_BONUS_RATE = new Decimal(0.1); // 10% bonus for having referrals
 const ACTIVE_BONUS_MULTIPLIER = new Decimal(1.2); // 20% bonus for highly active users
 
+stellarService
+  .initializeDistributor()
+  .then(() => {
+    console.log("Distributor initialized successfully");
+  })
+  .catch((error) => {
+    console.error("Error initializing distributor:", error);
+  });
+
 export class MiningService {
   async startMining(userId: string) {
     try {
@@ -79,39 +88,177 @@ export class MiningService {
 
   private async deductGasFee(userId: string, gasAmount: number): Promise<void> {
     try {
+      console.log(
+        `Starting GAS deduction for user ${userId}, amount: ${gasAmount}`,
+      );
+
+      // Validate input
+      if (gasAmount <= 0) {
+        throw new Error("Gas amount must be positive");
+      }
+
       const user = await storage.getUser(userId);
       if (!user?.stellarSecretKey) {
         throw new Error("User stellar account not found");
       }
 
       const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
-      const account = await server.loadAccount(userKeypair.publicKey());
-      const gasAsset = new Asset("GAS", dopeIssuerKeypair.publicKey());
+      console.log(`User public key: ${userKeypair.publicKey()}`);
 
-      // Send GAS to a burn address (distributor for now)
-      const transaction = new TransactionBuilder(account, {
+      // Load account with detailed logging
+      console.log("Loading account...");
+      const account = await server.loadAccount(userKeypair.publicKey());
+      console.log(`Account sequence: ${account.sequenceNumber()}`);
+      console.log(`Account balances:`, account.balances);
+
+      // Validate keypair objects
+      console.log(`Issuer public key: ${dopeIssuerKeypair.publicKey()}`);
+      console.log(
+        `Distributor public key: ${dopeDistributorKeypair.publicKey()}`,
+      );
+
+      const gasAsset = new Asset("GAS", dopeIssuerKeypair.publicKey());
+      console.log(`GAS Asset: ${gasAsset.code} - ${gasAsset.issuer}`);
+
+      // Check trustline and balance
+      const gasBalance = account.balances.find(
+        (balance: any) =>
+          balance.asset_code === "GAS" &&
+          balance.asset_issuer === dopeIssuerKeypair.publicKey(),
+      );
+
+      if (!gasBalance) {
+        console.error(
+          "Available balances:",
+          account.balances.map((b: any) => ({
+            asset:
+              b.asset_type === "native"
+                ? "XLM"
+                : `${b.asset_code}-${b.asset_issuer}`,
+            balance: b.balance,
+          })),
+        );
+        throw new Error("User does not have a trustline to GAS asset");
+      }
+
+      const availableGas = parseFloat(gasBalance.balance);
+      console.log(`Available GAS: ${availableGas}, Required: ${gasAmount}`);
+
+      if (availableGas < gasAmount) {
+        throw new Error(
+          `Insufficient GAS balance. Required: ${gasAmount}, Available: ${availableGas}`,
+        );
+      }
+
+      // Format amount properly
+      const formattedAmount = parseFloat(gasAmount.toFixed(7)).toString();
+      console.log(`Formatted amount: ${formattedAmount}`);
+
+      // Validate network passphrase
+      console.log(`Network passphrase: ${networkPassphrase}`);
+      console.log(`Base fee: ${BASE_FEE}`);
+
+      // Build transaction with detailed logging
+      console.log("Building transaction...");
+      const transactionBuilder = new TransactionBuilder(account, {
         fee: BASE_FEE.toString(),
         networkPassphrase,
-      })
+      });
+
+      console.log("Adding payment operation...");
+      const transaction = transactionBuilder
         .addOperation(
           Operation.payment({
             destination: dopeDistributorKeypair.publicKey(),
             asset: gasAsset,
-            amount: gasAmount.toString(),
+            amount: formattedAmount,
           }),
         )
         .setTimeout(30)
         .build();
 
+      console.log("Transaction built successfully");
+      console.log(
+        `Transaction XDR before signing: ${transaction.toEnvelope().toXDR("base64")}`,
+      );
+
+      // Sign transaction
+      console.log("Signing transaction...");
       transaction.sign(userKeypair);
-      await server.submitTransaction(transaction);
 
       console.log(
-        `Deducted ${gasAmount} GAS from user ${userId} for mining fee`,
+        `Transaction XDR after signing: ${transaction.toEnvelope().toXDR("base64")}`,
       );
-    } catch (error) {
-      console.error("Error deducting GAS fee:", error);
-      throw new Error("Failed to deduct GAS fee");
+
+      // Submit transaction
+      console.log("Submitting transaction...");
+      const result = await server.submitTransaction(transaction);
+
+      console.log(
+        `Successfully deducted ${gasAmount} GAS from user ${userId}. Transaction: ${result.hash}`,
+      );
+    } catch (error: any) {
+      console.error("Detailed error information:");
+      console.error("Error message:", error.message);
+      console.error("Error response:", error.response?.data);
+
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        console.error("Status:", errorData.status);
+        console.error("Title:", errorData.title);
+        console.error("Detail:", errorData.detail);
+
+        if (errorData.extras) {
+          console.error("Extras:", JSON.stringify(errorData.extras, null, 2));
+
+          if (errorData.extras.result_codes) {
+            const codes = errorData.extras.result_codes;
+            console.error("Transaction result code:", codes.transaction);
+            console.error("Operation result codes:", codes.operations);
+
+            // Common 400 error scenarios
+            if (codes.transaction === "tx_bad_seq") {
+              throw new Error(
+                "Transaction sequence number is invalid. Account may have pending transactions.",
+              );
+            }
+            if (codes.transaction === "tx_insufficient_fee") {
+              throw new Error(
+                "Transaction fee is too low or insufficient XLM balance.",
+              );
+            }
+            if (codes.operations?.includes("op_malformed")) {
+              throw new Error(
+                "Payment operation is malformed. Check asset or amount format.",
+              );
+            }
+            if (codes.operations?.includes("op_underfunded")) {
+              throw new Error("Insufficient balance for the payment.");
+            }
+            if (codes.operations?.includes("op_no_destination")) {
+              throw new Error("Destination account does not exist.");
+            }
+            if (codes.operations?.includes("op_no_trust")) {
+              throw new Error(
+                "Destination account has no trustline for this asset.",
+              );
+            }
+          }
+
+          if (errorData.extras.envelope_xdr) {
+            console.error(
+              "Transaction envelope XDR:",
+              errorData.extras.envelope_xdr,
+            );
+          }
+
+          if (errorData.extras.result_xdr) {
+            console.error("Result XDR:", errorData.extras.result_xdr);
+          }
+        }
+      }
+
+      throw new Error(`Failed to deduct GAS fee: ${error.message}`);
     }
   }
 
@@ -196,6 +343,18 @@ export class MiningService {
       const nextRewardTime = lastRewardTime + REWARD_INTERVAL;
       const timeToNextReward = Math.max(0, nextRewardTime - elapsedTime);
 
+      if (progress === 100) {
+        await this.stopMining(userId);
+        return {
+          isActive: false,
+          session,
+          nextReward: null,
+          progress: 100,
+          currentEarned: currentEarned.toFixed(8),
+          rate: session.rate,
+        };
+      }
+
       return {
         isActive: true,
         session,
@@ -267,6 +426,7 @@ export class MiningService {
       if (Array.isArray(claimableBalances) && claimableBalances.length > 0) {
         for (const balance of claimableBalances) {
           await stellarService.claimBalance(userId, balance.id);
+          storage.updateTransactionStatus(balance.id, "completed");
           await storage.updateWallet(userId, {
             dopeBalance: balance.amount,
           });
@@ -445,7 +605,7 @@ export class MiningService {
   async updateNetworkStats() {
     try {
       const activeMiners = await storage.getActiveMinerCount();
-      const totalSupply = await storage.getTotalDopeSupply();
+      const totalSupply = await stellarService.getCirculatingSupply();
 
       await storage.updateNetworkStats({
         activeMiners,

@@ -14,7 +14,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
 
-  const { data: dashboardData, isLoading } = useQuery({
+  const { isLoading } = useQuery({
     queryKey: ["/api/protected/dashboard"],
     refetchInterval: 30000,
   }) as any;
@@ -60,14 +60,8 @@ export default function Dashboard() {
                     Welcome back, {user?.fullName?.split(' ')[0] || 'User'}!
                   </h1>
                   <p className="text-muted-foreground mt-1">
-                    Continue mining DOPE Coins on the Stellar network
+                    Continue mining DOPE Coin on the Stellar network.
                   </p>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm text-muted-foreground">Mining Rate</div>
-                  <div className="text-lg font-semibold text-success" data-testid="mining-rate">
-                    {(dashboardData?.miningRate || 0.05).toFixed(2)}/hour
-                  </div>
                 </div>
               </div>
             </CardContent>

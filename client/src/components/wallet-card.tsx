@@ -176,71 +176,6 @@ export const WalletCard = () => {
           </div>
         </div>
 
-        <Separator className="my-6" />
-
-        <div className="grid gap-4">
-          <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">
-                XLM Balance
-              </p>
-              <p className="text-2xl font-bold">
-                {parseFloat(wallet.xlmBalance).toFixed(2)}
-              </p>
-            </div>
-            <Badge variant="secondary">XLM</Badge>
-          </div>
-
-          <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">
-                DOPE Balance
-              </p>
-              <p className="text-2xl font-bold">
-                {parseFloat(wallet.dopeBalance).toFixed(2)}
-              </p>
-            </div>
-            <Badge variant="default">DOPE</Badge>
-          </div>
-
-          <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">
-                GAS Balance
-              </p>
-              <p className="text-2xl font-bold">{gasBalance.toFixed(2)}</p>
-              {hasLowGas && (
-                <p className="text-xs text-orange-500 mt-1">
-                  {hasNoGas
-                    ? "No GAS - Cannot mine!"
-                    : "Low GAS - Buy more to continue mining"}
-                </p>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge
-                variant={
-                  hasNoGas ? "destructive" : hasLowGas ? "secondary" : "outline"
-                }
-              >
-                <Fuel className="w-3 h-3 mr-1" />
-                GAS
-              </Badge>
-            </div>
-          </div>
-
-          {(hasLowGas || hasNoGas) && (
-            <Alert variant={hasNoGas ? "destructive" : "default"}>
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                {hasNoGas
-                  ? "You need GAS tokens to mine DOPE. Convert XLM to GAS below."
-                  : "Your GAS is running low. Consider converting more XLM to GAS."}
-              </AlertDescription>
-            </Alert>
-          )}
-        </div>
-
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
           <Dialog>
             <DialogTrigger asChild>
@@ -250,7 +185,7 @@ export const WalletCard = () => {
                 className="w-full"
               >
                 <Fuel className="w-4 h-4 mr-2" />
-                Buy GAS
+                Get GAS
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -266,7 +201,9 @@ export const WalletCard = () => {
 
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="convert-amount">XLM Amount</Label>
+                  <Label className="pb-2" htmlFor="convert-amount">
+                    XLM Amount
+                  </Label>
                   <Input
                     id="convert-amount"
                     type="number"

@@ -123,7 +123,7 @@ async function initializePlatformAccounts() {
           Operation.payment({
             destination: dopeDistributorKeypair.publicKey(),
             asset: dopeAsset,
-            amount: "1000000", // 1M DOPE initial supply
+            amount: "100000000", // 100M DOPE initial supply
           }),
         )
         .setTimeout(30)
@@ -244,13 +244,6 @@ export class StellarService {
       }
 
       const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
-
-      // Fund account if needed
-      const funded = await this.fundAccount(userKeypair.publicKey());
-      if (!funded) {
-        console.log("Account funding failed, skipping token setup");
-        return;
-      }
 
       const account = await server.loadAccount(userKeypair.publicKey());
 
@@ -772,6 +765,8 @@ export class StellarService {
       throw new Error(`Trade failed: ${error.message || "Unknown error"}`);
     }
   }
+
+  // Simplified trading for testnet
   async executeTestnetTrade(
     userId: string,
     sellAsset: Asset,
@@ -2165,6 +2160,62 @@ export class StellarService {
 
     return total;
   };
+
+  // Add this function to set up the distributor account with GAS trustline
+  private async setupDistributorTrustline(): Promise<void> {
+    try {
+      console.log("Setting up GAS trustline for distributor account...");
+
+      const distributorAccount = await server.loadAccount(
+        dopeDistributorKeypair.publicKey(),
+      );
+      const gasAsset = new Asset("GAS", dopeIssuerKeypair.publicKey());
+
+      // Check if trustline already exists
+      const existingTrustline = distributorAccount.balances.find(
+        (balance) =>
+          balance.asset_code === "GAS" &&
+          balance.asset_issuer === dopeIssuerKeypair.publicKey(),
+      );
+
+      if (existingTrustline) {
+        console.log("GAS trustline already exists for distributor");
+        return;
+      }
+
+      // Create trustline transaction
+      const transaction = new TransactionBuilder(distributorAccount, {
+        fee: BASE_FEE.toString(),
+        networkPassphrase,
+      })
+        .addOperation(
+          Operation.changeTrust({
+            asset: gasAsset,
+            // Optional: set limit, or omit for maximum limit
+            // limit: "1000000000" // 1 billion GAS tokens max
+          }),
+        )
+        .setTimeout(30)
+        .build();
+
+      transaction.sign(dopeDistributorKeypair);
+      const result = await server.submitTransaction(transaction);
+
+      console.log(
+        `GAS trustline created for distributor. Transaction: ${result.hash}`,
+      );
+    } catch (error: any) {
+      console.error("Error setting up distributor trustline:", error);
+      throw new Error(
+        "Failed to setup distributor trustline: " + error.message,
+      );
+    }
+  }
+
+  // Call this during your app initialization
+  async initializeDistributor() {
+    await this.setupDistributorTrustline();
+  }
 }
 
 class NetworkHandler {
