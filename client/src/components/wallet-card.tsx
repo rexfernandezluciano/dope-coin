@@ -12,7 +12,6 @@ import {
   QrCode,
   Loader2,
   Fuel,
-  AlertTriangle,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useState } from "react";
@@ -25,9 +24,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../components/ui/dialog.js";
-import { Badge } from "../components/ui/badge.js";
-import { Separator } from "../components/ui/separator.js";
-import { Alert, AlertDescription } from "../components/ui/alert.js";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "../hooks/use-toast.js";
 import { apiRequest, queryClient } from "../lib/queryClient.js";
@@ -43,7 +39,6 @@ export const WalletCard = () => {
 
   const gasBalance = parseFloat(wallet?.gasBalance || "0");
   const hasLowGas = gasBalance < 10; // Warning if less than 10 GAS
-  const hasNoGas = gasBalance === 0; // Critical if no GAS
 
   // Conversion mutation
   const convertMutation = useMutation({
@@ -176,19 +171,19 @@ export const WalletCard = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+        <div className="mt-4">
           <Dialog>
             <DialogTrigger asChild>
               <Button
                 variant={hasLowGas ? "default" : "outline"}
                 size="sm"
-                className="w-full"
+                className="w-full hover:bg-primary/10 hover:text-primary"
               >
                 <Fuel className="w-4 h-4 mr-2" />
                 Get GAS
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="w-full h-full md:h-auto">
               <DialogHeader>
                 <DialogTitle>Convert XLM to GAS</DialogTitle>
                 <p className="text-sm text-muted-foreground">
@@ -201,13 +196,14 @@ export const WalletCard = () => {
 
               <div className="space-y-4">
                 <div>
-                  <Label className="pb-2" htmlFor="convert-amount">
-                    XLM Amount
+                  <Label htmlFor="convert-amount">
+                    Enter Amount
                   </Label>
                   <Input
+                    className="mt-4"
                     id="convert-amount"
                     type="number"
-                    placeholder="1.0"
+                    placeholder="Min. 1.0"
                     value={convertAmount}
                     onChange={(e) => setConvertAmount(e.target.value)}
                     step="0.1"
@@ -261,7 +257,7 @@ export const WalletCard = () => {
                   )}
                   {convertMutation.isPending
                     ? "Converting..."
-                    : "Convert to GAS"}
+                    : "Convert"}
                 </Button>
 
                 {parseFloat(convertAmount || "0") >

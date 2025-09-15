@@ -208,6 +208,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const { fullName, profilePicture } = req.body;
 
+      if (!fullName && !profilePicture) {
+        return res.status(400).json({ message: "No fields to update" });
+      }
+
       const updatedUser = await storage.updateUser(userId, {
         fullName,
         profilePicture,
@@ -755,7 +759,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const totalSupply = await stellarService.getCirculatingSupply();
       const maxSupply = 100000000;
 
-      if (query.type === "total")  {
+      if (query.type === "total") {
         return res.status(200).send(totalSupply.toString()); // Total Supply
       }
 
@@ -778,9 +782,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error("Network supply error:", error);
-      res
-        .status(500)
-        .json({ message: "Internal server error" });
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
