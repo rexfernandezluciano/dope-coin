@@ -3,7 +3,6 @@ import { createServer, type Server } from "http";
 import bcrypt from "bcrypt";
 import { storage } from "../storage.js";
 import { authMiddleware } from "../middleware/auth.js";
-import { rateLimiter } from "../middleware/rateLimiter.js";
 import { jwtService } from "../services/jwt.js";
 import { stellarService } from "../services/stellar.js";
 import { miningService } from "../services/mining.js";
@@ -16,11 +15,22 @@ import {
   orderbookQuerySchema,
   updateProfileSchema,
   updateUsernameSchema,
-  sendVerificationEmailSchema,
   verifyEmailSchema,
 } from "../../shared/schema.js";
 import { Asset } from "@stellar/stellar-sdk";
 import z from "zod";
+import rateLimit from "express-rate-limit";
+
+var rateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // max 100 requests per windowMs
+  message: {
+    error: "Too many requests, please try again later.",
+    retryAfter: 15 * 60 * 1000,
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
@@ -161,7 +171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Protected routes
-  app.use("/api/protected", authMiddleware);
+  app.use("/api/protected", rateLimiter, authMiddleware);
 
   // User profile routes
   app.get("/api/protected/profile", async (req, res) => {
@@ -339,7 +349,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/protected/mining/claimable", async (req, res) => {
+  app.post("/api/protected/mining/claimable", rateLimiter, async (req, res) => {
     const userId = req.user?.id;
 
     if (!userId) {
@@ -894,8 +904,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/protected/verify-email", async (req, res) => {
     try {
       const userId = req.user?.id;
-      const { code } = req.body;
-
+      const { code } = verifyEmailSchema.parse(req.body);
       if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }

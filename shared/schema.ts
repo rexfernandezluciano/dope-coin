@@ -36,7 +36,7 @@ export const miningSessions = pgTable("mining_sessions", {
 export const transactions = pgTable("transactions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
-  type: text("type").notNull(), // 'mining_reward', 'send', 'receive', 'referral_bonus'
+  type: text("type").notNull(), // 'mining_reward', 'send', 'receive', 'referral_bonus', 'swap', 'trade', 'add_liquidity', 'remove_liquidity', 'gas_conversion', 'verification_bonus'
   amount: decimal("amount", { precision: 18, scale: 8 }).notNull(),
   fromAddress: text("from_address"),
   toAddress: text("to_address"),
