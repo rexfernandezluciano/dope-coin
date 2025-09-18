@@ -41,6 +41,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       .sendFile(path.join(import.meta.dirname, "../.well-known/stellar.toml"));
   });
 
+  // DOPE Image
+  app.get("/assets/dope.png", (req, res) => {
+    res
+      .header("Content-Type", "image/png")
+      .sendFile(path.join(import.meta.dirname, "../assets/dope.png"));
+  });
+
   // Auth routes
   app.post("/api/auth/register", rateLimiter, async (req, res) => {
     try {
