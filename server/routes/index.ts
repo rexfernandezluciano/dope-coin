@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import bcrypt from "bcrypt";
+import path from "path";
 import { storage } from "../storage.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { jwtService } from "../services/jwt.js";
@@ -33,6 +34,13 @@ var rateLimiter = rateLimit({
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // .well-known/stellar.toml endpoint
+  app.get("/.well-known/stellar.toml", (req, res) => {
+    res
+      .header("Content-Type", "application/toml")
+      .sendFile(path.join(import.meta.dirname, "../.well-known/stellar.toml"));
+  });
+
   // Auth routes
   app.post("/api/auth/register", rateLimiter, async (req, res) => {
     try {

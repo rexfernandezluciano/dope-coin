@@ -11,7 +11,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { storage } from "../storage.js";
 
-// Replace the current STELLAR_NETWORK and STELLAR_SERVER_URL configuration
+// STELLAR_NETWORK and STELLAR_SERVER_URL configuration
 const STELLAR_NETWORK = process.env.STELLAR_NETWORK || "testnet";
 const STELLAR_SERVER_URLS = {
   testnet: "https://horizon-testnet.stellar.org",
@@ -138,6 +138,36 @@ async function initializePlatformAccounts() {
       console.error("Error initializing platform accounts:", error.message);
     }
   }
+
+  // Configure issuer account
+  try {
+    await configureIssuer();
+    console.log("Issuer account configured");
+  } catch {
+    console.log("Issuer already configured");
+  }
+}
+
+async function configureIssuer() {
+  const acc = await server.loadAccount(dopeIssuerKeypair.publicKey());
+
+  // Check if homeDomain is already set
+  if (acc.home_domain === "mine.dopp.eu.org") {
+    console.log("Issuer already configured with correct homeDomain.");
+    return;
+  }
+
+  const tx = new TransactionBuilder(acc, {
+    fee: "100",
+    networkPassphrase,
+  })
+    .addOperation(Operation.setOptions({ homeDomain: "mine.dopp.eu.org" }))
+    .setTimeout(60)
+    .build();
+
+  tx.sign(dopeIssuerKeypair);
+  await server.submitTransaction(tx);
+  console.log("Issuer configuration submitted.");
 }
 
 // Initialize platform accounts
@@ -1857,10 +1887,10 @@ export class StellarService {
         dopeDistributorKeypair.publicKey(),
       );
 
-      // Create claimant - user can claim balances within 24 hours
+      // Create claimant - user can claim balances anytime.
       const claimant = new Claimant(
         user.stellarPublicKey,
-        Claimant.predicateBeforeRelativeTime("86400"),
+        Claimant.predicateUnconditional(),
       );
 
       const formattedAmount = amount.replace(/[^0-9.]/g, "");
@@ -2191,7 +2221,7 @@ export class StellarService {
           Operation.changeTrust({
             asset: gasAsset,
             // Optional: set limit, or omit for maximum limit
-            // limit: "1000000000" // 1 billion GAS tokens max
+            // limit: "100000000" // 100 million GAS tokens max
           }),
         )
         .setTimeout(30)

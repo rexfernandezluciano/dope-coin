@@ -8,9 +8,11 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
 // Pretty print JSON responses
-app.set('json spaces', 2);
+app.set("json spaces", 2);
 
 app.use(cors());
+
+app.set("trust proxy", 1);
 
 app.use((req, res, next) => {
   const start = Date.now();
