@@ -142,7 +142,6 @@ async function initializePlatformAccounts() {
   // Configure issuer account
   try {
     await configureIssuer();
-    console.log("Issuer account configured");
   } catch {
     console.log("Issuer already configured");
   }
