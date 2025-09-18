@@ -8,6 +8,7 @@ import {
   Claimant,
   LiquidityPoolAsset,
   getLiquidityPoolId,
+  BASE_FEE as NETWORK_FEE,
 } from "@stellar/stellar-sdk";
 import { storage } from "../storage.js";
 
@@ -34,7 +35,7 @@ const networkPassphrase =
 
 const server = new Horizon.Server(STELLAR_SERVER_URL);
 
-const BASE_FEE = parseFloat(process.env.BASE_FEE || "1000");
+const BASE_FEE = parseInt(NETWORK_FEE);
 const LIQUIDITY_FEE = parseFloat(process.env.LIQUIDITY_FEE || "3000");
 const ACCOUNT_FEE = parseFloat(process.env.ACCOUNT_FEE || "100000");
 
@@ -47,8 +48,9 @@ const DOPE_DISTRIBUTOR_SECRET =
 const dopeIssuerKeypair = Keypair.fromSecret(DOPE_ISSUER_SECRET);
 const dopeDistributorKeypair = Keypair.fromSecret(DOPE_DISTRIBUTOR_SECRET);
 
-const UsdtIssuerPublicKey =
-  "GA5IK5GGEH2ZPSJOLHS6X5DXNX7VVV35PPMUUKAZPCQ7NB7NSVRZ3WOI";
+const USDC_ISSUER_ACCOUNT =
+  process.env.USDC_ISSUER_ACCOUNT ||
+  "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
 
 if (process.env.NODE_ENV === "development") {
   console.log(`DOPE Issuer: ${dopeIssuerKeypair.publicKey()}`);
@@ -133,9 +135,11 @@ async function initializePlatformAccounts() {
       await server.submitTransaction(issueTransaction);
 
       // Set up GAS asset (issuer keeps control to mint on demand)
-      console.log("DOPE and GAS token platform setup completed");
+      await new Promise((resolve) =>
+        resolve("DOPE and GAS token platform setup completed"),
+      );
     } catch (error: any) {
-      console.error("Error initializing platform accounts:", error.message);
+      handleStellarError(error, "Failed to initialize platform accounts");
     }
   }
 
@@ -157,7 +161,7 @@ async function configureIssuer() {
   }
 
   const tx = new TransactionBuilder(acc, {
-    fee: "100",
+    fee: BASE_FEE.toString(),
     networkPassphrase,
   })
     .addOperation(Operation.setOptions({ homeDomain: "mine.dopp.eu.org" }))
@@ -170,12 +174,25 @@ async function configureIssuer() {
 }
 
 // Initialize platform accounts
-initializePlatformAccounts();
+initializePlatformAccounts()
+  .then((data: any) =>
+    console.log(`Platform accounts initialized: ${data.message}`),
+  )
+  .catch((error: any) =>
+    console.error(`Error initializing platform accounts: ${error.message}`),
+  );
 
 export class StellarService {
   generateKeypair(): Keypair {
     return Keypair.random();
   }
+
+  // Define supported assets with correct issuers
+  SUPPORTED_ASSETS = {
+    XLM: Asset.native(),
+    DOPE: new Asset("DOPE", dopeIssuerKeypair.publicKey()),
+    USDC: new Asset("USDC", USDC_ISSUER_ACCOUNT), // MoneyGram USDC issuer
+  };
 
   async getXLMBalance(userId: string): Promise<number> {
     try {
@@ -795,6 +812,28 @@ export class StellarService {
   }
 
   // Simplified trading for testnet
+
+  // Validate and normalize assets to use supported versions
+  validateAndNormalizeAsset = (asset: Asset): Asset => {
+    if (asset.isNative()) return this.SUPPORTED_ASSETS.XLM;
+
+    const assetKey = Object.keys(this.SUPPORTED_ASSETS).find((key) => {
+      const supportedAsset =
+        this.SUPPORTED_ASSETS[key as keyof typeof this.SUPPORTED_ASSETS];
+      return !supportedAsset.isNative() && supportedAsset.code === asset.code;
+    });
+
+    if (!assetKey) {
+      throw new Error(
+        `Unsupported asset: ${asset.code}. Supported assets: ${Object.keys(this.SUPPORTED_ASSETS).join(", ")}`,
+      );
+    }
+
+    return this.SUPPORTED_ASSETS[
+      assetKey as keyof typeof this.SUPPORTED_ASSETS
+    ];
+  };
+
   async executeTestnetTrade(
     userId: string,
     sellAsset: Asset,
@@ -809,55 +848,151 @@ export class StellarService {
       }
 
       const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
-      const userAccount = await server.loadAccount(userKeypair.publicKey());
+      let userAccount = await server.loadAccount(userKeypair.publicKey());
 
-      // Validate user has sufficient balance
+      // Normalize assets to use supported versions
+      sellAsset = this.validateAndNormalizeAsset(sellAsset);
+      buyAsset = this.validateAndNormalizeAsset(buyAsset);
+
       const sellAmountNum = parseFloat(sellAmount);
       const minBuyAmountNum = parseFloat(minBuyAmount);
-
       if (sellAmountNum <= 0 || minBuyAmountNum <= 0) {
         throw new Error("Invalid trade amounts");
       }
 
+      // Function to check and create trustlines if needed
+      const ensureTrustline = async (asset: Asset) => {
+        if (asset.isNative()) return; // XLM doesn't need trustlines
+
+        const hasTrustline = userAccount.balances.some(
+          (b: any) =>
+            b.asset_type === "credit_alphanum4" &&
+            b.asset_code === asset.code &&
+            b.asset_issuer === asset.issuer,
+        );
+
+        if (!hasTrustline) {
+          console.log(
+            `Creating trustline for ${asset.code} from issuer ${asset.issuer}`,
+          );
+
+          const trustlineTx = new TransactionBuilder(userAccount, {
+            fee: BASE_FEE.toString(),
+            networkPassphrase,
+          })
+            .addOperation(
+              Operation.changeTrust({
+                asset: asset,
+                limit: "922337203685.4775807", // Maximum limit
+              }),
+            )
+            .setTimeout(60)
+            .build();
+
+          trustlineTx.sign(userKeypair);
+          const trustlineResult = await server.submitTransaction(trustlineTx);
+          console.log(
+            `Trustline created successfully: ${trustlineResult.hash}`,
+          );
+
+          // Reload account after trustline creation
+          userAccount = await server.loadAccount(userKeypair.publicKey());
+        }
+      };
+
+      // Ensure trustlines for both assets before trading
+      await ensureTrustline(sellAsset);
+      await ensureTrustline(buyAsset);
+
       // Check user balance for sell asset
-      if (sellAsset.isNative()) {
-        const xlmBalance = userAccount.balances.find(
-          (balance: any) => balance.asset_type === "native",
-        );
-        if (parseFloat(xlmBalance?.balance || "0") < sellAmountNum + 0.1) {
-          throw new Error("Insufficient XLM balance (including fees)");
+      const hasSufficientBalance = (asset: Asset, amount: number) => {
+        if (asset.isNative()) {
+          const xlmBalance = userAccount.balances.find(
+            (b: any) => b.asset_type === "native",
+          );
+          return parseFloat(xlmBalance?.balance || "0") >= amount + 0.1; // Reserve for fees
+        } else {
+          const assetBalance = userAccount.balances.find(
+            (b: any) =>
+              b.asset_type === "credit_alphanum4" &&
+              b.asset_code === asset.code &&
+              b.asset_issuer === asset.issuer,
+          );
+          return parseFloat(assetBalance?.balance || "0") >= amount;
         }
-      } else {
-        const assetBalance = userAccount.balances.find(
-          (balance: any) =>
-            balance.asset_type === "credit_alphanum4" &&
-            balance.asset_code === sellAsset.code &&
-            balance.asset_issuer === sellAsset.issuer,
-        );
-        if (parseFloat(assetBalance?.balance || "0") < sellAmountNum) {
-          throw new Error(`Insufficient ${sellAsset.code} balance`);
-        }
+      };
+
+      if (!hasSufficientBalance(sellAsset, sellAmountNum)) {
+        throw new Error(`Insufficient ${sellAsset.code || "XLM"} balance`);
       }
 
-      // Calculate exchange rate (1 XLM = 10 DOPE, 1 DOPE = 0.1 XLM)
-      let expectedReceive: number;
-      if (sellAsset.isNative() && buyAsset.code === "DOPE") {
-        expectedReceive = sellAmountNum * 10; // XLM to DOPE
-      } else if (sellAsset.code === "DOPE" && buyAsset.isNative()) {
-        expectedReceive = sellAmountNum * 0.1; // DOPE to XLM
-      } else {
-        throw new Error("Unsupported trading pair");
-      }
+      // Exchange rate logic with normalized assets
+      const getExchangeRate = (sell: Asset, buy: Asset): number => {
+        const sellCode = sell.code || "XLM";
+        const buyCode = buy.code || "XLM";
+        const pair = `${sellCode}->${buyCode}`;
+
+        const rates: Record<string, number> = {
+          "XLM->DOPE": 10,
+          "DOPE->XLM": 0.1,
+          "USDC->DOPE": 8,
+          "DOPE->USDC": 0.125, // Fixed rate: 1 DOPE = 0.125 USDC
+          "XLM->USDC": 0.12,
+          "USDC->XLM": 8.3,
+        };
+
+        if (!rates[pair]) {
+          throw new Error(
+            `Unsupported trading pair: ${pair}. Available pairs: ${Object.keys(rates).join(", ")}`,
+          );
+        }
+
+        return rates[pair];
+      };
+
+      const exchangeRate = getExchangeRate(sellAsset, buyAsset);
+      const expectedReceive = sellAmountNum * exchangeRate;
 
       if (expectedReceive < minBuyAmountNum) {
         throw new Error(
-          `Trade would receive ${expectedReceive.toFixed(6)} but minimum required is ${minBuyAmount}`,
+          `Trade would receive ${expectedReceive.toFixed(6)} ${buyAsset.code || "XLM"} but minimum required is ${minBuyAmount}`,
         );
       }
 
       const receiveAmount = expectedReceive.toFixed(7);
 
-      // Execute the swap as two separate payments
+      // Ensure distributor has trustlines and sufficient balance
+      const distributorAccount = await server.loadAccount(
+        dopeDistributorKeypair.publicKey(),
+      );
+
+      // Check if distributor has sufficient balance for the buy asset
+      const distributorHasSufficientBalance = (
+        asset: Asset,
+        amount: number,
+      ) => {
+        if (asset.isNative()) {
+          const xlmBalance = distributorAccount.balances.find(
+            (b: any) => b.asset_type === "native",
+          );
+          return parseFloat(xlmBalance?.balance || "0") >= amount + 0.1;
+        } else {
+          const assetBalance = distributorAccount.balances.find(
+            (b: any) =>
+              b.asset_type === "credit_alphanum4" &&
+              b.asset_code === asset.code &&
+              b.asset_issuer === asset.issuer,
+          );
+          return parseFloat(assetBalance?.balance || "0") >= amount;
+        }
+      };
+
+      if (!distributorHasSufficientBalance(buyAsset, expectedReceive)) {
+        throw new Error(
+          `Distributor has insufficient ${buyAsset.code || "XLM"} balance to complete trade`,
+        );
+      }
+
       // 1. User sends sell asset to distributor
       const userToDistributorTx = new TransactionBuilder(userAccount, {
         fee: BASE_FEE.toString(),
@@ -875,6 +1010,7 @@ export class StellarService {
 
       userToDistributorTx.sign(userKeypair);
       const sellResult = await server.submitTransaction(userToDistributorTx);
+      console.log(`Sell transaction completed: ${sellResult.hash}`);
 
       // 2. Distributor sends buy asset to user
       const updatedDistributorAccount = await server.loadAccount(
@@ -900,8 +1036,9 @@ export class StellarService {
 
       distributorToUserTx.sign(dopeDistributorKeypair);
       const buyResult = await server.submitTransaction(distributorToUserTx);
+      console.log(`Buy transaction completed: ${buyResult.hash}`);
 
-      // Record trade transaction
+      // Record trade in database
       await storage.createTransaction({
         userId,
         type: "trade",
@@ -913,48 +1050,84 @@ export class StellarService {
         status: "completed",
         metadata: {
           tradeType: "swap",
-          sellAsset: sellAsset.code || "XLM",
-          buyAsset: buyAsset.code || "XLM",
+          sellAsset: {
+            code: sellAsset.code || "XLM",
+            issuer: sellAsset.isNative() ? null : sellAsset.issuer,
+          },
+          buyAsset: {
+            code: buyAsset.code || "XLM",
+            issuer: buyAsset.isNative() ? null : buyAsset.issuer,
+          },
           sellAmount,
           receiveAmount,
           minBuyAmount,
           sellTxHash: sellResult.hash,
           buyTxHash: buyResult.hash,
-          exchangeRate: sellAsset.isNative() ? "10" : "0.1",
+          exchangeRate: exchangeRate.toString(),
         },
       });
 
       console.log(
-        `Trade executed: ${sellAmount} ${sellAsset.code || "XLM"} -> ${receiveAmount} ${buyAsset.code || "XLM"}`,
+        `Trade executed successfully: ${sellAmount} ${sellAsset.code || "XLM"} -> ${receiveAmount} ${buyAsset.code || "XLM"}`,
       );
 
       return {
         hash: buyResult.hash,
         status: "completed",
-        sellAsset: sellAsset.code || "XLM",
-        buyAsset: buyAsset.code || "XLM",
+        sellAsset: {
+          code: sellAsset.code || "XLM",
+          issuer: sellAsset.isNative() ? null : sellAsset.issuer,
+        },
+        buyAsset: {
+          code: buyAsset.code || "XLM",
+          issuer: buyAsset.isNative() ? null : buyAsset.issuer,
+        },
         sellAmount,
         receiveAmount,
         sellTxHash: sellResult.hash,
         buyTxHash: buyResult.hash,
+        exchangeRate: exchangeRate.toString(),
       };
     } catch (error: any) {
       console.error("Error executing trade:", error);
 
-      // Provide more specific error messages
+      // Enhanced error handling for trustline and balance issues
       if (error.response?.data?.extras?.result_codes) {
         const resultCodes = error.response.data.extras.result_codes;
+        const operations = resultCodes.operations || [];
+
         if (resultCodes.transaction === "tx_insufficient_balance") {
-          throw new Error("Insufficient balance for this trade");
+          throw new Error("Insufficient balance to pay transaction fees");
         }
-        if (resultCodes.operations?.includes("op_underfunded")) {
+
+        if (operations.includes("op_underfunded")) {
           throw new Error("Insufficient funds to complete trade");
         }
-        if (resultCodes.operations?.includes("op_no_trust")) {
-          throw new Error("Missing trustline for trading asset");
+
+        if (operations.includes("op_no_trust")) {
+          throw new Error(
+            "Missing trustline for trading asset. This should have been created automatically - please try again.",
+          );
         }
+
+        if (operations.includes("op_line_full")) {
+          throw new Error("Asset trustline is at maximum capacity");
+        }
+
+        if (operations.includes("op_no_destination")) {
+          throw new Error("Destination account does not exist");
+        }
+
+        if (operations.includes("op_not_authorized")) {
+          throw new Error(
+            "Not authorized to perform this operation with the asset",
+          );
+        }
+
+        console.error("Stellar transaction failed with codes:", resultCodes);
       }
 
+      // Re-throw with original message if no specific handling
       throw new Error(error.message || "Failed to execute trade");
     }
   }
@@ -1428,95 +1601,101 @@ export class StellarService {
 
       // Check minimum amounts for fees
       if (amountANum < 0.5) {
-        throw new Error("Minimum XLM amount for liquidity is 0.5 XLM");
+        throw new Error("Minimum amount for liquidity is 0.5");
       }
 
       if (amountBNum < 0.1) {
-        throw new Error("Minimum DOPE amount for liquidity is 0.1 DOPE");
+        throw new Error("Minimum amount for liquidity is 0.1");
+      }
+
+      // Validate price range
+      const minPriceNum = parseFloat(minPrice);
+      const maxPriceNum = parseFloat(maxPrice);
+      const currentPrice = amountBNum / amountANum;
+
+      if (currentPrice < minPriceNum || currentPrice > maxPriceNum) {
+        throw new Error(
+          `Current price ${currentPrice.toFixed(6)} is outside the specified range [${minPrice}, ${maxPrice}]`,
+        );
       }
 
       // Validate user has sufficient balances
-      const xlmBalance = account.balances.find(
-        (balance: any) => balance.asset_type === "native",
+      await this.validateUserBalances(
+        account,
+        assetA,
+        assetB,
+        amountANum,
+        amountBNum,
       );
-      const dopeBalance = account.balances.find(
+
+      // Create liquidity pool asset
+      const liquidityPoolAsset = new LiquidityPoolAsset(assetA, assetB, 30); // 30 basis points fee
+      const poolId = getLiquidityPoolId(
+        "constant_product",
+        liquidityPoolAsset,
+      ).toString("hex");
+
+      // Check if user has trustline to liquidity pool
+      const hasPoolTrustline = account.balances.some(
         (balance: any) =>
-          balance.asset_type === "credit_alphanum4" &&
-          balance.asset_code === "DOPE" &&
-          balance.asset_issuer === dopeIssuerKeypair.publicKey(),
+          balance.asset_type === "liquidity_pool_shares" &&
+          balance.liquidity_pool_id === poolId,
       );
 
-      const xlmAmount = parseFloat(xlmBalance?.balance || "0");
-      const dopeAmount = parseFloat(dopeBalance?.balance || "0");
+      let transaction;
+      const operations = [];
 
-      // Check if user has sufficient XLM (including fees)
-      if (xlmAmount < amountANum + 1.0) {
-        throw new Error(
-          `Insufficient XLM balance. You have ${xlmAmount.toFixed(2)} XLM but need ${(amountANum + 1.0).toFixed(2)} XLM (including fees)`,
+      // Add trustline to liquidity pool if it doesn't exist
+      if (!hasPoolTrustline) {
+        operations.push(
+          Operation.changeTrust({
+            asset: liquidityPoolAsset,
+            limit: "1000000", // Set a reasonable limit
+          }),
         );
       }
 
-      // Check if user has sufficient DOPE
-      if (dopeAmount < amountBNum) {
-        throw new Error(
-          `Insufficient DOPE balance. You have ${dopeAmount.toFixed(2)} DOPE but need ${amountBNum} DOPE`,
-        );
-      }
+      // Add liquidity pool deposit operation
+      operations.push(
+        Operation.liquidityPoolDeposit({
+          liquidityPoolId: poolId,
+          maxAmountA: amountA,
+          maxAmountB: amountB,
+          minPrice: minPrice,
+          maxPrice: maxPrice,
+        }),
+      );
 
-      // Use simple direct swap approach instead of liquidity pools for now
-      // This will be more reliable on testnet
+      // Build transaction
+      transaction = new TransactionBuilder(account, {
+        fee: (BASE_FEE * operations.length * 2).toString(), // Higher fee for multiple operations
+        networkPassphrase: Networks.TESTNET,
+      });
 
-      // Send XLM to distributor
-      const xlmToDistributorTx = new TransactionBuilder(account, {
-        fee: BASE_FEE.toString(),
-        networkPassphrase,
-      })
-        .addOperation(
-          Operation.payment({
-            destination: dopeDistributorKeypair.publicKey(),
-            asset: Asset.native(),
-            amount: amountA,
-          }),
-        )
-        .setTimeout(60)
-        .build();
+      // Add all operations
+      operations.forEach((op) => transaction.addOperation(op));
 
-      xlmToDistributorTx.sign(userKeypair);
-      const xlmResult = await server.submitTransaction(xlmToDistributorTx);
+      const builtTransaction = transaction.setTimeout(60).build();
+      builtTransaction.sign(userKeypair);
 
-      // Wait a moment
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Submit transaction
+      const result = await server.submitTransaction(builtTransaction);
 
-      // Send DOPE to distributor
-      const updatedAccount = await server.loadAccount(userKeypair.publicKey());
-      const dopeToDistributorTx = new TransactionBuilder(updatedAccount, {
-        fee: BASE_FEE.toString(),
-        networkPassphrase,
-      })
-        .addOperation(
-          Operation.payment({
-            destination: dopeDistributorKeypair.publicKey(),
-            asset: new Asset("DOPE", dopeIssuerKeypair.publicKey()),
-            amount: amountB,
-          }),
-        )
-        .setTimeout(60)
-        .build();
+      // Calculate liquidity shares received
+      const liquidityShares = await this.calculateLiquidityShares(
+        poolId,
+        amountANum,
+        amountBNum,
+      );
 
-      dopeToDistributorTx.sign(userKeypair);
-      const dopeResult = await server.submitTransaction(dopeToDistributorTx);
-
-      // Create a fake pool ID for tracking
-      const poolId = `${userKeypair.publicKey().slice(0, 8)}-${Date.now()}`;
-
-      // Record liquidity addition
+      // Record liquidity addition in storage
       await storage.createTransaction({
         userId,
         type: "add_liquidity",
-        amount: amountA, // Store primary amount (XLM) as the main amount
+        amount: amountA,
         fromAddress: userKeypair.publicKey(),
         toAddress: poolId,
-        stellarTxId: dopeResult.hash,
+        stellarTxId: result.hash,
         assetType: `${assetA.code || "XLM"}-${assetB.code || "XLM"}-LP`,
         status: "completed",
         metadata: {
@@ -1527,46 +1706,154 @@ export class StellarService {
           amountB,
           minPrice,
           maxPrice,
-          xlmTxHash: xlmResult.hash,
-          dopeTxHash: dopeResult.hash,
-          liquidityShares: (amountANum * amountBNum).toFixed(6), // Simple calculation
+          liquidityShares: liquidityShares.toString(),
+          txHash: result.hash,
+          poolCreated: !hasPoolTrustline,
         },
       });
 
       console.log(
-        `Added liquidity: ${amountA} ${assetA.code || "XLM"} + ${amountB} ${assetB.code || "XLM"}`,
+        `Added liquidity to pool ${poolId}: ${amountA} ${assetA.code || "XLM"} + ${amountB} ${assetB.code || "XLM"}`,
       );
 
       return {
-        hash: dopeResult.hash,
+        hash: result.hash,
         status: "completed",
         poolId,
         assetA: assetA.code || "XLM",
         assetB: assetB.code || "XLM",
         amountA,
         amountB,
+        liquidityShares,
+        poolCreated: !hasPoolTrustline,
       };
     } catch (error: any) {
       console.error("Error adding liquidity:", error);
 
-      // Provide more specific error messages
+      // Enhanced error handling
       if (error.response?.data?.extras?.result_codes) {
         const resultCodes = error.response.data.extras.result_codes;
+        const operationCodes = resultCodes.operations || [];
+
         if (resultCodes.transaction === "tx_insufficient_balance") {
           throw new Error("Insufficient balance for this operation");
         }
-        if (resultCodes.operations?.includes("op_underfunded")) {
+
+        if (operationCodes.includes("op_underfunded")) {
           throw new Error("Insufficient funds to complete liquidity operation");
         }
-        if (resultCodes.operations?.includes("op_line_full")) {
+
+        if (operationCodes.includes("op_line_full")) {
           throw new Error("Asset balance limit exceeded");
         }
-        if (resultCodes.operations?.includes("op_no_trust")) {
-          throw new Error("Missing trustline for liquidity pool");
+
+        if (operationCodes.includes("op_no_trust")) {
+          throw new Error("Missing trustline for one of the assets");
+        }
+
+        if (operationCodes.includes("op_liquidity_pool_not_found")) {
+          throw new Error(
+            "Liquidity pool does not exist and could not be created",
+          );
+        }
+
+        if (operationCodes.includes("op_liquidity_pool_bad_price")) {
+          throw new Error(
+            "Price is outside acceptable range for this liquidity pool",
+          );
         }
       }
 
       throw new Error(error.message || "Failed to add liquidity");
+    }
+  }
+
+  // Helper method to validate user balances
+  private async validateUserBalances(
+    account: any,
+    assetA: Asset,
+    assetB: Asset,
+    amountANum: number,
+    amountBNum: number,
+  ): Promise<void> {
+    const balances: any = account.balances;
+
+    // Check asset A balance
+    const balanceA = this.getAssetBalance(balances, assetA);
+    if (balanceA < amountANum + (assetA.isNative() ? 1.0 : 0)) {
+      const needed = amountANum + (assetA.isNative() ? 1.0 : 0);
+      throw new Error(
+        `Insufficient ${assetA.code || "XLM"} balance. You have ${balanceA.toFixed(2)} but need ${needed.toFixed(2)} (including fees)`,
+      );
+    }
+
+    // Check asset B balance
+    const balanceB = this.getAssetBalance(balances, assetB);
+    if (balanceB < amountBNum) {
+      throw new Error(
+        `Insufficient ${assetB.code || "XLM"} balance. You have ${balanceB.toFixed(2)} but need ${amountBNum}`,
+      );
+    }
+  }
+
+  // Helper method to get balance for a specific asset
+  private getAssetBalance(balances: any[], asset: Asset): number {
+    let balance;
+
+    if (asset.isNative()) {
+      balance = balances.find((b) => b.asset_type === "native");
+    } else {
+      balance = balances.find(
+        (b) =>
+          b.asset_type === "credit_alphanum4" &&
+          b.asset_code === asset.code &&
+          b.asset_issuer === asset.issuer,
+      );
+    }
+
+    return parseFloat(balance?.balance || "0");
+  }
+
+  // Helper method to calculate expected liquidity shares
+  private async calculateLiquidityShares(
+    poolId: string,
+    amountA: number,
+    amountB: number,
+  ): Promise<number> {
+    try {
+      // Try to get pool info to calculate shares more accurately
+      const poolInfo = await server
+        .liquidityPools()
+        .liquidityPoolId(poolId)
+        .call();
+
+      if (poolInfo.total_shares === "0") {
+        // New pool, shares = sqrt(amountA * amountB) - minimum liquidity
+        return Math.sqrt(amountA * amountB) - 0.001;
+      } else {
+        // Existing pool, calculate proportional shares
+        const totalShares = parseFloat(poolInfo.total_shares);
+        const reserveA = parseFloat(poolInfo.reserves[0].amount);
+        const reserveB = parseFloat(poolInfo.reserves[1].amount);
+
+        const sharesA = (amountA * totalShares) / reserveA;
+        const sharesB = (amountB * totalShares) / reserveB;
+
+        return Math.min(sharesA, sharesB);
+      }
+    } catch (error) {
+      // Fallback calculation if pool info is not available
+      return Math.sqrt(amountA * amountB);
+    }
+  }
+
+  // Additional helper method to check if liquidity pool exists
+  private async checkPoolExists(poolId: string): Promise<boolean> {
+    try {
+      await server.liquidityPools().liquidityPoolId(poolId).call();
+      return true;
+    } catch (error) {
+      return false;
     }
   }
 
@@ -1734,8 +2021,8 @@ export class StellarService {
       },
       {
         baseAsset: dopeAsset,
-        quoteAsset: new Asset("USDT", UsdtIssuerPublicKey),
-        symbol: "DOPE/USDT",
+        quoteAsset: new Asset("USDC", USDC_ISSUER_ACCOUNT),
+        symbol: "DOPE/USDC",
       },
     ];
   }
@@ -2192,7 +2479,7 @@ export class StellarService {
   // Add this function to set up the distributor account with GAS trustline
   private async setupDistributorTrustline(): Promise<void> {
     try {
-      console.log("Setting up GAS trustline for distributor account...");
+      console.log("Setting up Trustline for distributor account...");
 
       const distributorAccount = await server.loadAccount(
         dopeDistributorKeypair.publicKey(),
@@ -2207,6 +2494,7 @@ export class StellarService {
       );
 
       if (existingTrustline) {
+        await this.buildTrustlineTransaction(distributorAccount);
         console.log("GAS trustline already exists for distributor");
         return;
       }
@@ -2229,21 +2517,126 @@ export class StellarService {
       transaction.sign(dopeDistributorKeypair);
       const result = await server.submitTransaction(transaction);
 
+      await this.buildTrustlineTransaction(distributorAccount);
+
       console.log(
-        `GAS trustline created for distributor. Transaction: ${result.hash}`,
+        `Trustline created for distributor. Transaction Hash: GAS-${result.hash}`,
       );
     } catch (error: any) {
       console.error("Error setting up distributor trustline:", error);
-      throw new Error(
-        "Failed to setup distributor trustline: " + error.message,
-      );
+      try {
+        const dopeDistributorAccount = await server.loadAccount(
+          dopeDistributorKeypair.publicKey(),
+        );
+        this.buildTrustlineTransaction(dopeDistributorAccount);
+        console.log("Trustline created to distributor for USDC.");
+      } catch (error: any) {
+        throw new Error(
+          "Failed to setup distributor trustline: " + error.message,
+        );
+      }
     }
   }
+
+  buildTrustlineTransaction = async (account: any) => {
+    try {
+      const existingUSDCTrustline = account.balances.find(
+        (balance: any) =>
+          balance.asset_code === "USDC" &&
+          balance.asset_issuer === USDC_ISSUER_ACCOUNT,
+      );
+
+      if (existingUSDCTrustline) {
+        console.error("USDC trustline already exists for distributor");
+        return;
+      }
+
+      const transaction = new TransactionBuilder(account, {
+        fee: BASE_FEE.toString(),
+        networkPassphrase,
+      })
+        .addOperation(
+          Operation.changeTrust({
+            asset: new Asset("USDC", USDC_ISSUER_ACCOUNT),
+          }),
+        )
+        .setTimeout(30)
+        .build();
+
+      transaction.sign(dopeDistributorKeypair);
+
+      const result = await server.submitTransaction(transaction);
+    } catch (error: any) {
+      console.error("Error setting up distributor trustline:", error);
+    }
+  };
 
   // Call this during your app initialization
   async initializeDistributor() {
     await this.setupDistributorTrustline();
   }
+
+  createTrustline = async (
+    userId: string,
+    assetCode: string,
+    assetIssuer: string,
+  ) => {
+    try {
+      const user = await storage.getUser(userId);
+      if (!user?.stellarSecretKey) {
+        throw new Error("User stellar account not found");
+      }
+
+      const asset = new Asset(assetCode, assetIssuer);
+
+      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+
+      const account = await server.loadAccount(userKeypair.publicKey());
+
+      const existingTrustline = account.balances.find(
+        (balance: any) =>
+          balance.asset_type === asset.getAssetType() &&
+          balance.asset_code === asset.code &&
+          balance.asset_issuer === asset.issuer,
+      );
+
+      if (!existingTrustline) {
+        const transaction = new TransactionBuilder(account, {
+          fee: BASE_FEE.toString(),
+          networkPassphrase,
+        })
+          .addOperation(
+            Operation.changeTrust({
+              asset: asset,
+            }),
+          )
+          .setTimeout(30)
+          .build();
+        transaction.sign(userKeypair);
+        const result = await server.submitTransaction(transaction);
+        console.log(`Trustline created for ${assetCode} by user ${userId}`);
+
+        storage.createTransaction({
+          userId,
+          type: "trustline",
+          amount: "0",
+          fromAddress: userKeypair.publicKey(),
+          toAddress: assetIssuer,
+          stellarTxId: result.hash,
+          assetType: assetCode,
+          status: "completed",
+          metadata: {
+            assetCode,
+            assetIssuer,
+          },
+        });
+      } else {
+        throw new Error(`Trustline for ${assetCode} already exists`);
+      }
+    } catch (error: any) {
+      handleStellarError(error, "Failed to add trustline");
+    }
+  };
 }
 
 class NetworkHandler {

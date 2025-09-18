@@ -2,21 +2,60 @@ import React, { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.js";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card.js";
 import { Button } from "../components/ui/button.js";
 import { Input } from "../components/ui/input.js";
 import { Label } from "../components/ui/label.js";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs.js";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select.js";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "../components/ui/tabs.js";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select.js";
 import { Badge } from "../components/ui/badge.js";
 import { Separator } from "../components/ui/separator.js";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../components/ui/form.js";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "../components/ui/form.js";
 import { useToast } from "../hooks/use-toast.js";
-import { TrendingUp, BarChart3, Droplets, Plus, Minus, Loader2 } from "lucide-react";
+import {
+  TrendingUp,
+  BarChart3,
+  Droplets,
+  Plus,
+  Minus,
+  Loader2,
+} from "lucide-react";
 import { queryClient, apiRequest } from "../lib/queryClient.js";
-import { executeTradeSchema, addLiquiditySchema, removeLiquiditySchema } from "../../../shared/schema.js";
-import type { ExecuteTradeRequest, AddLiquidityRequest, RemoveLiquidityRequest } from "../../../shared/schema.js";
+import {
+  executeTradeSchema,
+  addLiquiditySchema,
+  removeLiquiditySchema,
+} from "../../../shared/schema.js";
+import type {
+  ExecuteTradeRequest,
+  AddLiquidityRequest,
+  RemoveLiquidityRequest,
+} from "../../../shared/schema.js";
 import { z } from "zod";
+import { TrustAssetModal } from "../components/trust-asset-modal.js";
 
 interface TradingPair {
   baseAsset: any;
@@ -53,21 +92,71 @@ export default function TradingPage() {
   const { toast } = useToast();
   const [selectedPair, setSelectedPair] = useState<string>("DOPE/XLM");
 
+  const [trustModalOpen, setTrustModalOpen] = useState(false);
+  const [pendingTrustAsset, setPendingTrustAsset] = useState<{
+    code: string;
+    issuer: string;
+    domain?: string;
+  } | null>(null);
+  const [pendingTradeData, setPendingTradeData] =
+    useState<ExecuteTradeRequest | null>(null);
+
   // Fetch trading pairs
   const { data: tradingPairs, isLoading: tradingPairsLoading } = useQuery({
     queryKey: ["/api/protected/trade/pairs"],
   }) as { data: TradingPair[]; isLoading: boolean };
 
   // Get DOPE issuer from trading pairs
-  const dopeIssuer = tradingPairs?.find(pair => pair.baseAsset.issuer)?.baseAsset.issuer || "";
+  const dopeIssuer =
+    tradingPairs?.find((pair) => pair.baseAsset.issuer)?.baseAsset.issuer || "";
+
+  // Helper function to extract asset info from trading pairs and error messages
+  const getAssetFromError = (errorMessage: string, tradingPair: string) => {
+    // Find the quote asset from trading pairs that needs trust
+    const selectedPairData = tradingPairs?.find(
+      (pair) => pair.symbol === tradingPair,
+    );
+
+    if (selectedPairData) {
+      // Check if it's the quote asset (usually the one that needs trust)
+      const quoteAsset = selectedPairData.quoteAsset;
+
+      // If quote asset has an issuer, it's likely the one needing trust
+      if (quoteAsset.issuer && quoteAsset.code) {
+        return {
+          code: quoteAsset.code,
+          issuer: quoteAsset.issuer,
+          domain: quoteAsset.domain,
+        };
+      }
+
+      // Check base asset as fallback
+      const baseAsset = selectedPairData.baseAsset;
+      if (baseAsset.issuer && baseAsset.code) {
+        return {
+          code: baseAsset.code,
+          issuer: baseAsset.issuer,
+          domain: baseAsset.domain,
+        };
+      }
+    }
+
+    return null;
+  };
 
   // Trade form
   const tradeForm = useForm<z.infer<typeof tradeFormSchema>>({
     resolver: zodResolver(tradeFormSchema),
     defaultValues: {
       tradingPair: selectedPair,
-      sellAsset: selectedPair === "XLM/DOPE" ? { type: "native" } : { code: "DOPE", issuer: dopeIssuer },
-      buyAsset: selectedPair === "XLM/DOPE" ? { code: "DOPE", issuer: dopeIssuer } : { type: "native" },
+      sellAsset:
+        selectedPair === "XLM/DOPE"
+          ? { type: "native" }
+          : { code: "DOPE", issuer: dopeIssuer },
+      buyAsset:
+        selectedPair === "XLM/DOPE"
+          ? { code: "DOPE", issuer: dopeIssuer }
+          : { type: "native" },
       sellAmount: "",
       minBuyAmount: "",
     },
@@ -87,14 +176,20 @@ export default function TradingPage() {
   });
 
   // Fetch user's liquidity pools
-  const { data: liquidityPools, refetch: refetchPools, isLoading: poolsLoading } = useQuery({
+  const {
+    data: liquidityPools,
+    refetch: refetchPools,
+    isLoading: poolsLoading,
+  } = useQuery({
     queryKey: ["/api/protected/liquidity/pools"],
   }) as { data: LiquidityPool[]; refetch: () => void; isLoading: boolean };
 
   // Fetch wallet balance for validation
   const { data: walletBalance } = useQuery({
     queryKey: ["/api/protected/wallet"],
-  }) as { data: { xlmBalance: string; dopeBalance: string; gasBalance: string } };
+  }) as {
+    data: { xlmBalance: string; dopeBalance: string; gasBalance: string };
+  };
 
   // Execute trade mutation
   const executeTradeMutation = useMutation({
@@ -105,19 +200,40 @@ export default function TradingPage() {
     onSuccess: (data) => {
       toast({
         title: "Trade Successful",
-        description: `Swapped ${data.result?.sellAmount} ${data.result?.sellAsset} for ${data.result?.receiveAmount} ${data.result?.buyAsset}`,
+        description: `Swapped ${data.result?.sellAmount} ${data.result?.sellAsset?.code} for ${data.result?.receiveAmount} ${data.result?.buyAsset?.code}`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/protected/wallet"] });
       queryClient.invalidateQueries({ queryKey: ["/api/protected/transactions"] });
       tradeForm.reset();
+      setPendingTradeData(null); // Clear pending trade data
     },
-    onError: (error: any) => {
+    onError: (error: any, variables) => {
       let errorMessage = "Failed to execute trade";
 
       if (error.message) {
         errorMessage = error.message;
       } else if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
+      }
+
+      // Only show trust modal if trustline is missing, NOT if it already exists
+      const isMissingTrustline = (
+        errorMessage.includes("Missing trustline") || 
+        errorMessage.includes("op_no_trust")
+      ) && !errorMessage.includes("already exists");
+
+      if (isMissingTrustline) {
+        // Get the current trading pair from form
+        const currentTradingPair = tradeForm.getValues("tradingPair");
+        const assetToTrust = getAssetFromError(errorMessage, currentTradingPair);
+
+        if (assetToTrust) {
+          // Store the trade data to retry after trusting
+          setPendingTradeData(variables);
+          setPendingTrustAsset(assetToTrust);
+          setTrustModalOpen(true);
+          return; // Don't show the error toast, show the trust modal instead
+        }
       }
 
       toast({
@@ -140,7 +256,9 @@ export default function TradingPage() {
       }
 
       if (xlmAmount < 0.5) {
-        throw new Error("Minimum XLM amount is 0.5 XLM (to cover fees and reserves)");
+        throw new Error(
+          "Minimum XLM amount is 0.5 XLM (to cover fees and reserves)",
+        );
       }
 
       if (dopeAmount < 0.1) {
@@ -153,15 +271,23 @@ export default function TradingPage() {
         const userDope = parseFloat(walletBalance.dopeBalance);
 
         if (userXlm < xlmAmount + 1.0) {
-          throw new Error(`Insufficient XLM. You have ${userXlm.toFixed(2)} XLM but need ${(xlmAmount + 1.0).toFixed(2)} XLM (including fees)`);
+          throw new Error(
+            `Insufficient XLM. You have ${userXlm.toFixed(2)} XLM but need ${(xlmAmount + 1.0).toFixed(2)} XLM (including fees)`,
+          );
         }
 
         if (userDope < dopeAmount) {
-          throw new Error(`Insufficient DOPE. You have ${userDope.toFixed(2)} DOPE but need ${dopeAmount} DOPE`);
+          throw new Error(
+            `Insufficient DOPE. You have ${userDope.toFixed(2)} DOPE but need ${dopeAmount} DOPE`,
+          );
         }
       }
 
-      const response = await apiRequest("POST", "/api/protected/liquidity/add", data);
+      const response = await apiRequest(
+        "POST",
+        "/api/protected/liquidity/add",
+        data,
+      );
       return response.json();
     },
     onSuccess: () => {
@@ -192,14 +318,24 @@ export default function TradingPage() {
 
   // Remove liquidity mutation
   const removeLiquidityMutation = useMutation({
-    mutationFn: async ({ poolId, amount }: { poolId: string; amount: string }) => {
+    mutationFn: async ({
+      poolId,
+      amount,
+    }: {
+      poolId: string;
+      amount: string;
+    }) => {
       const data: RemoveLiquidityRequest = {
         poolId,
         amount,
         minAmountA: "0.1",
         minAmountB: "0.1",
       };
-      const response = await apiRequest("POST", "/api/protected/liquidity/remove", data);
+      const response = await apiRequest(
+        "POST",
+        "/api/protected/liquidity/remove",
+        data,
+      );
       return response.json();
     },
     onSuccess: () => {
@@ -228,6 +364,9 @@ export default function TradingPage() {
       } else if (selectedPair === "DOPE/XLM") {
         tradeForm.setValue("sellAsset", { code: "DOPE", issuer: dopeIssuer });
         tradeForm.setValue("buyAsset", { type: "native" });
+      } else if (selectedPair === "DOPE/USDC") {
+        tradeForm.setValue("sellAsset", { code: "DOPE", issuer: dopeIssuer });
+        tradeForm.setValue("buyAsset", { code: "USDC", issuer: dopeIssuer });
       }
       tradeForm.setValue("tradingPair", selectedPair);
       liquidityForm.setValue("assetB", { code: "DOPE", issuer: dopeIssuer });
@@ -235,7 +374,10 @@ export default function TradingPage() {
   }, [dopeIssuer, selectedPair, tradeForm, liquidityForm]);
 
   // Calculate expected receive amount based on sell amount
-  const calculateReceiveAmount = async (sellAmount: string, tradingPair: string) => {
+  const calculateReceiveAmount = async (
+    sellAmount: string,
+    tradingPair: string,
+  ) => {
     if (!sellAmount || !tradingPair) return;
 
     try {
@@ -248,6 +390,8 @@ export default function TradingPage() {
         estimatedAmount = amount * 10; // XLM to DOPE
       } else if (tradingPair === "DOPE/XLM") {
         estimatedAmount = amount * 0.1; // DOPE to XLM
+      } else if (tradingPair === "DOPE/USDC") {
+        estimatedAmount = amount * 0.005;
       }
 
       // Set minimum receive amount with 2% slippage tolerance
@@ -295,6 +439,21 @@ export default function TradingPage() {
     );
   }
 
+  const handleTrustModalClose = () => {
+    setTrustModalOpen(false);
+    setPendingTrustAsset(null);
+    setPendingTradeData(null);
+  };
+
+  const handleTrustSuccess = () => {
+    // Retry the original trade after successful trust
+    if (pendingTradeData) {
+      setTimeout(() => {
+        executeTradeMutation.mutate(pendingTradeData);
+      }, 1000); // Small delay to ensure trustline is established
+    }
+  };
+
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="trading-page">
       <div className="flex items-center gap-3">
@@ -304,8 +463,12 @@ export default function TradingPage() {
 
       <Tabs defaultValue="trading" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="trading" data-testid="tab-trading">Trading</TabsTrigger>
-          <TabsTrigger value="liquidity" data-testid="tab-liquidity">Liquidity Pools</TabsTrigger>
+          <TabsTrigger value="trading" data-testid="tab-trading">
+            Trading
+          </TabsTrigger>
+          <TabsTrigger value="liquidity" data-testid="tab-liquidity">
+            Liquidity Pools
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="trading" className="space-y-6">
@@ -318,7 +481,10 @@ export default function TradingPage() {
             </CardHeader>
             <CardContent>
               <Form {...tradeForm}>
-                <form onSubmit={tradeForm.handleSubmit(onTradeSubmit)} className="space-y-4">
+                <form
+                  onSubmit={tradeForm.handleSubmit(onTradeSubmit)}
+                  className="space-y-4"
+                >
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
                       control={tradeForm.control}
@@ -326,7 +492,10 @@ export default function TradingPage() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Trading Pair</FormLabel>
-                          <Select value={field.value} onValueChange={field.onChange}>
+                          <Select
+                            value={field.value}
+                            onValueChange={field.onChange}
+                          >
                             <FormControl>
                               <SelectTrigger data-testid="select-trading-pair">
                                 <SelectValue placeholder="Select trading pair" />
@@ -334,7 +503,10 @@ export default function TradingPage() {
                             </FormControl>
                             <SelectContent>
                               {tradingPairs?.map((pair) => (
-                                <SelectItem key={pair.symbol} value={pair.symbol}>
+                                <SelectItem
+                                  key={pair.symbol}
+                                  value={pair.symbol}
+                                >
                                   {pair.symbol}
                                 </SelectItem>
                               ))}
@@ -360,7 +532,10 @@ export default function TradingPage() {
                               step="0.01"
                               onChange={(e) => {
                                 field.onChange(e);
-                                calculateReceiveAmount(e.target.value, tradeForm.getValues("tradingPair"));
+                                calculateReceiveAmount(
+                                  e.target.value,
+                                  tradeForm.getValues("tradingPair"),
+                                );
                               }}
                             />
                           </FormControl>
@@ -399,7 +574,9 @@ export default function TradingPage() {
                         {executeTradeMutation.isPending && (
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         )}
-                        {executeTradeMutation.isPending ? "Executing..." : "Execute Trade"}
+                        {executeTradeMutation.isPending
+                          ? "Executing..."
+                          : "Execute Trade"}
                       </Button>
                     </div>
                   </div>
@@ -418,7 +595,9 @@ export default function TradingPage() {
                   <div
                     key={pair.symbol}
                     className={`p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors ${
-                      selectedPair === pair.symbol ? "bg-primary/10 border-primary ring-1 ring-primary" : "hover:border-muted-foreground"
+                      selectedPair === pair.symbol
+                        ? "bg-primary/10 border-primary ring-1 ring-primary"
+                        : "hover:border-muted-foreground"
                     }`}
                     onClick={() => {
                       setSelectedPair(pair.symbol);
@@ -428,9 +607,15 @@ export default function TradingPage() {
                       if (dopeIssuer) {
                         if (pair.symbol === "XLM/DOPE") {
                           tradeForm.setValue("sellAsset", { type: "native" });
-                          tradeForm.setValue("buyAsset", { code: "DOPE", issuer: dopeIssuer });
+                          tradeForm.setValue("buyAsset", {
+                            code: "DOPE",
+                            issuer: dopeIssuer,
+                          });
                         } else if (pair.symbol === "DOPE/XLM") {
-                          tradeForm.setValue("sellAsset", { code: "DOPE", issuer: dopeIssuer });
+                          tradeForm.setValue("sellAsset", {
+                            code: "DOPE",
+                            issuer: dopeIssuer,
+                          });
                           tradeForm.setValue("buyAsset", { type: "native" });
                         }
                       }
@@ -443,7 +628,8 @@ export default function TradingPage() {
                   >
                     <div className="font-semibold">{pair.symbol}</div>
                     <div className="text-sm text-muted-foreground">
-                      {pair.baseAsset.code || "XLM"} → {pair.quoteAsset.code || "XLM"}
+                      {pair.baseAsset.code || "XLM"} →{" "}
+                      {pair.quoteAsset.code || "XLM"}
                     </div>
                     {selectedPair === pair.symbol && (
                       <div className="text-xs text-primary mt-1">
@@ -466,13 +652,17 @@ export default function TradingPage() {
               </CardTitle>
               {walletBalance && (
                 <div className="text-sm text-muted-foreground">
-                  Available: {parseFloat(walletBalance.xlmBalance).toFixed(2)} XLM • {parseFloat(walletBalance.dopeBalance).toFixed(2)} DOPE
+                  Available: {parseFloat(walletBalance.xlmBalance).toFixed(2)}{" "}
+                  XLM • {parseFloat(walletBalance.dopeBalance).toFixed(2)} DOPE
                 </div>
               )}
             </CardHeader>
             <CardContent>
               <Form {...liquidityForm}>
-                <form onSubmit={liquidityForm.handleSubmit(onLiquiditySubmit)} className="space-y-4">
+                <form
+                  onSubmit={liquidityForm.handleSubmit(onLiquiditySubmit)}
+                  className="space-y-4"
+                >
                   <div className="mb-4">
                     <Label>Liquidity Pool Pair</Label>
                     <Select defaultValue="XLM/DOPE">
@@ -501,7 +691,10 @@ export default function TradingPage() {
                               step="0.01"
                               onChange={(e) => {
                                 field.onChange(e);
-                                calculateLiquidityAmount(e.target.value, "DOPE/XLM");
+                                calculateLiquidityAmount(
+                                  e.target.value,
+                                  "DOPE/XLM",
+                                );
                               }}
                             />
                           </FormControl>
@@ -581,7 +774,9 @@ export default function TradingPage() {
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     )}
                     <Plus className="w-4 h-4 mr-2" />
-                    {addLiquidityMutation.isPending ? "Adding..." : "Add Liquidity"}
+                    {addLiquidityMutation.isPending
+                      ? "Adding..."
+                      : "Add Liquidity"}
                   </Button>
                 </form>
               </Form>
@@ -596,7 +791,9 @@ export default function TradingPage() {
               {poolsLoading ? (
                 <div className="text-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-                  <p className="text-muted-foreground">Loading liquidity pools...</p>
+                  <p className="text-muted-foreground">
+                    Loading liquidity pools...
+                  </p>
                 </div>
               ) : liquidityPools && liquidityPools.length > 0 ? (
                 <div className="space-y-4">
@@ -609,7 +806,8 @@ export default function TradingPage() {
                       <div className="flex justify-between items-start">
                         <div>
                           <div className="font-semibold">
-                            {pool.poolInfo.assets.assetA} / {pool.poolInfo.assets.assetB}
+                            {pool.poolInfo.assets.assetA} /{" "}
+                            {pool.poolInfo.assets.assetB}
                           </div>
                           <div className="text-sm text-muted-foreground">
                             Pool ID: {pool.poolId.slice(0, 8)}...
@@ -624,27 +822,50 @@ export default function TradingPage() {
 
                       <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
-                          <div className="text-muted-foreground">Your Balance</div>
-                          <div className="font-medium">{parseFloat(pool.balance).toFixed(6)} LP</div>
+                          <div className="text-muted-foreground">
+                            Your Balance
+                          </div>
+                          <div className="font-medium">
+                            {parseFloat(pool.balance).toFixed(6)} LP
+                          </div>
                         </div>
                         <div>
                           <div className="text-muted-foreground">Pool Size</div>
-                          <div className="font-medium">{parseFloat(pool.poolInfo.totalShares).toFixed(2)}</div>
+                          <div className="font-medium">
+                            {parseFloat(pool.poolInfo.totalShares).toFixed(2)}
+                          </div>
                         </div>
                         <div>
-                          <div className="text-muted-foreground">{pool.poolInfo.assets.assetA} Reserve</div>
-                          <div className="font-medium">{parseFloat(pool.poolInfo.reserves.assetA).toFixed(2)}</div>
+                          <div className="text-muted-foreground">
+                            {pool.poolInfo.assets.assetA} Reserve
+                          </div>
+                          <div className="font-medium">
+                            {parseFloat(pool.poolInfo.reserves.assetA).toFixed(
+                              2,
+                            )}
+                          </div>
                         </div>
                         <div>
-                          <div className="text-muted-foreground">{pool.poolInfo.assets.assetB} Reserve</div>
-                          <div className="font-medium">{parseFloat(pool.poolInfo.reserves.assetB).toFixed(2)}</div>
+                          <div className="text-muted-foreground">
+                            {pool.poolInfo.assets.assetB} Reserve
+                          </div>
+                          <div className="font-medium">
+                            {parseFloat(pool.poolInfo.reserves.assetB).toFixed(
+                              2,
+                            )}
+                          </div>
                         </div>
                       </div>
 
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => removeLiquidityMutation.mutate({ poolId: pool.poolId, amount: pool.balance })}
+                        onClick={() =>
+                          removeLiquidityMutation.mutate({
+                            poolId: pool.poolId,
+                            amount: pool.balance,
+                          })
+                        }
                         disabled={removeLiquidityMutation.isPending}
                         className="w-full"
                         data-testid={`button-remove-liquidity-${pool.poolId}`}
@@ -653,13 +874,18 @@ export default function TradingPage() {
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         )}
                         <Minus className="w-4 h-4 mr-2" />
-                        {removeLiquidityMutation.isPending ? "Removing..." : "Remove Liquidity"}
+                        {removeLiquidityMutation.isPending
+                          ? "Removing..."
+                          : "Remove Liquidity"}
                       </Button>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8 text-muted-foreground" data-testid="no-pools">
+                <div
+                  className="text-center py-8 text-muted-foreground"
+                  data-testid="no-pools"
+                >
                   <Droplets className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No liquidity positions found</p>
                   <p className="text-sm">Add liquidity to start earning fees</p>
@@ -669,6 +895,13 @@ export default function TradingPage() {
           </Card>
         </TabsContent>
       </Tabs>
+      {/* Trust Asset Modal */}
+      <TrustAssetModal
+        isOpen={trustModalOpen}
+        onClose={handleTrustModalClose}
+        onSuccess={handleTrustSuccess}
+        asset={pendingTrustAsset}
+      />
     </div>
   );
 }

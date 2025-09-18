@@ -1,0 +1,30 @@
+NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
+
+[[CURRENCIES]]
+code = "DOPE"
+issuer = "GDRXPV2DIWVGNYI7JYLMMDQU3USBETYQN6HSIBGP762LK5XFOUEK2IGV"
+name = "DOPE Coin"
+desc = "Utility token for the DOPE Chain app."
+image = "https://mine.dopp.eu.org/assets/dope.png"
+fixed_number = 100_000_000_000
+is_asset_anchored = false
+conditions = "Fixed supply; no further issuance planned."
+
+[[CURRENCIES]]
+code = "GAS"
+issuer = "GDRXPV2DIWVGNYI7JYLMMDQU3USBETYQN6HSIBGP762LK5XFOUEK2IGV"
+name = "DOPE GAS"
+desc = "Sub-currency used for mining fees and transaction costs within the DOPE Chain ecosystem."
+image = "https://mine.dopp.eu.org/assets/gas.png"
+fixed_number = 1_000_000_000
+is_asset_anchored = false
+conditions = "Utility token for internal fee mechanics; limited supply."
+
+[[CURRENCIES]]
+code = "XLM"
+issuer = "native"
+name = "Stellar Lumens"
+desc = "Native token of the Stellar network used for cross-asset exchange and liquidity."
+image = "https://mine.dopp.eu.org/assets/xlm.png"
+is_asset_anchored = true
+conditions = "Native Stellar asset; no issuer required."

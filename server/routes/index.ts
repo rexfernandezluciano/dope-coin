@@ -36,9 +36,13 @@ var rateLimiter = rateLimit({
 export async function registerRoutes(app: Express): Promise<Server> {
   // .well-known/stellar.toml endpoint
   app.get("/.well-known/stellar.toml", (req, res) => {
-    res
-      .header("Content-Type", "application/toml")
-      .sendFile(path.join(import.meta.dirname, "../.well-known/stellar.toml"));
+    const stellarTomlPath = path.join(
+      import.meta.dirname,
+      process.env.STELLAR_NETWORK === "mainnet"
+        ? "../.well-known/stellar-mainnet.toml"
+        : "../.well-known/stellar-testnet.toml",
+    );
+    res.header("Content-Type", "application/toml").sendFile(stellarTomlPath);
   });
 
   // DOPE Image
@@ -594,6 +598,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/protected/asset/trust", rateLimiter, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const { assetCode, assetIssuer } = req.body;
+
+      if (!assetCode || !assetIssuer) {
+        return res.status(400).json({ message: "Invalid asset details" });
+      }
+
+      await stellarService.createTrustline(userId, assetCode, assetIssuer);
+      return res.json({ message: "Trustline created successfully" });
+    } catch (error: any) {
+      console.error("Trustline error:", error);
+      return res.status(500).json({
+        message:
+          error.data?.extras?.result_codes?.operations ||
+          error.message ||
+          "Internal server error",
+      });
+    }
+  });
+
   app.get("/api/protected/trade/pairs", rateLimiter, async (req, res) => {
     try {
       const pairs = await stellarService.getDOPETradingPairs();
@@ -616,7 +646,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Simple calculation for demo purposes
       // In production, this would query real market data
-      const rate = tradingPair === "DOPE/XLM" ? 10 : 0.1; // 1 XLM = 10 DOPE
+      const rate =
+        tradingPair === "DOPE/XLM"
+          ? 10
+          : tradingPair === "XLM/DOPE"
+            ? 0.1
+            : tradingPair === "DOPE/USDC"
+              ? 8
+              : 0.1; // 1 XLM = 10 DOPE
       const estimatedAmount = (parseFloat(sellAmount) * rate).toFixed(6);
 
       res.json({
@@ -699,6 +736,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .json({ message: "Validation error", errors: error.errors });
       }
       console.error("Add liquidity error:", error);
+      console.error(
+        "Error details:",
+        error.response?.data?.extras.result_codes.operations,
+      );
       res
         .status(500)
         .json({ message: error.message || "Internal server error" });

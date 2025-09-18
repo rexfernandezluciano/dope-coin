@@ -1,4 +1,13 @@
-import { Plus, ArrowUpRight, ArrowDownLeft, UserPlus } from "lucide-react";
+import {
+  Plus,
+  Minus,
+  ArrowUpRight,
+  ArrowDownLeft,
+  UserPlus,
+  Shield,
+  Repeat,
+  Gift,
+} from "lucide-react";
 
 export const getActivityIcon = (type: string) => {
   switch (type) {
@@ -9,7 +18,17 @@ export const getActivityIcon = (type: string) => {
     case "receive":
       return <ArrowDownLeft className="text-blue-500 text-sm" />;
     case "referral_bonus":
-      return <UserPlus className="text-purple-500 text-sm" />;
+      return <Gift className="text-purple-500 text-sm" />;
+    case "trade":
+      return <Repeat className="text-yellow-500 text-sm" />;
+    case "add_liquidity":
+      return <Plus className="text-green-500 text-sm" />;
+    case "remove_liquidity":
+      return <Minus className="text-red-500 text-sm" />;
+    case "gas_conversion":
+      return <Repeat className="text-yellow-500 text-sm" />;
+    case "trustline":
+      return <Shield className="text-orange-500 text-sm" />; // Add this line
     default:
       return <Plus className="text-green-500 text-sm" />;
   }
@@ -18,13 +37,23 @@ export const getActivityIcon = (type: string) => {
 export const getActivityLabel = (type: string) => {
   switch (type) {
     case "mining_reward":
-      return "Mining Reward";
+      return "Reward";
     case "send":
-      return "Sent Tokens";
+      return "Sent";
     case "receive":
-      return "Received Tokens";
+      return "Received";
     case "referral_bonus":
-      return "Referral Bonus";
+      return "Bonus";
+    case "trade":
+      return "Trade";
+    case "add_liquidity":
+      return "Liquidity Added";
+    case "remove_liquidity":
+      return "Liquidity Removed";
+    case "gas_conversion":
+      return "GAS Conversion";
+    case "trustline":
+      return "Authorize Asset";
     default:
       return "Transaction";
   }
