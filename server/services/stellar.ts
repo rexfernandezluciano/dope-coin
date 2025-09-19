@@ -76,6 +76,18 @@ interface LiquidityPoolInfo {
   fee: number;
 }
 
+interface OperationRecord {
+  type: string;
+  amount: string;
+  fromAddress: string;
+  toAddress: string;
+  status: string;
+  stellarTxId: string;
+  assetType: string;
+  metadata: any;
+  createdAt: string;
+}
+
 // Initialize platform accounts on startup
 async function initializePlatformAccounts() {
   if (STELLAR_NETWORK === "testnet") {
@@ -393,10 +405,20 @@ export class StellarService {
       const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
       const userAccount = await server.loadAccount(userKeypair.publicKey());
 
-      const gasAsset = new Asset("GAS", dopeIssuerKeypair.publicKey());
-      const gasAmount = (parseFloat(xlmAmount) * 100).toString(); // 1 XLM = 100 GAS
+      // Get current XLM balance
+      const xlmBalance = userAccount.balances.find(
+        (b: any) => b.asset_type === "native",
+      );
+      const currentXLMBalance = parseFloat(xlmBalance?.balance || "0");
+      const requestedAmount = parseFloat(xlmAmount);
 
-      // Check if user has GAS trustline, create if needed
+      // Calculate minimum reserve requirements
+      const baseReserve = 0.5; // Base account reserve
+      const subentryReserve = userAccount.subentry_count * 0.5; // Existing trustlines/offers
+      const transactionFee = 0.0001; // Buffer for transaction fees
+
+      // Check if GAS trustline exists (if not, we'll need additional reserve)
+      const gasAsset = new Asset("GAS", dopeIssuerKeypair.publicKey());
       const existingGasTrustline = userAccount.balances.find(
         (balance: any) =>
           balance.asset_type === "credit_alphanum4" &&
@@ -404,8 +426,37 @@ export class StellarService {
           balance.asset_issuer === dopeIssuerKeypair.publicKey(),
       );
 
+      let additionalReserveNeeded = 0;
       if (!existingGasTrustline) {
-        // Create GAS trustline first
+        additionalReserveNeeded = 0.5; // Additional reserve for new trustline
+      }
+
+      const totalReserveNeeded =
+        baseReserve +
+        subentryReserve +
+        additionalReserveNeeded +
+        transactionFee;
+      const availableForConversion = currentXLMBalance - totalReserveNeeded;
+
+      // Validate conversion amount
+      if (requestedAmount > availableForConversion) {
+        throw new Error(
+          `Insufficient balance for conversion. ` +
+            `Available: ${availableForConversion.toFixed(4)} XLM, ` +
+            `Requested: ${requestedAmount} XLM. ` +
+            `(${totalReserveNeeded.toFixed(4)} XLM required in reserves)`,
+        );
+      }
+
+      // Minimum conversion amount check
+      if (requestedAmount < 0.01) {
+        throw new Error("Minimum conversion amount is 0.01 XLM");
+      }
+
+      const gasAmount = (requestedAmount * 100).toString(); // 1 XLM = 100 GAS
+
+      // Create GAS trustline if needed
+      if (!existingGasTrustline) {
         const trustTransaction = new TransactionBuilder(userAccount, {
           fee: BASE_FEE.toString(),
           networkPassphrase,
@@ -426,17 +477,16 @@ export class StellarService {
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
-      // Use a single transaction to convert XLM to GAS
-      // The issuer creates new GAS tokens in exchange for XLM
+      // Get updated account after trustline creation
       const updatedUserAccount = await server.loadAccount(
         userKeypair.publicKey(),
       );
 
+      // Convert XLM to GAS - send XLM to issuer
       const conversionTransaction = new TransactionBuilder(updatedUserAccount, {
         fee: BASE_FEE.toString(),
         networkPassphrase,
       })
-        // Send XLM to issuer
         .addOperation(
           Operation.payment({
             destination: dopeIssuerKeypair.publicKey(),
@@ -450,7 +500,7 @@ export class StellarService {
       conversionTransaction.sign(userKeypair);
       const xlmResult = await server.submitTransaction(conversionTransaction);
 
-      // Now issuer creates and sends GAS tokens to user
+      // Issuer sends GAS tokens to user
       const issuerAccount = await server.loadAccount(
         dopeIssuerKeypair.publicKey(),
       );
@@ -488,6 +538,11 @@ export class StellarService {
           conversionRate: "100",
           xlmTxHash: xlmResult.hash,
           gasTxHash: gasResult.hash,
+          reservesAfterConversion: (
+            currentXLMBalance -
+            requestedAmount -
+            0.0001
+          ).toFixed(4),
         },
       });
 
@@ -498,15 +553,21 @@ export class StellarService {
         status: "completed",
         xlmTxHash: xlmResult.hash,
         gasTxHash: gasResult.hash,
+        availableBalance: availableForConversion.toFixed(4),
       };
     } catch (error: any) {
-      console.error("Error converting XLM to GAS:", error);
+      console.error(
+        "Error converting XLM to GAS:",
+        error.response?.data?.extras?.result_codes || error,
+      );
 
       // Provide more specific error messages
       if (error.response?.data?.extras?.result_codes) {
         const resultCodes = error.response.data.extras.result_codes;
         if (resultCodes.transaction === "tx_insufficient_balance") {
-          throw new Error("Insufficient XLM balance for conversion");
+          throw new Error(
+            "Insufficient XLM balance for conversion and reserves",
+          );
         }
         if (resultCodes.operations?.includes("op_no_trust")) {
           throw new Error("GAS trustline creation failed");
@@ -514,9 +575,48 @@ export class StellarService {
         if (resultCodes.operations?.includes("op_line_full")) {
           throw new Error("GAS balance limit exceeded");
         }
+        if (resultCodes.operations?.includes("op_low_reserve")) {
+          throw new Error(
+            "Conversion amount would violate minimum reserve requirements",
+          );
+        }
       }
 
       throw new Error(`Conversion failed: ${error.message || "Unknown error"}`);
+    }
+  }
+
+  // Helper function to get user's available balance for conversion
+  async getUserAvailableBalance(
+    userId: string,
+  ): Promise<{ available: number; total: number; reserves: number }> {
+    try {
+      const user = await storage.getUser(userId);
+      if (!user?.stellarSecretKey) {
+        throw new Error("User stellar account not found");
+      }
+
+      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const userAccount = await server.loadAccount(userKeypair.publicKey());
+
+      const xlmBalance = userAccount.balances.find(
+        (b: any) => b.asset_type === "native",
+      );
+      const currentXLMBalance = parseFloat(xlmBalance?.balance || "0");
+
+      const baseReserve = 0.5;
+      const subentryReserve = userAccount.subentry_count * 0.5;
+      const transactionFee = 0.0001;
+      const totalReserves = baseReserve + subentryReserve + transactionFee;
+      const available = Math.max(0, currentXLMBalance - totalReserves);
+
+      return {
+        available: parseFloat(available.toFixed(4)),
+        total: currentXLMBalance,
+        reserves: parseFloat(totalReserves.toFixed(4)),
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to get balance: ${error.message}`);
     }
   }
 
@@ -524,7 +624,7 @@ export class StellarService {
     userId: string,
     toAddress: string,
     amount: string,
-    assetType: "XLM" | "DOPE",
+    assetType: "XLM" | "DOPE" | "GAS" | "USDC",
   ): Promise<any> {
     try {
       const user = await storage.getUser(userId);
@@ -538,8 +638,18 @@ export class StellarService {
       let asset: Asset;
       if (assetType === "XLM") {
         asset = Asset.native();
-      } else {
+      } else if (assetType === "DOPE") {
         asset = new Asset("DOPE", dopeIssuerKeypair.publicKey());
+      } else if (assetType === "GAS") {
+        asset = new Asset("GAS", dopeIssuerKeypair.publicKey());
+      } else if (assetType === "USDC") {
+        asset = new Asset("USDC", USDC_ISSUER_ACCOUNT);
+      } else {
+        throw new Error(`Unsupported asset type: ${assetType}`);
+      }
+
+      if (!toAddress || !amount) {
+        throw new Error("Invalid send parameters");
       }
 
       const transaction = new TransactionBuilder(account, {
@@ -578,9 +688,12 @@ export class StellarService {
         amount,
         assetType,
       };
-    } catch (error) {
-      console.error("Error sending tokens:", error);
-      throw new Error("Failed to send tokens");
+    } catch (error: any) {
+      console.error(
+        "Error sending tokens:",
+        error.response.data.extras.result_codes || error,
+      );
+      handleStellarError(error, "Failed to send tokens");
     }
   }
 
@@ -1154,7 +1267,7 @@ export class StellarService {
         throw new Error("No valid orderbook data");
 
       return (bestAsk + bestBid) / 2;
-    } catch (err) {
+    } catch (err: any) {
       console.warn(`Falling back to fixed rate for ${pair}: ${err.message}`);
       if (!fallbackRates[pair]) {
         throw new Error(
@@ -2109,19 +2222,42 @@ export class StellarService {
    */
   async createAccountWithDopeTrustline(
     newAccountKeypair: Keypair,
-    startingBalance: string = "1.00",
+    startingBalance: string = "2.00", // Increased minimum balance
   ): Promise<string> {
     try {
+      // First check if account already exists
+      try {
+        await server.loadAccount(newAccountKeypair.publicKey());
+        console.log(`Account ${newAccountKeypair.publicKey()} already exists`);
+
+        // Account exists, just add trustline if it doesn't exist
+        return await this.addDopeTrustlineToExistingAccount(newAccountKeypair);
+      } catch (error: any) {
+        if (!error.response || error.response.status !== 404) {
+          throw error; // Re-throw if it's not a "not found" error
+        }
+        // Account doesn't exist, proceed with creation
+      }
+
       const sourceAccount = await server.loadAccount(
         dopeDistributorKeypair.publicKey(),
       );
       const dopeAsset = new Asset("DOPE", dopeIssuerKeypair.publicKey());
 
+      // Calculate minimum balance needed:
+      // Base reserve (0.5 XLM) + trustline reserve (0.5 XLM) + buffer
+      const minBalance = parseFloat(startingBalance);
+      if (minBalance < 1.5) {
+        throw new Error(
+          "Starting balance too low. Minimum 1.5 XLM required for account + trustline",
+        );
+      }
+
       const transaction = new TransactionBuilder(sourceAccount, {
-        fee: BASE_FEE.toString() + ACCOUNT_FEE.toString(), // Higher fee for multiple operations
+        fee: (BASE_FEE * 2).toString(), // Fee for 2 operations
         networkPassphrase,
       })
-        // First: Create the account
+        // First: Create the account with sufficient balance
         .addOperation(
           Operation.createAccount({
             destination: newAccountKeypair.publicKey(),
@@ -2133,15 +2269,15 @@ export class StellarService {
           Operation.changeTrust({
             source: newAccountKeypair.publicKey(),
             asset: dopeAsset,
-            limit: "1000000", // Max trust limit
+            limit: "1000000",
           }),
         )
         .setTimeout(60)
         .build();
 
       // Sign with both accounts
-      transaction.sign(dopeDistributorKeypair); // Source account (pays fees)
-      transaction.sign(newAccountKeypair); // New account (authorizes trustline)
+      transaction.sign(dopeDistributorKeypair);
+      transaction.sign(newAccountKeypair);
 
       const result = await server.submitTransaction(transaction);
 
@@ -2149,8 +2285,84 @@ export class StellarService {
         `Created account ${newAccountKeypair.publicKey()} with DOPE trustline`,
       );
       return result.hash;
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating account with DOPE trustline:", error);
+
+      // Handle specific Stellar errors
+      if (error.response && error.response.data && error.response.data.extras) {
+        const resultCodes = error.response.data.extras.result_codes;
+
+        if (resultCodes.operations) {
+          resultCodes.operations.forEach((opCode: string, index: number) => {
+            if (opCode === "op_already_exists") {
+              console.error(`Operation ${index}: Account already exists`);
+            } else if (opCode === "op_low_reserve") {
+              console.error(`Operation ${index}: Insufficient reserve balance`);
+            }
+          });
+        }
+      }
+
+      throw error;
+    }
+  }
+
+  // Helper function for adding trustline to existing accounts
+  async addDopeTrustlineToExistingAccount(
+    accountKeypair: Keypair,
+  ): Promise<string> {
+    try {
+      const account = await server.loadAccount(accountKeypair.publicKey());
+      const dopeAsset = new Asset("DOPE", dopeIssuerKeypair.publicKey());
+
+      // Check if trustline already exists
+      const hasDopeTrustline = account.balances.some(
+        (balance: any) =>
+          balance.asset_type !== "native" &&
+          balance.asset_code === "DOPE" &&
+          balance.asset_issuer === dopeIssuerKeypair.publicKey(),
+      );
+
+      if (hasDopeTrustline) {
+        console.log("DOPE trustline already exists");
+        return "trustline_exists";
+      }
+
+      // Check if account has enough balance for trustline reserve
+      const nativeBalance = parseFloat(
+        account.balances.find((b: any) => b.asset_type === "native")?.balance ||
+          "0",
+      );
+      const requiredReserve = (2 + account.subentry_count + 1) * 0.5; // Base + existing subentries + new trustline
+
+      if (nativeBalance < requiredReserve) {
+        throw new Error(
+          `Insufficient balance. Required: ${requiredReserve} XLM, Available: ${nativeBalance} XLM`,
+        );
+      }
+
+      const transaction = new TransactionBuilder(account, {
+        fee: BASE_FEE.toString(),
+        networkPassphrase,
+      })
+        .addOperation(
+          Operation.changeTrust({
+            asset: dopeAsset,
+            limit: "1000000",
+          }),
+        )
+        .setTimeout(60)
+        .build();
+
+      transaction.sign(accountKeypair);
+      const result = await server.submitTransaction(transaction);
+
+      console.log(
+        `Added DOPE trustline to existing account ${accountKeypair.publicKey()}`,
+      );
+      return result.hash;
+    } catch (error) {
+      console.error("Error adding trustline to existing account:", error);
       throw error;
     }
   }
@@ -2440,36 +2652,6 @@ export class StellarService {
     }
   }
 
-  /**
-   * Get all claimable balances for a user
-   */
-  async getClaimableBalances(userId: string): Promise<any[]> {
-    try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarPublicKey) {
-        throw new Error("User stellar account not found");
-      }
-
-      // Query Stellar for claimable balances
-      const claimableBalances = await server
-        .claimableBalances()
-        .claimant(user.stellarPublicKey)
-        .call();
-
-      return claimableBalances.records.map((cb: any) => ({
-        id: cb.id,
-        asset: cb.asset,
-        amount: cb.amount,
-        sponsor: cb.sponsor,
-        lastModifiedLedger: cb.last_modified_ledger,
-        claimants: cb.claimants,
-      }));
-    } catch (error) {
-      console.error("Error fetching claimable balances:", error);
-      return [];
-    }
-  }
-
   private isCreditAsset(balance: any) {
     return (
       balance.asset_type === "credit_alphanum4" ||
@@ -2675,6 +2857,656 @@ export class StellarService {
       handleStellarError(error, "Failed to add trustline");
     }
   };
+
+  private async getAccountOperations(
+    publicKey: string,
+    limit: number = 20,
+    cursor?: string,
+  ): Promise<OperationRecord[]> {
+    try {
+      // Build operations request
+      let operationsRequest = server
+        .operations()
+        .forAccount(publicKey)
+        .order("desc")
+        .limit(limit);
+
+      if (cursor) {
+        operationsRequest = operationsRequest.cursor(cursor);
+      }
+
+      const operationsResponse = await operationsRequest.call();
+      const operations: OperationRecord[] = [];
+
+      for (const operation of operationsResponse.records) {
+        const operationRecord = await this.parseOperation(operation, publicKey);
+        if (operationRecord) {
+          operations.push(operationRecord);
+        }
+      }
+
+      return operations;
+    } catch (error: any) {
+      console.error("Error fetching account operations:", error);
+      throw new Error(`Failed to fetch operations: ${error.message}`);
+    }
+  }
+
+  async parseOperation(
+    operation: any,
+    userPublicKey: string,
+  ): Promise<OperationRecord | null> {
+    try {
+      const baseRecord = {
+        stellarTxId: operation.transaction_hash,
+        status: operation.transaction_successful ? "completed" : "failed",
+        metadata: {
+          operationId: operation.id,
+          createdAt: operation.created_at,
+          pagingToken: operation.paging_token,
+        },
+        createdAt: operation.created_at
+      };
+
+      switch (operation.type) {
+        case "create_account":
+          return {
+            ...baseRecord,
+            type: "account_creation",
+            amount: operation.starting_balance,
+            fromAddress: operation.funder,
+            toAddress: operation.account,
+            assetType: "XLM",
+            metadata: {
+              ...baseRecord.metadata,
+              startingBalance: operation.starting_balance,
+              funder: operation.funder,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "payment":
+          const isReceiving = operation.to === userPublicKey;
+          const assetType =
+            operation.asset_type === "native"
+              ? "XLM"
+              : `${operation.asset_code}`;
+
+          return {
+            ...baseRecord,
+            type: isReceiving ? "payment_received" : "payment_sent",
+            amount: operation.amount,
+            fromAddress: operation.from,
+            toAddress: operation.to,
+            assetType,
+            metadata: {
+              ...baseRecord.metadata,
+              asset: {
+                type: operation.asset_type,
+                code: operation.asset_code,
+                issuer: operation.asset_issuer,
+              },
+              sourceAmount: operation.source_amount,
+              sourceAsset:
+                operation.source_asset_type === "native"
+                  ? "XLM"
+                  : `${operation.source_asset_code}`,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "path_payment_strict_receive":
+        case "path_payment_strict_send":
+          const isReceivingPath = operation.to === userPublicKey;
+          const destinationAsset =
+            operation.asset_type === "native"
+              ? "XLM"
+              : `${operation.asset_code}`;
+
+          return {
+            ...baseRecord,
+            type: isReceivingPath
+              ? "path_payment_received"
+              : "path_payment_sent",
+            amount: operation.amount,
+            fromAddress: operation.from,
+            toAddress: operation.to,
+            assetType: destinationAsset,
+            metadata: {
+              ...baseRecord.metadata,
+              sourceAmount: operation.source_amount,
+              sourceAsset:
+                operation.source_asset_type === "native"
+                  ? "XLM"
+                  : `${operation.source_asset_code}`,
+              destinationAsset: {
+                type: operation.asset_type,
+                code: operation.asset_code,
+                issuer: operation.asset_issuer,
+              },
+              path: operation.path,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "change_trust":
+          const trustAsset = `${operation.asset_code}`;
+          const isRemovingTrust = parseFloat(operation.limit) === 0;
+
+          return {
+            ...baseRecord,
+            type: isRemovingTrust ? "trustline_removed" : "trustline_created",
+            amount: operation.limit,
+            fromAddress: userPublicKey,
+            toAddress: operation.asset_issuer,
+            assetType: trustAsset,
+            metadata: {
+              ...baseRecord.metadata,
+              asset: {
+                code: operation.asset_code,
+                issuer: operation.asset_issuer,
+              },
+              limit: operation.limit,
+              trustor: operation.trustor,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "manage_sell_offer":
+        case "manage_buy_offer":
+          const sellingAsset =
+            operation.selling_asset_type === "native"
+              ? "XLM"
+              : `${operation.selling_asset_code}`;
+          const buyingAsset =
+            operation.buying_asset_type === "native"
+              ? "XLM"
+              : `${operation.buying_asset_code}`;
+
+          return {
+            ...baseRecord,
+            type:
+              operation.type === "manage_sell_offer"
+                ? "sell_offer"
+                : "buy_offer",
+            amount: operation.amount,
+            fromAddress: userPublicKey,
+            toAddress: "", // No specific recipient for offers
+            assetType: `${sellingAsset}/${buyingAsset}`,
+            metadata: {
+              ...baseRecord.metadata,
+              offerId: operation.offer_id,
+              sellingAsset: {
+                type: operation.selling_asset_type,
+                code: operation.selling_asset_code,
+                issuer: operation.selling_asset_issuer,
+              },
+              buyingAsset: {
+                type: operation.buying_asset_type,
+                code: operation.buying_asset_code,
+                issuer: operation.buying_asset_issuer,
+              },
+              price: operation.price,
+              priceR: operation.price_r,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "create_passive_sell_offer":
+          const passiveSellingAsset =
+            operation.selling_asset_type === "native"
+              ? "XLM"
+              : `${operation.selling_asset_code}:${operation.selling_asset_issuer}`;
+          const passiveBuyingAsset =
+            operation.buying_asset_type === "native"
+              ? "XLM"
+              : `${operation.buying_asset_code}`;
+
+          return {
+            ...baseRecord,
+            type: "passive_offer",
+            amount: operation.amount,
+            fromAddress: userPublicKey,
+            toAddress: "",
+            assetType: `${passiveSellingAsset}/${passiveBuyingAsset}`,
+            metadata: {
+              ...baseRecord.metadata,
+              sellingAsset: {
+                type: operation.selling_asset_type,
+                code: operation.selling_asset_code,
+                issuer: operation.selling_asset_issuer,
+              },
+              buyingAsset: {
+                type: operation.buying_asset_type,
+                code: operation.buying_asset_code,
+                issuer: operation.buying_asset_issuer,
+              },
+              price: operation.price,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "set_options":
+          return {
+            ...baseRecord,
+            type: "account_options",
+            amount: "0",
+            fromAddress: userPublicKey,
+            toAddress: userPublicKey,
+            assetType: "CONFIG",
+            metadata: {
+              ...baseRecord.metadata,
+              inflationDest: operation.inflation_dest,
+              clearFlags: operation.clear_flags,
+              setFlags: operation.set_flags,
+              masterWeight: operation.master_weight,
+              lowThreshold: operation.low_threshold,
+              medThreshold: operation.med_threshold,
+              highThreshold: operation.high_threshold,
+              homeDomain: operation.home_domain,
+              signer: operation.signer_key
+                ? {
+                    key: operation.signer_key,
+                    weight: operation.signer_weight,
+                  }
+                : null,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "allow_trust":
+          return {
+            ...baseRecord,
+            type: operation.authorize ? "trust_authorized" : "trust_revoked",
+            amount: "0",
+            fromAddress: operation.trustee,
+            toAddress: operation.trustor,
+            assetType: operation.asset_code,
+            metadata: {
+              ...baseRecord.metadata,
+              assetCode: operation.asset_code,
+              trustee: operation.trustee,
+              trustor: operation.trustor,
+              authorize: operation.authorize,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "account_merge":
+          return {
+            ...baseRecord,
+            type: "account_merge",
+            amount: "0", // Amount is not directly available in operation
+            fromAddress: operation.account,
+            toAddress: operation.destination,
+            assetType: "XLM",
+            metadata: {
+              ...baseRecord.metadata,
+              mergedAccount: operation.account,
+              destination: operation.destination,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "inflation":
+          return {
+            ...baseRecord,
+            type: "inflation",
+            amount: "0",
+            fromAddress: userPublicKey,
+            toAddress: "",
+            assetType: "XLM",
+            metadata: {
+              ...baseRecord.metadata,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "manage_data":
+          return {
+            ...baseRecord,
+            type: "data_entry",
+            amount: "0",
+            fromAddress: userPublicKey,
+            toAddress: userPublicKey,
+            assetType: "DATA",
+            metadata: {
+              ...baseRecord.metadata,
+              dataName: operation.name,
+              dataValue: operation.value,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "bump_sequence":
+          return {
+            ...baseRecord,
+            type: "sequence_bump",
+            amount: "0",
+            fromAddress: userPublicKey,
+            toAddress: userPublicKey,
+            assetType: "SEQ",
+            metadata: {
+              ...baseRecord.metadata,
+              bumpTo: operation.bump_to,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "create_claimable_balance":
+          const createAssetType =
+            operation.asset === "native"
+              ? "XLM"
+              : `${operation.asset.split(":")[0]}`;
+
+          return {
+            ...baseRecord,
+            type: "claimable_balance_created",
+            amount: operation.amount,
+            fromAddress: userPublicKey,
+            toAddress: "", // Multiple potential claimants
+            assetType: createAssetType,
+            metadata: {
+              ...baseRecord.metadata,
+              balanceId: operation.balance_id,
+              asset: operation.asset === "native" ? "XLM" : operation.asset,
+              claimants:
+                operation.claimants?.map((claimant: any) => ({
+                  destination: claimant.destination,
+                  predicate: claimant.predicate,
+                })) || [],
+              sponsor: operation.sponsor,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "claim_claimable_balance":
+          const claimAssetType =
+            operation.asset === "native"
+              ? "XLM"
+              : `${operation.asset.split(":")[0]}`;
+
+          return {
+            ...baseRecord,
+            type: "claimable_balance_claimed",
+            amount: operation.amount || "0", // Amount might not be directly available
+            fromAddress: "", // Original creator not in operation
+            toAddress: userPublicKey,
+            assetType: claimAssetType,
+            metadata: {
+              ...baseRecord.metadata,
+              balanceId: operation.balance_id,
+              asset: operation.asset === "native" ? "XLM" : operation.asset,
+              claimant: operation.claimant,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "clawback":
+          const clawbackAssetType =
+            operation.asset_type === "native"
+              ? "XLM"
+              : `${operation.asset_code}`;
+
+          return {
+            ...baseRecord,
+            type: "clawback",
+            amount: operation.amount,
+            fromAddress: operation.from, // Account being clawed back from
+            toAddress: operation.asset_issuer, // Asset issuer doing the clawback
+            assetType: operation.asset_code,
+            metadata: {
+              ...baseRecord.metadata,
+              asset: {
+                type: operation.asset_type,
+                code: clawbackAssetType,
+                issuer: operation.asset_issuer,
+              },
+              from: operation.from,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "clawback_claimable_balance":
+          return {
+            ...baseRecord,
+            type: "claimable_balance_clawed_back",
+            amount: "0", // Amount not directly available
+            fromAddress: userPublicKey,
+            toAddress: "",
+            assetType: "CLAIMABLE",
+            metadata: {
+              ...baseRecord.metadata,
+              balanceId: operation.balance_id,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "set_trust_line_flags":
+          return {
+            ...baseRecord,
+            type: "trustline_flags_set",
+            amount: "0",
+            fromAddress: operation.asset_issuer,
+            toAddress: operation.trustor,
+            assetType: operation.asset_code,
+            metadata: {
+              ...baseRecord.metadata,
+              asset: {
+                code: operation.asset_code,
+                issuer: operation.asset_issuer,
+              },
+              trustor: operation.trustor,
+              clearFlags: operation.clear_flags,
+              setFlags: operation.set_flags,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "liquidity_pool_deposit":
+          return {
+            ...baseRecord,
+            type: "liquidity_pool_deposit",
+            amount: operation.max_amount_a || "0",
+            fromAddress: userPublicKey,
+            toAddress: "", // Pool address
+            assetType: "LP_SHARES",
+            metadata: {
+              ...baseRecord.metadata,
+              liquidityPoolId: operation.liquidity_pool_id,
+              maxAmountA: operation.max_amount_a,
+              maxAmountB: operation.max_amount_b,
+              minPrice: operation.min_price,
+              maxPrice: operation.max_price,
+              reserveA: operation.reserve_a,
+              reserveB: operation.reserve_b,
+              shares: operation.shares_received,
+            },
+            createdAt: operation.created_at
+          };
+
+        case "liquidity_pool_withdraw":
+          return {
+            ...baseRecord,
+            type: "liquidity_pool_withdraw",
+            amount: operation.shares || "0",
+            fromAddress: userPublicKey,
+            toAddress: "",
+            assetType: "LP_SHARES",
+            metadata: {
+              ...baseRecord.metadata,
+              liquidityPoolId: operation.liquidity_pool_id,
+              shares: operation.shares,
+              minAmountA: operation.min_amount_a,
+              minAmountB: operation.min_amount_b,
+              reserveA: operation.reserve_a,
+              reserveB: operation.reserve_b,
+            },
+            createdAt: operation.created_at
+          };
+
+        // Add more operation types as needed
+        default:
+          return {
+            ...baseRecord,
+            type: operation.type || "unknown",
+            amount: "0",
+            fromAddress: userPublicKey,
+            toAddress: "",
+            assetType: "UNKNOWN",
+            metadata: {
+              ...baseRecord.metadata,
+              rawOperation: operation,
+            },
+            createdAt: operation.created_at
+          };
+          
+      }
+    } catch (error) {
+      console.error("Error parsing operation:", error, operation);
+      return null;
+    }
+  }
+
+  // Helper function to get operations with pagination
+  async getAllUserOperations(
+    publicKey: string,
+    maxOperations: number = 200,
+  ): Promise<OperationRecord[]> {
+    const allOperations: OperationRecord[] = [];
+    let cursor: string | undefined;
+    const batchSize = 50;
+
+    try {
+      while (allOperations.length < maxOperations) {
+        const remainingOperations = maxOperations - allOperations.length;
+        const limit = Math.min(batchSize, remainingOperations);
+
+        const operations = await this.getAccountOperations(
+          publicKey,
+          limit,
+          cursor,
+        );
+
+        if (operations.length === 0) {
+          break; // No more operations
+        }
+
+        allOperations.push(...operations);
+
+        // Get cursor for next batch (last operation's paging token)
+        const lastOperation = operations[operations.length - 1];
+        cursor = lastOperation.metadata?.pagingToken;
+      }
+
+      return allOperations;
+    } catch (error) {
+      console.error("Error fetching all operations:", error);
+      throw error;
+    }
+  }
+
+  // Helper function to get claimable balances for an account
+  async getClaimableBalances(publicKey: string): Promise<any[]> {
+    try {
+      const claimableBalances = await server
+        .claimableBalances()
+        .claimant(publicKey)
+        .call();
+
+      return claimableBalances.records.map((balance: any) => ({
+        id: balance.id,
+        asset:
+          balance.asset === "native"
+            ? "XLM"
+            : `${balance.asset.split(":")[0]}:${balance.asset.split(":")[1]}`,
+        amount: balance.amount,
+        claimants: balance.claimants,
+        sponsor: balance.sponsor,
+        lastModifiedLedger: balance.last_modified_ledger,
+        lastModifiedTime: balance.last_modified_time,
+      }));
+    } catch (error) {
+      console.error("Error fetching claimable balances:", error);
+      throw error;
+    }
+  }
+
+  // Helper function to get both operations and current claimable balances
+  private async getAccountActivityWithClaimableBalances(
+    publicKey: string,
+    limit: number = 50,
+  ): Promise<{
+    operations: OperationRecord[];
+    claimableBalances: any[];
+  }> {
+    try {
+      const [operations, claimableBalances] = await Promise.all([
+        this.getAccountOperations(publicKey, limit),
+        this.getClaimableBalances(publicKey),
+      ]);
+
+      return {
+        operations,
+        claimableBalances,
+      };
+    } catch (error) {
+      console.error("Error fetching account activity:", error);
+      throw error;
+    }
+  }
+
+  // Helper function to get operations within date range
+  filterOperationsByDateRange(
+    operations: OperationRecord[],
+    startDate: Date,
+    endDate: Date,
+  ): OperationRecord[] {
+    return operations.filter((op) => {
+      const opDate = new Date(op.metadata.createdAt);
+      return opDate >= startDate && opDate <= endDate;
+    });
+  }
+
+  private filterOperationsByType(
+    operations: OperationRecord[],
+    types: string[],
+  ): OperationRecord[] {
+    return operations.filter((op) => types.includes(op.type));
+  }
+
+  async getUserTransactionHistory(userId: string, limit: number = 10, cursor?: string): Promise<OperationRecord[]> {
+    try {
+      const user = await storage.getUser(userId);
+      if (!user?.stellarSecretKey) {
+        throw new Error("User stellar account not found");
+      }
+
+      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const operations = await this.getAccountOperations(
+        userKeypair.publicKey(),
+        limit,
+        cursor
+      );
+
+      // Filter to only payment and claimable balance related operations
+      const transactionTypes = [
+        "payment_sent",
+        "payment_received",
+        "path_payment_sent",
+        "path_payment_received",
+        "account_creation",
+        "claimable_balance_created",
+        "claimable_balance_claimed",
+        "claimable_balance_clawed_back",
+      ];
+
+      return this.filterOperationsByType(operations, transactionTypes);
+    } catch (error) {
+      console.error("Error getting user transaction history:", error);
+      throw error;
+    }
+  }
 }
 
 class NetworkHandler {

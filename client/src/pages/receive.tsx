@@ -1,7 +1,12 @@
-
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.js";
+import { QRCodeSVG } from "qrcode.react";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card.js";
 import { Button } from "../components/ui/button.js";
 import { Input } from "../components/ui/input.js";
 import { Label } from "../components/ui/label.js";
@@ -82,8 +87,8 @@ export default function ReceivePage() {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center space-x-4">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             size="icon"
             onClick={() => navigate("/dashboard")}
             data-testid="button-back"
@@ -98,12 +103,12 @@ export default function ReceivePage() {
           <CardHeader>
             <CardTitle className="flex items-center">
               <ArrowDownLeft className="w-5 h-5 mr-2 text-success" />
-              Your Stellar Wallet Address
+              Your Wallet Address
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Stellar Public Key</Label>
+              <Label>Public Key</Label>
               <div className="flex space-x-2">
                 <Input
                   value={stellarAddress}
@@ -114,14 +119,16 @@ export default function ReceivePage() {
                 <Button
                   variant="outline"
                   size="icon"
-                  onClick={() => copyToClipboard(stellarAddress, "Stellar address")}
+                  onClick={() =>
+                    copyToClipboard(stellarAddress, "Stellar address")
+                  }
                   data-testid="button-copy-address"
                 >
                   <Copy className={`w-4 h-4 ${copied ? "text-success" : ""}`} />
                 </Button>
               </div>
               <p className="text-sm text-muted-foreground">
-                Share this address to receive DOPE coins or XLM tokens
+                Share this address to receive DOPE, XLM, or other tokens.
               </p>
             </div>
 
@@ -134,10 +141,12 @@ export default function ReceivePage() {
                 <Share className="w-4 h-4 mr-2" />
                 Share Address
               </Button>
-              
+
               <Button
                 variant="outline"
-                onClick={() => copyToClipboard(stellarAddress, "Wallet address")}
+                onClick={() =>
+                  copyToClipboard(stellarAddress, "Wallet address")
+                }
                 data-testid="button-copy"
               >
                 <Copy className="w-4 h-4 mr-2" />
@@ -157,13 +166,14 @@ export default function ReceivePage() {
           </CardHeader>
           <CardContent>
             <div className="flex flex-col items-center space-y-4">
-              <div className="w-48 h-48 bg-muted rounded-lg flex items-center justify-center">
-                <div className="text-center space-y-2">
-                  <QrCode className="w-12 h-12 text-muted-foreground mx-auto" />
-                  <p className="text-sm text-muted-foreground">QR Code</p>
-                  <p className="text-xs text-muted-foreground">Coming Soon</p>
-                </div>
-              </div>
+              <QRCodeSVG
+                value={`stellar:${stellarAddress}`}
+                size={200}
+                fgColor="hsl(229,47%,17%)"
+                bgColor="#F0F0F0"
+                level="H"
+                className="w-48 h-48 bg-muted rounded-lg flex items-center p-4 justify-center"
+              />
               <p className="text-sm text-muted-foreground text-center">
                 Scan this QR code to send tokens to your wallet
               </p>
@@ -202,7 +212,10 @@ export default function ReceivePage() {
               <ul className="space-y-1 text-sm">
                 <li>• Share your Stellar address with the sender</li>
                 <li>• Or have them scan your QR code (coming soon)</li>
-                <li>• Both DOPE coins and XLM can be sent to this address</li>
+                <li>
+                  • Both DOPE, XLM and any other tokens can be sent to this
+                  address
+                </li>
                 <li>• Transactions usually confirm within 5 seconds</li>
               </ul>
             </div>

@@ -95,7 +95,7 @@ export default function Dashboard() {
                 <Button 
                   variant="outline"
                   onClick={() => navigate("/trading")}
-                  className="p-4 h-auto flex flex-col items-center hover:bg-muted transition-colors group"
+                  className="p-4 h-auto flex flex-col items-center hover:bg-muted hover:text-primary transition-colors group"
                   data-testid="action-trading"
                 >
                   <BarChart3 className="w-6 h-6 text-primary mb-2 group-hover:scale-110 transition-transform" />
@@ -105,7 +105,7 @@ export default function Dashboard() {
                 <Button
                   variant="outline"
                   onClick={() => navigate("/transactions")}
-                  className="p-4 h-auto flex flex-col items-center hover:bg-muted transition-colors group"
+                  className="p-4 h-auto flex flex-col items-center hover:bg-muted hover:text-primary transition-colors group"
                   data-testid="action-history"
                 >
                   <History className="w-6 h-6 text-accent mb-2 group-hover:scale-110 transition-transform" />
@@ -115,17 +115,17 @@ export default function Dashboard() {
                 <Button 
                   variant="outline"
                   onClick={() => navigate("/referrals")}
-                  className="p-4 h-auto flex flex-col items-center hover:bg-muted transition-colors group"
+                  className="p-4 h-auto flex flex-col items-center hover:bg-muted hover:text-primary transition-colors group"
                   data-testid="action-invite"
                 >
-                  <Gift className="w-6 h-6 text-secondary mb-2 group-hover:scale-110 transition-transform" />
+                  <Gift className="w-6 h-6 text-primary mb-2 group-hover:scale-110 transition-transform" />
                   <span className="text-sm font-medium">Earn</span>
                 </Button>
                 
                 <Button
                   variant="outline"
                   onClick={() => navigate("/help")}
-                  className="p-4 h-auto flex flex-col items-center hover:bg-muted transition-colors group"
+                  className="p-4 h-auto flex flex-col items-center hover:bg-muted hover:text-primary transition-colors group"
                   data-testid="action-help"
                 >
                   <HelpCircle className="w-6 h-6 text-info mb-2 group-hover:scale-110 transition-transform" />

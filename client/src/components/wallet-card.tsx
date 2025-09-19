@@ -109,7 +109,7 @@ export const WalletCard = () => {
             >
               {dopeBalance.toFixed(4)}
             </div>
-            <div className="text-sm text-muted-foreground">DOPE Coins</div>
+            <div className="text-sm text-muted-foreground">DOPE Coin</div>
           </div>
 
           <div className="pt-4 border-t border-border">

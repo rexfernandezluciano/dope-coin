@@ -103,10 +103,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.createWallet({ userId: user.id });
 
       // Create DOPE trustline for new user
-      await stellarService.createAccountWithDopeTrustline(
-        stellarKeypair,
-        "1.0",
-      );
+      await stellarService.createAccountWithDopeTrustline(stellarKeypair);
 
       // Give referral bonus to referrer if applicable
       if (referrerUser) {
@@ -136,14 +133,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           referralCode: user.referralCode,
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       if (error instanceof z.ZodError) {
         return res
           .status(400)
           .json({ message: "Validation error", errors: error.errors });
       }
-      console.error("Registration error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      console.error(
+        "Registration error:",
+        error.response.data.extras.result_codes || error,
+      );
+      res
+        .status(500)
+        .json({ message: error.message || "Internal server error" });
     }
   });
 
@@ -289,7 +291,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         res
           .status(500)
-          .json({ message: "Internal server error: " + error.message });
+          .json({ message: error.message || "Something went wrong" });
       }
     }
   });
@@ -434,9 +436,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Transaction sent",
         transaction,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Send transaction error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      res
+        .status(500)
+        .json({ message: error.message || "Internal server error" });
     }
   });
 
@@ -476,7 +480,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
 
-      const transactions = await storage.getTransactions(userId, page, limit);
+      const transactions = await stellarService.getUserTransactionHistory(userId, limit);
       res.json(transactions);
     } catch (error: any) {
       console.error("Transactions fetch error:", error);
@@ -639,29 +643,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/protected/trade/exchange-rate", rateLimiter, async (req, res) => {
-    try {
-      const { sellingAsset, buyingAsset, sellAmount, issuerA, issuerB } = req.body;
+  app.post(
+    "/api/protected/trade/exchange-rate",
+    rateLimiter,
+    async (req, res) => {
+      try {
+        const { sellingAsset, buyingAsset, sellAmount, issuerA, issuerB } =
+          req.body;
 
-      if (!sellingAsset || !buyingAsset || !sellAmount || !issuerA) {
-        return res.status(400).json({ message: "Missing required parameters" });
+        if (!sellingAsset || !buyingAsset || !sellAmount || !issuerA) {
+          return res
+            .status(400)
+            .json({ message: "Missing required parameters" });
+        }
+
+        const rate = await stellarService.getExchangeRate(
+          new Asset(sellingAsset, issuerA),
+          new Asset(buyingAsset, issuerB),
+        );
+
+        const estimatedAmount = (parseFloat(sellAmount) * rate).toFixed(6);
+
+        res.json({
+          sellAmount,
+          estimatedAmount,
+          rate: rate.toString(),
+        });
+      } catch (error: any) {
+        console.error("Trade calculation error:", error);
+        res.status(500).json({ message: "Internal server error" });
       }
-
-      const rate = await stellarService.getExchangeRate(
-        new Asset(sellingAsset, issuerA), new Asset(buyingAsset, issuerB));
-      
-      const estimatedAmount = (parseFloat(sellAmount) * rate).toFixed(6);
-
-      res.json({
-        sellAmount,
-        estimatedAmount,
-        rate: rate.toString(),
-      });
-    } catch (error: any) {
-      console.error("Trade calculation error:", error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
+    },
+  );
 
   app.get("/api/protected/trade/orderbook", rateLimiter, async (req, res) => {
     try {
@@ -1037,7 +1050,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           xlmBalance: xlmBalance.toString(),
           dopeBalance: dopeBalance.toString(),
           usdcBalance: usdcBalance.toString(),
-          gasBalance: gasBalance.toString()
+          gasBalance: gasBalance.toString(),
         },
         mining: miningStatus,
         recentTransactions,

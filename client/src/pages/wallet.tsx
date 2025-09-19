@@ -6,6 +6,12 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/card.js";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "../components/ui/tabs.js";
 import { Badge } from "../components/ui/badge.js";
 import { Button } from "../components/ui/button.js";
 import { AuthService } from "../lib/auth.js";
@@ -15,6 +21,7 @@ import {
   getActivityIcon,
   getStatusColor,
 } from "../utils/activity-utils.js";
+import { formatTimeAgo } from "../utils/format-utils.js";
 
 export default function WalletPage() {
   const { data: walletData, isLoading } = useQuery({
@@ -30,7 +37,7 @@ export default function WalletPage() {
         "/api/protected/transactions?limit=5",
       ),
   }) as any;
-  
+
   const [, navigate] = useLocation();
 
   const actionButtons = [
@@ -38,7 +45,7 @@ export default function WalletPage() {
       key: "send",
       label: "Send",
       icon: (
-        <Send className="w-6 h-6 text-primary mb-2 group-hover:scale-110 transition-transform" />
+        <Send className="w-6 h-6 group-hover:scale-110 transition-transform" />
       ),
       href: "/send",
     },
@@ -46,7 +53,7 @@ export default function WalletPage() {
       key: "trade",
       label: "Trade",
       icon: (
-        <BarChart3 className="w-6 h-6 text-primary mb-2 group-hover:scale-110 transition-transform" />
+        <BarChart3 className="w-6 h-6 group-hover:scale-110 transition-transform" />
       ),
       href: "/trading",
     },
@@ -54,7 +61,7 @@ export default function WalletPage() {
       key: "withdraw",
       label: "Withdraw",
       icon: (
-        <Unlock className="w-6 h-6 text-primary mb-2 group-hover:scale-110 transition-transform" />
+        <Unlock className="w-6 h-6 group-hover:scale-110 transition-transform" />
       ),
       href: "/withdraw",
     },
@@ -62,9 +69,27 @@ export default function WalletPage() {
       key: "stake",
       label: "Stake",
       icon: (
-        <Lock className="w-6 h-6 text-primary mb-2 group-hover:scale-110 transition-transform" />
+        <Lock className="w-6 h-6 group-hover:scale-110 transition-transform" />
       ),
       href: "/staking",
+    },
+  ];
+
+  const assets = [
+    {
+      assetCode: "XLM",
+      balance: walletData?.xlmBalance || "0",
+      price: 0.39,
+    },
+    {
+      assetCode: "GAS",
+      balance: walletData?.gasBalance || "0",
+      price: 0.0,
+    },
+    {
+      assetCode: "USDC",
+      balance: walletData?.usdcBalance || "0",
+      price: 1.0,
     },
   ];
 
@@ -89,109 +114,123 @@ export default function WalletPage() {
         {/* Wallet Balance */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center">
-              <Wallet className="w-5 h-5 mr-2" />
-              Wallet Balance
+            <CardTitle className="flex justify-between items-center">
+              Available Balance <Wallet className="w-5 h-5 mr-2" />
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="text-center p-4 bg-gradient-to-br from-secondary/20 to-secondary/10 rounded-lg">
-                <div
-                  className="text-xl font-bold text-secondary"
-                  data-testid="dope-balance"
-                >
-                  {parseFloat(walletData?.dopeBalance || "0").toFixed(4)}
-                </div>
-                <div className="text-sm text-muted-foreground">DOPE</div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-accent/20 to-accent/10 rounded-lg">
-                <div
-                  className="text-xl font-bold text-accent"
-                  data-testid="xlm-balance"
-                >
-                  {parseFloat(walletData?.xlmBalance || "0").toFixed(4)}
-                </div>
-                <div className="text-sm text-muted-foreground">XLM</div>
-              </div>
+          <CardContent className="space-y-3">
+            <div>
+              <div className="flex items-center text-3xl font-bold">{parseFloat(walletData?.dopeBalance).toFixed(4)}</div>
+              <div className="text-muted-foreground text-sm">DOPE Coin</div>
             </div>
+            
 
-            <div className="text-xs text-muted-foreground text-center">
+            <div className="text-xs text-muted-foreground">
               Last updated: {new Date().toLocaleTimeString()}
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <strong>Quick Action</strong>
-          </CardHeader>
-          <CardContent>
             <div className="grid grid-cols-2 gap-3">
-              {actionButtons.map((button) => {
-                return (
-                  <Button
-                    variant="outline"
-                    className="p-4 h-auto flex flex-col items-center hover:bg-muted hover:text-primary transition-colors group"
-                    onClick={() => navigate(button.href)}
-                    data-testid={`action-${button.key}`}
-                  >
-                    {button.icon}
-                    <span className="text-sm font-medium">{button.label}</span>
-                  </Button>
-                );
-              })}
+              {actionButtons?.map((button) => <Button key={button.key} className="flex items-center justify-around space-y-2 text-white hover:bg-muted hover:text-primary" onClick={() => navigate(button.href)}>
+                {button.icon}
+                {button.label}
+              </Button>)}
             </div>
           </CardContent>
         </Card>
 
-        {/* Recent Transactions */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Recent Transactions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {transactions && transactions.length > 0 ? (
-              <div className="space-y-3">
-                {transactions.slice(0, 5).map((tx: any) => (
-                  <div
-                    key={tx.id}
-                    className="flex items-center justify-between p-3 bg-muted rounded-lg"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="p-2 bg-background rounded-full">
-                        {getActivityIcon(tx.type)}
-                      </div>
-                      <div>
-                        <div className="font-medium">
-                          {getActivityLabel(tx.type)}
+        <Tabs defaultValue="assets" className="w-full mb-3">
+          <TabsList className="grid w-full grid-cols-2 mb-6">
+            <TabsTrigger value="assets" data-testid="tab-assets">
+              Assets
+            </TabsTrigger>
+            <TabsTrigger value="transactions" data-testid="tab-transactions">
+              Transactions
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="assets" className="space-y-6">
+            {/* Assets */}
+            <Card>
+              <CardHeader>
+                <CardTitle>My Assets</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {assets?.map((asset: any) => {
+                    return (
+                      <div key={asset.assetCode}>
+                        <div className="flex justify-between items-center w-full py-4">
+                          <div>
+                            <div className="text-xl font-bold text-primary">
+                              {parseFloat(asset.balance).toFixed(4)}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {asset.assetCode}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-success">
+                              ${asset.price}
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-sm text-muted-foreground">
-                          {new Date(tx.createdAt).toLocaleDateString()}
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="transactions" className="space-y-6">
+            {/* Recent Transactions */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>Recent Transactions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {transactions && transactions.length > 0 ? (
+                  <div className="space-y-3">
+                    {transactions.slice(0, 5).map((tx: any) => (
+                      <div
+                        key={tx.id}
+                        className="flex items-center justify-between p-3 bg-muted rounded-lg"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className="p-2 bg-background rounded-full">
+                            {getActivityIcon(tx.type)}
+                          </div>
+                          <div>
+                            <div className="font-medium">
+                              {getActivityLabel(tx.type)}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {formatTimeAgo(tx.createdAt)}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-medium">
+                            {tx.type === "transfer" && tx.toAddress ? "-" : "+"}
+                            {parseFloat(tx.amount).toFixed(4)} {tx.assetType}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            <Badge variant={getStatusColor(tx.status)}>
+                              {tx.status.toUpperCase()}
+                            </Badge>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-medium">
-                        {tx.type === "transfer" && tx.toAddress ? "-" : "+"}
-                        {parseFloat(tx.amount).toFixed(4)} {tx.assetType}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        <Badge variant={getStatusColor(tx.status)}>
-                          {tx.status.toUpperCase()}
-                        </Badge>
-                      </div>
-                    </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                No transactions yet
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No transactions yet
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
