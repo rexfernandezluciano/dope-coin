@@ -100,15 +100,21 @@ export default function TradingPage() {
   } | null>(null);
   const [pendingTradeData, setPendingTradeData] =
     useState<ExecuteTradeRequest | null>(null);
+  const [currentSellAmount, setCurrentSellAmount] = useState<number>(0);
 
   // Fetch trading pairs
   const { data: tradingPairs, isLoading: tradingPairsLoading } = useQuery({
     queryKey: ["/api/protected/trade/pairs"],
   }) as { data: TradingPair[]; isLoading: boolean };
 
+  // Use the exchange rate hook at the top level
+
   // Get DOPE issuer from trading pairs
   const dopeIssuer =
     tradingPairs?.find((pair) => pair.baseAsset.issuer)?.baseAsset.issuer || "";
+  const issuer =
+    tradingPairs?.find((pair) => pair.quoteAsset.issuer)?.quoteAsset.issuer ||
+    "";
 
   // Helper function to extract asset info from trading pairs and error messages
   const getAssetFromError = (errorMessage: string, tradingPair: string) => {
@@ -156,7 +162,7 @@ export default function TradingPage() {
       buyAsset:
         selectedPair === "XLM/DOPE"
           ? { code: "DOPE", issuer: dopeIssuer }
-          : { type: "native" },
+          : { type: "native", code: "XLM" },
       sellAmount: "",
       minBuyAmount: "",
     },
@@ -191,10 +197,47 @@ export default function TradingPage() {
     data: { xlmBalance: string; dopeBalance: string; gasBalance: string };
   };
 
+  const { data: exchangeRate, isLoading: exchangeRateLoading } = useQuery({
+    queryKey: [
+      "/api/protected/trade/exchange-rate",
+      tradeForm.getValues("sellAsset")?.code,
+      tradeForm.getValues("buyAsset")?.code,
+      currentSellAmount,
+    ],
+    queryFn: async () => {
+      const buyingAsset = tradeForm.getValues("buyAsset")?.code;
+      const sellingAsset = tradeForm.getValues("sellAsset")?.code;
+      if (
+        !selectedPair ||
+        !sellingAsset ||
+        !buyingAsset ||
+        currentSellAmount <= 0
+      )
+        return null;
+      const response = await apiRequest(
+        "POST",
+        "/api/protected/trade/exchange-rate",
+        {
+          sellingAsset: sellingAsset || "XLM",
+          buyingAsset: buyingAsset || "DOPE",
+          sellAmount: currentSellAmount || 0,
+          issuerA: dopeIssuer,
+          issuerB: issuer,
+        },
+      );
+      return response.json();
+    },
+    enabled: !!selectedPair && currentSellAmount > 0,
+  }) as any;
+
   // Execute trade mutation
   const executeTradeMutation = useMutation({
     mutationFn: async (data: ExecuteTradeRequest) => {
-      const response = await apiRequest("POST", "/api/protected/trade/execute", data);
+      const response = await apiRequest(
+        "POST",
+        "/api/protected/trade/execute",
+        data,
+      );
       return response.json();
     },
     onSuccess: (data) => {
@@ -203,7 +246,9 @@ export default function TradingPage() {
         description: `Swapped ${data.result?.sellAmount} ${data.result?.sellAsset?.code} for ${data.result?.receiveAmount} ${data.result?.buyAsset?.code}`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/protected/wallet"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/protected/transactions"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/protected/transactions"],
+      });
       tradeForm.reset();
       setPendingTradeData(null); // Clear pending trade data
     },
@@ -217,15 +262,18 @@ export default function TradingPage() {
       }
 
       // Only show trust modal if trustline is missing, NOT if it already exists
-      const isMissingTrustline = (
-        errorMessage.includes("Missing trustline") || 
-        errorMessage.includes("op_no_trust")
-      ) && !errorMessage.includes("already exists");
+      const isMissingTrustline =
+        (errorMessage.includes("Missing trustline") ||
+          errorMessage.includes("opnotrust")) &&
+        !errorMessage.includes("already exists");
 
       if (isMissingTrustline) {
         // Get the current trading pair from form
         const currentTradingPair = tradeForm.getValues("tradingPair");
-        const assetToTrust = getAssetFromError(errorMessage, currentTradingPair);
+        const assetToTrust = getAssetFromError(
+          errorMessage,
+          currentTradingPair,
+        );
 
         if (assetToTrust) {
           // Store the trade data to retry after trusting
@@ -355,52 +403,41 @@ export default function TradingPage() {
     },
   });
 
-  // Update forms when DOPE issuer is available or trading pair changes
-  React.useEffect(() => {
+  const updatedDopeIssuer = (value: string = selectedPair) => {
     if (dopeIssuer) {
       if (selectedPair === "XLM/DOPE") {
-        tradeForm.setValue("sellAsset", { type: "native" });
+        tradeForm.setValue("sellAsset", { type: "native", code: "XLM" });
         tradeForm.setValue("buyAsset", { code: "DOPE", issuer: dopeIssuer });
       } else if (selectedPair === "DOPE/XLM") {
         tradeForm.setValue("sellAsset", { code: "DOPE", issuer: dopeIssuer });
-        tradeForm.setValue("buyAsset", { type: "native" });
+        tradeForm.setValue("buyAsset", { type: "native", code: "XLM" });
       } else if (selectedPair === "DOPE/USDC") {
         tradeForm.setValue("sellAsset", { code: "DOPE", issuer: dopeIssuer });
         tradeForm.setValue("buyAsset", { code: "USDC", issuer: dopeIssuer });
+      } else if (selectedPair === "USDC/DOPE") {
+        tradeForm.setValue("sellAsset", { code: "USDC", issuer: dopeIssuer });
+        tradeForm.setValue("buyAsset", { code: "DOPE", issuer: dopeIssuer });
       }
+
+      setSelectedPair(value);
       tradeForm.setValue("tradingPair", selectedPair);
       liquidityForm.setValue("assetB", { code: "DOPE", issuer: dopeIssuer });
     }
+  };
+
+  // Update forms when DOPE issuer is available or trading pair changes
+  React.useEffect(() => {
+    updatedDopeIssuer(selectedPair);
   }, [dopeIssuer, selectedPair, tradeForm, liquidityForm]);
 
-  // Calculate expected receive amount based on sell amount
-  const calculateReceiveAmount = async (
-    sellAmount: string,
-    tradingPair: string,
-  ) => {
-    if (!sellAmount || !tradingPair) return;
-
-    try {
-      const amount = parseFloat(sellAmount);
-      if (isNaN(amount) || amount <= 0) return;
-
-      // Exchange rates: 1 XLM = 10 DOPE, 1 DOPE = 0.1 XLM
-      let estimatedAmount = 0;
-      if (tradingPair === "XLM/DOPE") {
-        estimatedAmount = amount * 10; // XLM to DOPE
-      } else if (tradingPair === "DOPE/XLM") {
-        estimatedAmount = amount * 0.1; // DOPE to XLM
-      } else if (tradingPair === "DOPE/USDC") {
-        estimatedAmount = amount * 0.005;
-      }
-
+  // Update minimum receive amount when exchange rate is available
+  React.useEffect(() => {
+    if (exchangeRate?.estimatedAmount) {
       // Set minimum receive amount with 2% slippage tolerance
-      const minReceive = estimatedAmount * 0.98;
+      const minReceive = exchangeRate.estimatedAmount * 0.98;
       tradeForm.setValue("minBuyAmount", minReceive.toFixed(7));
-    } catch (error) {
-      console.error("Error calculating receive amount:", error);
     }
-  };
+  }, [exchangeRate, tradeForm]);
 
   // Calculate liquidity amounts automatically
   const calculateLiquidityAmount = (amountA: string, selectedPair: string) => {
@@ -472,20 +509,22 @@ export default function TradingPage() {
         </TabsList>
 
         <TabsContent value="trading" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5" />
-                Trade DOPE Tokens
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Form {...tradeForm}>
-                <form
-                  onSubmit={tradeForm.handleSubmit(onTradeSubmit)}
-                  className="space-y-4"
-                >
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Desktop Layout: Trading form on left, Available pairs on right */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left Column - Trading Form */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Make a Trade
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Form {...tradeForm}>
+                  <form
+                    onSubmit={tradeForm.handleSubmit(onTradeSubmit)}
+                    className="space-y-4"
+                  >
                     <FormField
                       control={tradeForm.control}
                       name="tradingPair"
@@ -494,7 +533,7 @@ export default function TradingPage() {
                           <FormLabel>Trading Pair</FormLabel>
                           <Select
                             value={field.value}
-                            onValueChange={field.onChange}
+                            onValueChange={(value) => updatedDopeIssuer(value)}
                           >
                             <FormControl>
                               <SelectTrigger data-testid="select-trading-pair">
@@ -532,10 +571,12 @@ export default function TradingPage() {
                               step="0.01"
                               onChange={(e) => {
                                 field.onChange(e);
-                                calculateReceiveAmount(
-                                  e.target.value,
-                                  tradeForm.getValues("tradingPair"),
-                                );
+                                const amount = parseFloat(e.target.value);
+                                if (!isNaN(amount) && amount > 0) {
+                                  setCurrentSellAmount(amount);
+                                } else {
+                                  setCurrentSellAmount(0);
+                                }
                               }}
                             />
                           </FormControl>
@@ -557,6 +598,7 @@ export default function TradingPage() {
                               type="number"
                               placeholder="0.00"
                               step="0.01"
+                              disabled
                             />
                           </FormControl>
                           <FormMessage />
@@ -564,83 +606,95 @@ export default function TradingPage() {
                       )}
                     />
 
-                    <div className="flex items-end">
-                      <Button
-                        type="submit"
-                        disabled={executeTradeMutation.isPending}
-                        className="w-full"
-                        data-testid="button-execute-trade"
-                      >
-                        {executeTradeMutation.isPending && (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <div className="flex items-center justify-center p-4 border rounded-lg bg-muted/30">
+                      {exchangeRateLoading && currentSellAmount > 0 ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Loading rate...
+                        </div>
+                      ) : exchangeRate?.rate && currentSellAmount > 0 ? (
+                        <div className="text-center">
+                          <div className="text-sm text-muted-foreground">
+                            Exchange Rate
+                          </div>
+                          <div className="font-semibold text-lg">
+                            {exchangeRate?.rate} per{" "}
+                            {tradeForm.getValues("sellAsset")?.code}
+                          </div>
+                          {exchangeRate?.estimatedAmount && (
+                            <div className="text-sm text-muted-foreground mt-1">
+                              Est. receive: {exchangeRate?.estimatedAmount || 0}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-muted-foreground">
+                          Enter amount to see rate
+                        </div>
+                      )}
+                    </div>
+
+                    <Button
+                      type="submit"
+                      disabled={executeTradeMutation.isPending}
+                      className="w-full"
+                      data-testid="button-execute-trade"
+                    >
+                      {executeTradeMutation.isPending && (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      )}
+                      {executeTradeMutation.isPending
+                        ? "Executing..."
+                        : "Execute Trade"}
+                    </Button>
+                  </form>
+                </Form>
+              </CardContent>
+            </Card>
+
+            {/* Right Column - Available Trading Pairs */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Available Trading Pairs</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {tradingPairs?.map((pair) => (
+                    <div
+                      key={pair.symbol}
+                      className={`p-4 border rounded-lg cursor-pointer transition-colors hover:bg-muted/50 ${
+                        selectedPair === pair.symbol
+                          ? "bg-primary/10 border-primary"
+                          : ""
+                      }`}
+                      data-testid={`pair-${pair.symbol}`}
+                      onClick={() => {
+                        setSelectedPair(pair.symbol);
+                        updatedDopeIssuer(pair.symbol);
+                      }}
+                    >
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <div className="font-semibold text-lg">
+                            {pair.symbol}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {pair.baseAsset.code || "XLM"} →{" "}
+                            {pair.quoteAsset.code || "XLM"}
+                          </div>
+                        </div>
+                        {selectedPair === pair.symbol && (
+                          <Badge variant="default" className="ml-2">
+                            Selected
+                          </Badge>
                         )}
-                        {executeTradeMutation.isPending
-                          ? "Executing..."
-                          : "Execute Trade"}
-                      </Button>
-                    </div>
-                  </div>
-                </form>
-              </Form>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Available Trading Pairs</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {tradingPairs?.map((pair) => (
-                  <div
-                    key={pair.symbol}
-                    className={`p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors ${
-                      selectedPair === pair.symbol
-                        ? "bg-primary/10 border-primary ring-1 ring-primary"
-                        : "hover:border-muted-foreground"
-                    }`}
-                    onClick={() => {
-                      setSelectedPair(pair.symbol);
-                      tradeForm.setValue("tradingPair", pair.symbol);
-
-                      // Update assets based on selected pair
-                      if (dopeIssuer) {
-                        if (pair.symbol === "XLM/DOPE") {
-                          tradeForm.setValue("sellAsset", { type: "native" });
-                          tradeForm.setValue("buyAsset", {
-                            code: "DOPE",
-                            issuer: dopeIssuer,
-                          });
-                        } else if (pair.symbol === "DOPE/XLM") {
-                          tradeForm.setValue("sellAsset", {
-                            code: "DOPE",
-                            issuer: dopeIssuer,
-                          });
-                          tradeForm.setValue("buyAsset", { type: "native" });
-                        }
-                      }
-
-                      // Clear amounts when switching pairs
-                      tradeForm.setValue("sellAmount", "");
-                      tradeForm.setValue("minBuyAmount", "");
-                    }}
-                    data-testid={`pair-${pair.symbol}`}
-                  >
-                    <div className="font-semibold">{pair.symbol}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {pair.baseAsset.code || "XLM"} →{" "}
-                      {pair.quoteAsset.code || "XLM"}
-                    </div>
-                    {selectedPair === pair.symbol && (
-                      <div className="text-xs text-primary mt-1">
-                        ✓ Selected
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="liquidity" className="space-y-6">
@@ -681,7 +735,7 @@ export default function TradingPage() {
                       name="amountA"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>XLM Amount</FormLabel>
+                          <FormLabel>Amount to Deposit</FormLabel>
                           <FormControl>
                             <Input
                               {...field}
@@ -708,7 +762,7 @@ export default function TradingPage() {
                       name="amountB"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>DOPE Amount</FormLabel>
+                          <FormLabel>Amount to Liquidity</FormLabel>
                           <FormControl>
                             <Input
                               {...field}

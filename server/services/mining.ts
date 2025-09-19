@@ -434,6 +434,7 @@ export class MiningService {
       }
     } catch (error) {
       console.error("Error claiming unclaimed rewards:", error);
+      throw error;
     }
   }
 

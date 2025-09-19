@@ -358,7 +358,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const claimbleBalances = await miningService.getClaimbaleBalances(userId);
 
-      if (!claimbleBalances) {
+      if (!claimbleBalances || claimbleBalances.length < 0) {
         return res.status(404).json({ message: "No claimable balances found" });
       }
 
@@ -391,15 +391,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const [xlmBalance, dopeBalance, gasBalance] = await Promise.all([
-        stellarService.getXLMBalance(userId),
-        stellarService.getDOPEBalance(userId),
-        stellarService.getGASBalance(userId),
-      ]);
+      const [xlmBalance, dopeBalance, usdcBalance, gasBalance] =
+        await Promise.all([
+          stellarService.getXLMBalance(userId),
+          stellarService.getDOPEBalance(userId),
+          stellarService.getUSDCBalance(userId),
+          stellarService.getGASBalance(userId),
+        ]);
 
       res.json({
         xlmBalance: xlmBalance.toString(),
         dopeBalance: dopeBalance.toString(),
+        usdcBalance: usdcBalance.toString(),
         gasBalance: gasBalance.toString(),
       });
     } catch (error: any) {
@@ -636,29 +639,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/protected/trade/calculate", rateLimiter, async (req, res) => {
+  app.post("/api/protected/trade/exchange-rate", rateLimiter, async (req, res) => {
     try {
-      const { sellAmount, tradingPair } = req.body;
+      const { sellingAsset, buyingAsset, sellAmount, issuerA, issuerB } = req.body;
 
-      if (!sellAmount || !tradingPair) {
+      if (!sellingAsset || !buyingAsset || !sellAmount || !issuerA) {
         return res.status(400).json({ message: "Missing required parameters" });
       }
 
-      // Simple calculation for demo purposes
-      // In production, this would query real market data
-      const rate =
-        tradingPair === "DOPE/XLM"
-          ? 10
-          : tradingPair === "XLM/DOPE"
-            ? 0.1
-            : tradingPair === "DOPE/USDC"
-              ? 8
-              : 0.1; // 1 XLM = 10 DOPE
+      const rate = await stellarService.getExchangeRate(
+        new Asset(sellingAsset, issuerA), new Asset(buyingAsset, issuerB));
+      
       const estimatedAmount = (parseFloat(sellAmount) * rate).toFixed(6);
 
       res.json({
         sellAmount,
-        tradingPair,
         estimatedAmount,
         rate: rate.toString(),
       });
@@ -1031,12 +1026,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const xlmBalance = await stellarService.getXLMBalance(userId);
       // Get latest DOPE balance from Stellar
       const dopeBalance = await stellarService.getDOPEBalance(userId);
+      // Get latest USDC balance from Stellar
+      const usdcBalance = await stellarService.getUSDCBalance(userId);
+      // Get latest GAS balance from Stellar
+      const gasBalance = await stellarService.getGASBalance(userId);
 
       res.json({
         user: safeUser,
         wallet: {
           xlmBalance: xlmBalance.toString(),
           dopeBalance: dopeBalance.toString(),
+          usdcBalance: usdcBalance.toString(),
+          gasBalance: gasBalance.toString()
         },
         mining: miningStatus,
         recentTransactions,

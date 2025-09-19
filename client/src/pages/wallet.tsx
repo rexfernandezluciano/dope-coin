@@ -1,22 +1,22 @@
-
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.js";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card.js";
 import { Badge } from "../components/ui/badge.js";
-import { useToast } from "../hooks/use-toast.js";
+import { Button } from "../components/ui/button.js";
 import { AuthService } from "../lib/auth.js";
-import { Wallet } from "lucide-react";
-import { getActivityLabel, getActivityIcon, getStatusColor } from "../utils/activity-utils.js";
+import { Wallet, Send, BarChart3, Lock, Unlock } from "lucide-react";
+import {
+  getActivityLabel,
+  getActivityIcon,
+  getStatusColor,
+} from "../utils/activity-utils.js";
 
 export default function WalletPage() {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const [sendForm, setSendForm] = useState({
-    toAddress: "",
-    amount: "",
-    assetType: "DOPE" as "DOPE" | "XLM"
-  });
-
   const { data: walletData, isLoading } = useQuery({
     queryKey: ["/api/protected/wallet"],
     refetchInterval: 30000,
@@ -24,42 +24,49 @@ export default function WalletPage() {
 
   const { data: transactions } = useQuery({
     queryKey: ["/api/protected/transactions"],
-    queryFn: () => AuthService.authenticatedRequest("GET", "/api/protected/transactions?limit=5"),
+    queryFn: () =>
+      AuthService.authenticatedRequest(
+        "GET",
+        "/api/protected/transactions?limit=5",
+      ),
   }) as any;
+  
+  const [, navigate] = useLocation();
 
-  const sendTokens = useMutation({
-    mutationFn: (data: typeof sendForm) => 
-      AuthService.authenticatedRequest("POST", "/api/protected/wallet/send", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/protected/wallet"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/protected/transactions"] });
-      setSendForm({ toAddress: "", amount: "", assetType: "DOPE" });
-      toast({
-        title: "Transaction sent",
-        description: "Your transaction has been submitted successfully.",
-      });
+  const actionButtons = [
+    {
+      key: "send",
+      label: "Send",
+      icon: (
+        <Send className="w-6 h-6 text-primary mb-2 group-hover:scale-110 transition-transform" />
+      ),
+      href: "/send",
     },
-    onError: (error) => {
-      toast({
-        title: "Transaction failed",
-        description: error.message,
-        variant: "destructive",
-      });
+    {
+      key: "trade",
+      label: "Trade",
+      icon: (
+        <BarChart3 className="w-6 h-6 text-primary mb-2 group-hover:scale-110 transition-transform" />
+      ),
+      href: "/trading",
     },
-  });
-
-  const handleSendSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!sendForm.toAddress || !sendForm.amount) {
-      toast({
-        title: "Invalid input",
-        description: "Please fill in all fields.",
-        variant: "destructive",
-      });
-      return;
-    }
-    sendTokens.mutate(sendForm);
-  };
+    {
+      key: "withdraw",
+      label: "Withdraw",
+      icon: (
+        <Unlock className="w-6 h-6 text-primary mb-2 group-hover:scale-110 transition-transform" />
+      ),
+      href: "/withdraw",
+    },
+    {
+      key: "stake",
+      label: "Stake",
+      icon: (
+        <Lock className="w-6 h-6 text-primary mb-2 group-hover:scale-110 transition-transform" />
+      ),
+      href: "/staking",
+    },
+  ];
 
   if (isLoading) {
     return (
@@ -79,7 +86,6 @@ export default function WalletPage() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8" data-testid="wallet-page">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
         {/* Wallet Balance */}
         <Card>
           <CardHeader>
@@ -91,21 +97,50 @@ export default function WalletPage() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="text-center p-4 bg-gradient-to-br from-secondary/20 to-secondary/10 rounded-lg">
-                <div className="text-xl font-bold text-secondary" data-testid="dope-balance">
+                <div
+                  className="text-xl font-bold text-secondary"
+                  data-testid="dope-balance"
+                >
                   {parseFloat(walletData?.dopeBalance || "0").toFixed(4)}
                 </div>
                 <div className="text-sm text-muted-foreground">DOPE</div>
               </div>
               <div className="text-center p-4 bg-gradient-to-br from-accent/20 to-accent/10 rounded-lg">
-                <div className="text-xl font-bold text-accent" data-testid="xlm-balance">
+                <div
+                  className="text-xl font-bold text-accent"
+                  data-testid="xlm-balance"
+                >
                   {parseFloat(walletData?.xlmBalance || "0").toFixed(4)}
                 </div>
                 <div className="text-sm text-muted-foreground">XLM</div>
               </div>
             </div>
-            
+
             <div className="text-xs text-muted-foreground text-center">
-              Last updated: {walletData?.lastUpdated ? new Date(walletData.lastUpdated).toLocaleString() : "Never"}
+              Last updated: {new Date().toLocaleTimeString()}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <strong>Quick Action</strong>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-3">
+              {actionButtons.map((button) => {
+                return (
+                  <Button
+                    variant="outline"
+                    className="p-4 h-auto flex flex-col items-center hover:bg-muted hover:text-primary transition-colors group"
+                    onClick={() => navigate(button.href)}
+                    data-testid={`action-${button.key}`}
+                  >
+                    {button.icon}
+                    <span className="text-sm font-medium">{button.label}</span>
+                  </Button>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -119,7 +154,10 @@ export default function WalletPage() {
             {transactions && transactions.length > 0 ? (
               <div className="space-y-3">
                 {transactions.slice(0, 5).map((tx: any) => (
-                  <div key={tx.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                  <div
+                    key={tx.id}
+                    className="flex items-center justify-between p-3 bg-muted rounded-lg"
+                  >
                     <div className="flex items-center space-x-3">
                       <div className="p-2 bg-background rounded-full">
                         {getActivityIcon(tx.type)}
@@ -135,7 +173,8 @@ export default function WalletPage() {
                     </div>
                     <div className="text-right">
                       <div className="font-medium">
-                        {tx.type === "transfer" && tx.toAddress ? "-" : "+"}{parseFloat(tx.amount).toFixed(4)} {tx.assetType}
+                        {tx.type === "transfer" && tx.toAddress ? "-" : "+"}
+                        {parseFloat(tx.amount).toFixed(4)} {tx.assetType}
                       </div>
                       <div className="text-sm text-muted-foreground">
                         <Badge variant={getStatusColor(tx.status)}>

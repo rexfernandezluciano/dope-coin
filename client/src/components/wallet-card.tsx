@@ -136,9 +136,9 @@ export const WalletCard = () => {
             </div>
             <div className="text-center p-3 bg-secondary/10 rounded-lg">
               <div className="text-xl font-bold text-secondary">
-                {parseFloat(wallet?.dopeBalance || "0").toFixed(2)}
+                {parseFloat(wallet?.usdcBalance || "0").toFixed(2)}
               </div>
-              <div className="text-xs text-muted-foreground">DOPE</div>
+              <div className="text-xs text-muted-foreground">USDC</div>
             </div>
             <div className="text-center p-3 bg-accent/10 rounded-lg">
               <div className="text-xl font-bold text-accent">

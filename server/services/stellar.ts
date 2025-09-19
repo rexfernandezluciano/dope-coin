@@ -50,7 +50,7 @@ const dopeDistributorKeypair = Keypair.fromSecret(DOPE_DISTRIBUTOR_SECRET);
 
 const USDC_ISSUER_ACCOUNT =
   process.env.USDC_ISSUER_ACCOUNT ||
-  "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+  "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"; // Issued by Circle
 
 if (process.env.NODE_ENV === "development") {
   console.log(`DOPE Issuer: ${dopeIssuerKeypair.publicKey()}`);
@@ -231,6 +231,28 @@ export class StellarService {
       return parseFloat(dopeBalance?.balance || "0");
     } catch (error) {
       console.error("Error fetching DOPE balance:", error);
+      return 0;
+    }
+  }
+
+  async getUSDCBalance(userId: string): Promise<number> {
+    try {
+      const user = await storage.getUser(userId);
+      if (!user?.stellarPublicKey) {
+        throw new Error("User stellar account not found");
+      }
+
+      const account = await server.loadAccount(user.stellarPublicKey);
+      const usdcBalance = account.balances.find(
+        (balance: any) =>
+          balance.asset_type === "credit_alphanum4" &&
+          balance.asset_code === "USDC" &&
+          balance.asset_issuer === USDC_ISSUER_ACCOUNT,
+      );
+
+      return parseFloat(usdcBalance?.balance || "0");
+    } catch (error) {
+      console.error("Error fetching USDC balance:", error);
       return 0;
     }
   }
@@ -926,31 +948,7 @@ export class StellarService {
         throw new Error(`Insufficient ${sellAsset.code || "XLM"} balance`);
       }
 
-      // Exchange rate logic with normalized assets
-      const getExchangeRate = (sell: Asset, buy: Asset): number => {
-        const sellCode = sell.code || "XLM";
-        const buyCode = buy.code || "XLM";
-        const pair = `${sellCode}->${buyCode}`;
-
-        const rates: Record<string, number> = {
-          "XLM->DOPE": 10,
-          "DOPE->XLM": 0.1,
-          "USDC->DOPE": 8,
-          "DOPE->USDC": 0.125, // Fixed rate: 1 DOPE = 0.125 USDC
-          "XLM->USDC": 0.12,
-          "USDC->XLM": 8.3,
-        };
-
-        if (!rates[pair]) {
-          throw new Error(
-            `Unsupported trading pair: ${pair}. Available pairs: ${Object.keys(rates).join(", ")}`,
-          );
-        }
-
-        return rates[pair];
-      };
-
-      const exchangeRate = getExchangeRate(sellAsset, buyAsset);
+      const exchangeRate = await this.getExchangeRate(sellAsset, buyAsset);
       const expectedReceive = sellAmountNum * exchangeRate;
 
       if (expectedReceive < minBuyAmountNum) {
@@ -1131,6 +1129,41 @@ export class StellarService {
       throw new Error(error.message || "Failed to execute trade");
     }
   }
+
+  // Exchange rate logic with normalized assets
+  getExchangeRate = async (sell: Asset, buy: Asset): Promise<number> => {
+    const sellCode = sell.code || "XLM";
+    const buyCode = buy.code || "XLM";
+    const pair = `${sellCode}->${buyCode}`;
+
+    const fallbackRates: Record<string, number> = {
+      "XLM->DOPE": 10,
+      "DOPE->XLM": 0.1,
+      "USDC->DOPE": 8,
+      "DOPE->USDC": 0.125,
+      "XLM->USDC": 0.12,
+      "USDC->XLM": 8.3,
+    };
+
+    try {
+      const orderbook = await server.orderbook(sell, buy).limit(10).call();
+      const bestAsk = parseFloat(orderbook.asks?.[0]?.price);
+      const bestBid = parseFloat(orderbook.bids?.[0]?.price);
+
+      if (isNaN(bestAsk) || isNaN(bestBid))
+        throw new Error("No valid orderbook data");
+
+      return (bestAsk + bestBid) / 2;
+    } catch (err) {
+      console.warn(`Falling back to fixed rate for ${pair}: ${err.message}`);
+      if (!fallbackRates[pair]) {
+        throw new Error(
+          `Unsupported trading pair: ${pair}. Available pairs: ${Object.keys(fallbackRates).join(", ")}`,
+        );
+      }
+      return fallbackRates[pair];
+    }
+  };
 
   /**
    * Place a limit order on the DEX
@@ -1764,7 +1797,7 @@ export class StellarService {
         }
       }
 
-      throw new Error(error.message || "Failed to add liquidity");
+      handleStellarError(error, "Failed to add liquidity");
     }
   }
 
@@ -1922,9 +1955,9 @@ export class StellarService {
         minAmountA,
         minAmountB,
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error removing liquidity:", error);
-      throw error;
+      handleStellarError(error, "Failed to remove liquidity");
     }
   }
 
@@ -2023,6 +2056,11 @@ export class StellarService {
         baseAsset: dopeAsset,
         quoteAsset: new Asset("USDC", USDC_ISSUER_ACCOUNT),
         symbol: "DOPE/USDC",
+      },
+      {
+        baseAsset: new Asset("USDC", USDC_ISSUER_ACCOUNT),
+        quoteAsset: dopeAsset,
+        symbol: "USDC/DOPE",
       },
     ];
   }
