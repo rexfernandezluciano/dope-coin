@@ -120,7 +120,7 @@ export default function ReceivePage() {
                   variant="outline"
                   size="icon"
                   onClick={() =>
-                    copyToClipboard(stellarAddress, "Stellar address")
+                    copyToClipboard(stellarAddress, "Your wallet address")
                   }
                   data-testid="button-copy-address"
                 >
@@ -145,7 +145,7 @@ export default function ReceivePage() {
               <Button
                 variant="outline"
                 onClick={() =>
-                  copyToClipboard(stellarAddress, "Wallet address")
+                  copyToClipboard(stellarAddress, "Your wallet address")
                 }
                 data-testid="button-copy"
               >

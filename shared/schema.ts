@@ -173,10 +173,8 @@ export const removeLiquiditySchema = z.object({
 });
 
 export const orderbookQuerySchema = z.object({
-  sellAssetCode: z.string().min(1, "Sell asset code is required"),
-  sellAssetIssuer: z.string().optional(),
-  buyAssetCode: z.string().min(1, "Buy asset code is required"),
-  buyAssetIssuer: z.string().optional(),
+  selling: z.any(),
+  buying: z.any(),
 });
 
 // Profile update schemas

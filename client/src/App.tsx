@@ -18,6 +18,7 @@ import ReferralsPage from "./pages/referrals.js";
 import SendPage from "./pages/send.js";
 import ReceivePage from "./pages/receive.js";
 import TradingPage from "./pages/trading.js";
+import LimitOrderCreator from "./pages/limit-order.js";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -208,6 +209,21 @@ function Router() {
                 <Header />
                 <main className="flex-1 main-content">
                   <TradingPage />
+                </main>
+                <MobileNav />
+              </div>
+            </ProtectedRoute>
+          )}
+        />
+
+        <Route
+          path="/orders/create"
+          component={() => (
+            <ProtectedRoute>
+              <div className="flex flex-col min-h-screen">
+                <Header />
+                <main className="flex-1 main-content">
+                  <LimitOrderCreator />
                 </main>
                 <MobileNav />
               </div>

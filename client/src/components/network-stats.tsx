@@ -57,7 +57,7 @@ export function NetworkStats() {
             </span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Total Supply</span>
+            <span className="text-muted-foreground">Circulating Supply</span>
             <span
               className="font-medium text-foreground"
               data-testid="total-supply"

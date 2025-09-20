@@ -88,6 +88,24 @@ interface OperationRecord {
   createdAt: string;
 }
 
+interface LiquidityPoolData {
+    poolId: string;
+    balance: string;
+    poolInfo: {
+      id: string;
+      assets: {
+        assetA: string;
+        assetB: string;
+      };
+      reserves: {
+        assetA: string;
+        assetB: string;
+      };
+      totalShares: string;
+      fee: number;
+    };
+}
+
 // Initialize platform accounts on startup
 async function initializePlatformAccounts() {
   if (STELLAR_NETWORK === "testnet") {
@@ -203,7 +221,8 @@ export class StellarService {
   SUPPORTED_ASSETS = {
     XLM: Asset.native(),
     DOPE: new Asset("DOPE", dopeIssuerKeypair.publicKey()),
-    USDC: new Asset("USDC", USDC_ISSUER_ACCOUNT), // MoneyGram USDC issuer
+    USDC: new Asset("USDC", USDC_ISSUER_ACCOUNT),
+    EURC: new Asset("EURC", USDC_ISSUER_ACCOUNT),
   };
 
   async getXLMBalance(userId: string): Promise<number> {
@@ -522,30 +541,6 @@ export class StellarService {
       gasTransaction.sign(dopeIssuerKeypair);
       const gasResult = await server.submitTransaction(gasTransaction);
 
-      // Record the conversion transaction
-      await storage.createTransaction({
-        userId,
-        type: "gas_conversion",
-        amount: xlmAmount,
-        fromAddress: userKeypair.publicKey(),
-        toAddress: dopeIssuerKeypair.publicKey(),
-        stellarTxId: gasResult.hash,
-        assetType: "XLM->GAS",
-        status: "completed",
-        metadata: {
-          xlmAmount,
-          gasAmount,
-          conversionRate: "100",
-          xlmTxHash: xlmResult.hash,
-          gasTxHash: gasResult.hash,
-          reservesAfterConversion: (
-            currentXLMBalance -
-            requestedAmount -
-            0.0001
-          ).toFixed(4),
-        },
-      });
-
       return {
         hash: gasResult.hash,
         xlmAmount,
@@ -644,6 +639,8 @@ export class StellarService {
         asset = new Asset("GAS", dopeIssuerKeypair.publicKey());
       } else if (assetType === "USDC") {
         asset = new Asset("USDC", USDC_ISSUER_ACCOUNT);
+      } else if (assetType === "EURC") {
+        asset = new Asset("EURC", USDC_ISSUER_ACCOUNT);
       } else {
         throw new Error(`Unsupported asset type: ${assetType}`);
       }
@@ -668,19 +665,6 @@ export class StellarService {
 
       transaction.sign(sourceKeypair);
       const result = await server.submitTransaction(transaction);
-
-      // Record transaction in database
-      await storage.createTransaction({
-        userId,
-        type: "send",
-        amount: amount,
-        fromAddress: sourceKeypair.publicKey(),
-        toAddress,
-        stellarTxId: result.hash,
-        assetType: assetType,
-        status: "completed",
-        metadata: { assetType },
-      });
 
       return {
         hash: result.hash,
@@ -726,7 +710,7 @@ export class StellarService {
 
     if (NetworkHandler.isTestnet()) {
       // Use simplified trading for testnet
-      return this.executeTestnetTrade(
+      return this.executeRealTrade(
         userId,
         sellAsset,
         sellAmount,
@@ -756,29 +740,15 @@ export class StellarService {
   ): Promise<any> {
     NetworkHandler.validateMainnetOperation();
 
-    if (NetworkHandler.isTestnet()) {
-      // Use simplified liquidity for testnet
-      return this.addTestnetLiquidity(
-        userId,
-        assetA,
-        assetB,
-        amountA,
-        amountB,
-        minPrice,
-        maxPrice,
-      );
-    } else {
-      // Use real AMM for mainnet
-      return this.addRealLiquidity(
-        userId,
-        assetA,
-        assetB,
-        amountA,
-        amountB,
-        minPrice,
-        maxPrice,
-      );
-    }
+    return this.createOrJoinLiquidity(
+      userId,
+      assetA,
+      assetB,
+      amountA,
+      amountB,
+      minPrice,
+      maxPrice,
+    );
   }
 
   async executeRealTrade(
@@ -797,17 +767,10 @@ export class StellarService {
       const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
       const userAccount = await server.loadAccount(userKeypair.publicKey());
 
-      // Get the current orderbook to determine market price
-      const orderbook = await server
-        .orderbook(sellAsset, buyAsset)
-        .limit(10)
-        .call();
+      // Get the current market price
+      const rate = await this.getExchangeRate(sellAsset, buyAsset);
 
-      // Calculate expected price based on orderbook
-      const bestAsk = orderbook.asks?.[0];
-      const bestBid = orderbook.bids?.[0];
-
-      if (!bestAsk || !bestBid) {
+      if (!rate) {
         throw new Error("No liquidity available for this trading pair");
       }
 
@@ -877,32 +840,10 @@ export class StellarService {
         );
         // Fallback: estimate received amount based on sell amount and best ask price
         const estimatedReceived = (
-          parseFloat(sellAmount) / parseFloat(bestAsk.price)
+          parseFloat(sellAmount) / parseFloat(rate.toString())
         ).toFixed(7);
         receivedAmount = estimatedReceived;
       }
-
-      // Record trade
-      await storage.createTransaction({
-        userId,
-        type: "trade",
-        amount: sellAmount,
-        fromAddress: userKeypair.publicKey(),
-        toAddress: userKeypair.publicKey(),
-        stellarTxId: result.hash,
-        assetType: `${sellAsset.code || "XLM"}->${buyAsset.code || "XLM"}`,
-        status: "completed",
-        metadata: {
-          tradeType: "path_payment",
-          sellAsset: sellAsset.code || "XLM",
-          buyAsset: buyAsset.code || "XLM",
-          sellAmount,
-          receivedAmount,
-          minBuyAmount,
-          bestAskPrice: bestAsk.price,
-          bestBidPrice: bestBid.price,
-        },
-      });
 
       return {
         hash: result.hash,
@@ -913,7 +854,10 @@ export class StellarService {
         receivedAmount,
       };
     } catch (error: any) {
-      console.error("Error executing real trade:", error);
+      console.error(
+        "Error executing real trade:",
+        error.response?.data?.extras.result_codes || error,
+      );
 
       // Provide more specific error messages based on Stellar error codes
       if (error.response?.data?.extras?.result_codes) {
@@ -1149,35 +1093,6 @@ export class StellarService {
       const buyResult = await server.submitTransaction(distributorToUserTx);
       console.log(`Buy transaction completed: ${buyResult.hash}`);
 
-      // Record trade in database
-      await storage.createTransaction({
-        userId,
-        type: "trade",
-        amount: sellAmount,
-        fromAddress: userKeypair.publicKey(),
-        toAddress: userKeypair.publicKey(),
-        stellarTxId: buyResult.hash,
-        assetType: `${sellAsset.code || "XLM"}->${buyAsset.code || "XLM"}`,
-        status: "completed",
-        metadata: {
-          tradeType: "swap",
-          sellAsset: {
-            code: sellAsset.code || "XLM",
-            issuer: sellAsset.isNative() ? null : sellAsset.issuer,
-          },
-          buyAsset: {
-            code: buyAsset.code || "XLM",
-            issuer: buyAsset.isNative() ? null : buyAsset.issuer,
-          },
-          sellAmount,
-          receiveAmount,
-          minBuyAmount,
-          sellTxHash: sellResult.hash,
-          buyTxHash: buyResult.hash,
-          exchangeRate: exchangeRate.toString(),
-        },
-      });
-
       console.log(
         `Trade executed successfully: ${sellAmount} ${sellAsset.code || "XLM"} -> ${receiveAmount} ${buyAsset.code || "XLM"}`,
       );
@@ -1287,6 +1202,7 @@ export class StellarService {
     buying: Asset,
     amount: string,
     price: string,
+    orderType: string = "sell"
   ): Promise<any> {
     try {
       const user = await storage.getUser(userId);
@@ -1297,58 +1213,82 @@ export class StellarService {
       const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
       const account = await server.loadAccount(userKeypair.publicKey());
 
+      // Check balances before creating order
+      const balances = account.balances;
+      const sellingBalance = balances.find((b: any) => {
+        if (selling.isNative()) return b.asset_type === 'native';
+        return b.asset_code === selling.code && b.asset_issuer === selling.issuer;
+      });
+
+      if (!sellingBalance || parseFloat(sellingBalance.balance) < parseFloat(amount)) {
+        throw new Error(`Insufficient ${selling.code || 'XLM'} balance. Available: ${sellingBalance?.balance || '0'}, Required: ${amount}`);
+      }
+
+      this.createTrustline(userId, buying.code, buying.issuer);
+
+      let operation;
+
+      if (orderType === "sell") {
+        // Selling: straightforward - sell the specified asset
+        operation = Operation.manageSellOffer({
+          selling: selling,
+          buying: buying,
+          amount: amount,
+          price: price,
+          offerId: "0", // 0 creates new offer
+        });
+      } else {
+        // Buying: we want to buy the 'buying' asset with the 'selling' asset
+        // But manageBuyOffer expects the amount we want to buy, not the amount we're willing to spend
+
+        // Calculate how much of the buying asset we'll get with our selling amount and price
+        const buyAmount = (parseFloat(amount) * parseFloat(price)).toString();
+
+        operation = Operation.manageBuyOffer({
+          selling: selling,    // Asset we're giving up (correct)
+          buying: buying,      // Asset we want to receive (correct)
+          buyAmount: buyAmount, // Amount of buying asset we want
+          price: (1 / parseFloat(price)).toString(), // Inverse price for manageBuyOffer
+          offerId: "0",
+        });
+      }
+
       const transaction = new TransactionBuilder(account, {
         fee: BASE_FEE.toString(),
         networkPassphrase,
       })
-        .addOperation(
-          Operation.manageSellOffer({
-            selling: selling,
-            buying: buying,
-            amount: amount,
-            price: price,
-            offerId: "0", // 0 creates new offer
-          }),
-        )
+        .addOperation(operation)
         .setTimeout(30)
         .build();
 
       transaction.sign(userKeypair);
       const result = await server.submitTransaction(transaction);
 
-      // Record limit order
-      await storage.createTransaction({
-        userId,
-        type: "limit_order",
-        amount: amount,
-        fromAddress: userKeypair.publicKey(),
-        toAddress: userKeypair.publicKey(),
-        stellarTxId: result.hash,
-        assetType: `${selling.code || "XLM"}->${buying.code || "XLM"}`,
-        status: "pending",
-        metadata: {
-          orderType: "limit",
-          selling: selling.code || "XLM",
-          buying: buying.code || "XLM",
-          amount,
-          price,
-        },
-      });
-
       console.log(
-        `Limit order placed: ${amount} ${selling.code || "XLM"} at ${price}`,
+        `Limit order placed: ${amount} ${selling.code || "XLM"} at ${price} for ${buying.code || "XLM"}`,
       );
 
       return {
         hash: result.hash,
-        status: "pending",
         selling: selling.code || "XLM",
         buying: buying.code || "XLM",
         amount,
         price,
+        status: "active",
+        orderType,
       };
     } catch (error: any) {
       console.error("Error placing limit order:", error);
+
+      // Better error handling for Stellar errors
+      if (error.response?.data?.extras?.result_codes) {
+        const resultCodes = error.response.data.extras.result_codes;
+        if (resultCodes.operations && resultCodes.operations.includes('op_underfunded')) {
+          throw new Error(`Insufficient funds. Please check your ${selling.code || 'XLM'} balance.`);
+        }
+        throw new Error(`Stellar error: ${resultCodes.operations?.[0] || resultCodes.transaction}`);
+      }
+
       throw new Error(error.message || "Failed to place limit order");
     }
   }
@@ -1412,16 +1352,28 @@ export class StellarService {
         .orderbook(sellingAsset, buyingAsset)
         .call();
 
+      console.log("Orderbook" + JSON.stringify(orderbook));
+
       return {
         bids: orderbook.bids.map((bid: any) => ({
+          id: bid.id,
+          type: "buy",
+          selling: sellingAsset,
+          buying: buyingAsset,
           price: bid.price,
           amount: bid.amount,
           priceR: bid.price_r,
+          createdAt: bid.last_modified_time,
         })),
         asks: orderbook.asks.map((ask: any) => ({
+          id: ask.id,
+          type: "sell",
+          selling: sellingAsset,
+          buying: buyingAsset,
           price: ask.price,
           amount: ask.amount,
           priceR: ask.price_r,
+          createdAt: ask.last_modified_time
         })),
         base: {
           assetType: sellingAsset.getAssetType(),
@@ -1457,12 +1409,14 @@ export class StellarService {
 
       return offers.records.map((offer: any) => ({
         id: offer.id,
+        status: "active",
         selling: offer.selling,
         buying: offer.buying,
         amount: offer.amount,
         price: offer.price,
         priceR: offer.price_r,
         lastModifiedLedger: offer.last_modified_ledger,
+        lastModifiedTime: offer.last_modified_time
       }));
     } catch (error) {
       console.error("Error fetching user orders:", error);
@@ -1630,28 +1584,6 @@ export class StellarService {
         console.warn("Could not parse transaction result:", parseError);
       }
 
-      await storage.createTransaction({
-        userId,
-        type: "add_liquidity",
-        amount: amountA,
-        fromAddress: userKeypair.publicKey(),
-        toAddress: liquidityPoolId,
-        stellarTxId: result.hash,
-        assetType: `${assetA.code || "XLM"}-${assetB.code || "XLM"}-LP`,
-        status: "completed",
-        metadata: {
-          poolId: liquidityPoolId,
-          assetA: assetA.code || "XLM",
-          assetB: assetB.code || "XLM",
-          amountA: actualAmountA,
-          amountB: actualAmountB,
-          minPrice,
-          maxPrice,
-          sharesReceived: poolShares,
-          poolExists: poolExists,
-        },
-      });
-
       console.log(
         `Added liquidity to pool ${liquidityPoolId}: ${actualAmountA} ${assetA.code || "XLM"} + ${actualAmountB} ${assetB.code || "XLM"}`,
       );
@@ -1692,6 +1624,9 @@ export class StellarService {
         ) {
           throw new Error("Price range is invalid for current pool state");
         }
+        if (resultCodes.operations?.includes("op_bad_price")) {
+          throw new Error("Invalid price range specified");
+        }
       }
 
       throw new Error(
@@ -1719,7 +1654,7 @@ export class StellarService {
   /**
    * Create or join a liquidity pool
    */
-  async addTestnetLiquidity(
+  async createOrJoinLiquidity(
     userId: string,
     assetA: Asset,
     assetB: Asset,
@@ -1815,7 +1750,7 @@ export class StellarService {
       // Build transaction
       transaction = new TransactionBuilder(account, {
         fee: (BASE_FEE * operations.length * 2).toString(), // Higher fee for multiple operations
-        networkPassphrase: Networks.TESTNET,
+        networkPassphrase
       });
 
       // Add all operations
@@ -1833,30 +1768,6 @@ export class StellarService {
         amountANum,
         amountBNum,
       );
-
-      // Record liquidity addition in storage
-      await storage.createTransaction({
-        userId,
-        type: "add_liquidity",
-        amount: amountA,
-        fromAddress: userKeypair.publicKey(),
-        toAddress: poolId,
-        stellarTxId: result.hash,
-        assetType: `${assetA.code || "XLM"}-${assetB.code || "XLM"}-LP`,
-        status: "completed",
-        metadata: {
-          poolId,
-          assetA: assetA.code || "XLM",
-          assetB: assetB.code || "XLM",
-          amountA,
-          amountB,
-          minPrice,
-          maxPrice,
-          liquidityShares: liquidityShares.toString(),
-          txHash: result.hash,
-          poolCreated: !hasPoolTrustline,
-        },
-      });
 
       console.log(
         `Added liquidity to pool ${poolId}: ${amountA} ${assetA.code || "XLM"} + ${amountB} ${assetB.code || "XLM"}`,
@@ -1910,7 +1821,7 @@ export class StellarService {
         }
       }
 
-      handleStellarError(error, "Failed to add liquidity");
+      handleStellarError(error, Array.from(error.response?.data?.extras.result_codes.operations).toString() || "Failed to add liquidity");
     }
   }
 
@@ -2040,24 +1951,6 @@ export class StellarService {
       transaction.sign(userKeypair);
       const result = await server.submitTransaction(transaction);
 
-      // Record liquidity removal
-      await storage.createTransaction({
-        userId,
-        type: "remove_liquidity",
-        amount: amount,
-        fromAddress: poolId,
-        toAddress: userKeypair.publicKey(),
-        stellarTxId: result.hash,
-        assetType: "LP-WITHDRAWAL",
-        status: "completed",
-        metadata: {
-          poolId,
-          amount,
-          minAmountA,
-          minAmountB,
-        },
-      });
-
       console.log(`Removed liquidity: ${amount} LP tokens from pool ${poolId}`);
 
       return {
@@ -2107,45 +2000,150 @@ export class StellarService {
   /**
    * Get all liquidity pools for user
    */
-  async getUserLiquidityPools(userId: string): Promise<any[]> {
+  async getUserLiquidityPools(userId: string): Promise<LiquidityPoolData[]> {
     try {
       const user = await storage.getUser(userId);
       if (!user?.stellarPublicKey) {
         throw new Error("User stellar account not found");
       }
 
-      // Get liquidity transactions from our database
-      const liquidityTransactions = await storage.getTransactionsByType(
-        userId,
-        "add_liquidity",
+      const accountId = user.stellarPublicKey;
+      const pools: LiquidityPoolData[] = [];
+
+      // Get account details to access balances
+      const account = await server.loadAccount(accountId);
+
+      // Filter balances to find liquidity pool shares
+      const liquidityPoolBalances = account.balances.filter(
+        (balance) => balance.asset_type === 'liquidity_pool_shares'
+      ) as Horizon.HorizonApi.BalanceLineLiquidityPool[];
+
+      // Fetch detailed pool information for each liquidity pool share
+      for (const poolBalance of liquidityPoolBalances) {
+        try {
+          const poolId = poolBalance.liquidity_pool_id;
+
+          // Fetch liquidity pool details from Stellar
+          const poolResponse = await server.liquidityPools()
+            .liquidityPoolId(poolId)
+            .call();
+
+          const pool = poolResponse;
+          if (!pool) continue;
+
+          // Parse asset information
+          const assetA = pool.reserves[0].asset === 'native' 
+            ? 'XLM' 
+            : `${pool.reserves[0].asset.split(':')[0]}`;
+
+          const assetB = pool.reserves[1].asset === 'native' 
+            ? 'XLM' 
+            : `${pool.reserves[1].asset.split(':')[0]}`;
+
+          const poolData: LiquidityPoolData = {
+            poolId: poolId,
+            balance: poolBalance.balance,
+            poolInfo: {
+              id: poolId,
+              assets: {
+                assetA: assetA,
+                assetB: assetB,
+              },
+              reserves: {
+                assetA: pool.reserves[0].amount,
+                assetB: pool.reserves[1].amount,
+              },
+              totalShares: pool.total_shares,
+              fee: pool.fee_bp, // Fee in basis points (30 = 0.3%)
+            },
+          };
+
+          pools.push(poolData);
+        } catch (poolError) {
+          console.error(`Error fetching pool details for ${poolBalance.liquidity_pool_id}:`, poolError);
+          // Continue with other pools even if one fails
+        }
+      }
+
+      // Optional: Also get historical liquidity pool operations
+      const operations = await server.operations()
+        .forAccount(accountId)
+        .limit(200)
+        .order('desc')
+        .call();
+
+      // Filter for liquidity pool operations to get additional context
+      const liquidityPoolOps = operations.records.filter(op => 
+        ['change_trust', 'liquidity_pool_deposit', 'liquidity_pool_withdraw'].includes(op.type)
       );
 
-      const pools = liquidityTransactions.map((tx: any) => {
-        const metadata = tx.metadata || {};
-        return {
-          poolId: metadata.poolId || `pool-${tx.id}`,
-          balance: metadata.liquidityShares || "100.000000",
-          poolInfo: {
-            id: metadata.poolId || `pool-${tx.id}`,
-            assets: {
-              assetA: metadata.assetA || "XLM",
-              assetB: metadata.assetB || "DOPE",
-            },
-            reserves: {
-              assetA: metadata.amountA || "100.0",
-              assetB: metadata.amountB || "1000.0",
-            },
-            totalShares: "1000.000000",
-            fee: 30, // 0.3%
-          },
-        };
-      });
+      // You can use liquidityPoolOps for additional analytics or transaction history
+      console.log(`Found ${pools.length} active liquidity pools for user ${userId}`);
+      console.log(`Found ${liquidityPoolOps.length} liquidity pool operations in recent history`);
 
       return pools;
+
     } catch (error) {
-      console.error("Error fetching user liquidity pools:", error);
-      return [];
+      console.error("Error fetching user liquidity pools from Stellar:", error);
+
+      // Handle specific Stellar errors
+      if (error instanceof Error) {
+        if (error.message.includes('404')) {
+          throw new Error("Stellar account not found or not funded");
+        } else if (error.message.includes('timeout')) {
+          throw new Error("Stellar network timeout - please try again");
+        }
+      }
+
+      throw new Error("Failed to fetch liquidity pools from Stellar network");
     }
+  }
+
+  // Helper function to get more detailed pool analytics
+  async getPoolAnalytics(poolId: string, server: Horizon.Server) {
+    try {
+      // Get pool trades for volume calculation
+      const trades = await server.trades()
+        .forLiquidityPool(poolId)
+        .limit(100)
+        .order('desc')
+        .call();
+
+      // Get pool operations for deposit/withdrawal activity
+      const operations = await server.operations()
+        .forLiquidityPool(poolId)
+        .limit(50)
+        .order('desc')
+        .call();
+
+      return {
+        recentTradesCount: trades.records.length,
+        recentOperationsCount: operations.records.length,
+        trades: trades.records.slice(0, 10), // Last 10 trades
+        operations: operations.records.slice(0, 10), // Last 10 operations
+      };
+    } catch (error) {
+      console.error(`Error fetching analytics for pool ${poolId}:`, error);
+      return null;
+    }
+  }
+
+  // Enhanced version with analytics (optional)
+  async getUserLiquidityPoolsWithAnalytics(userId: string): Promise<any[]> {
+    const pools = await this.getUserLiquidityPools(userId);
+
+    // Add analytics to each pool
+    const poolsWithAnalytics = await Promise.all(
+      pools.map(async (pool) => {
+        const analytics = await this.getPoolAnalytics(pool.poolId, server);
+        return {
+          ...pool,
+          analytics,
+        };
+      })
+    );
+
+    return poolsWithAnalytics;
   }
 
   /**
@@ -2174,6 +2172,16 @@ export class StellarService {
         baseAsset: new Asset("USDC", USDC_ISSUER_ACCOUNT),
         quoteAsset: dopeAsset,
         symbol: "USDC/DOPE",
+      },
+      {
+        baseAsset: new Asset("EURC", USDC_ISSUER_ACCOUNT),
+        quoteAsset: dopeAsset,
+        symbol: "EURC/DOPE",
+      },
+      {
+        baseAsset: dopeAsset,
+        quoteAsset: new Asset("EURC", USDC_ISSUER_ACCOUNT),
+        symbol: "DOPE/EURC",
       },
     ];
   }
@@ -2451,25 +2459,6 @@ export class StellarService {
       // Get claimable balance ID using Horizon API
       let claimableBalanceId: string | null =
         await this.extractClaimableBalanceId(result);
-
-      // Record the transaction
-      await storage.createTransaction({
-        userId,
-        type: "mining_reward",
-        amount: formattedAmount,
-        toAddress: user.stellarPublicKey,
-        stellarTxId: result.hash,
-        assetType: "DOPE",
-        status: claimableBalanceId ? "pending" : "completed",
-        metadata: {
-          assetType: "DOPE",
-          source: "mining",
-          issuer: dopeIssuerKeypair.publicKey(),
-          claimableBalanceId: claimableBalanceId,
-          createAccountTxHash: createAccountTxHash,
-          rewardType: "claimable_balance",
-        },
-      });
 
       console.log(
         `Created claimable balance with ${formattedAmount} DOPE tokens for user ${userId}`,
@@ -2835,21 +2824,6 @@ export class StellarService {
         transaction.sign(userKeypair);
         const result = await server.submitTransaction(transaction);
         console.log(`Trustline created for ${assetCode} by user ${userId}`);
-
-        storage.createTransaction({
-          userId,
-          type: "trustline",
-          amount: "0",
-          fromAddress: userKeypair.publicKey(),
-          toAddress: assetIssuer,
-          stellarTxId: result.hash,
-          assetType: assetCode,
-          status: "completed",
-          metadata: {
-            assetCode,
-            assetIssuer,
-          },
-        });
       } else {
         throw new Error(`Trustline for ${assetCode} already exists`);
       }
@@ -2905,7 +2879,7 @@ export class StellarService {
           createdAt: operation.created_at,
           pagingToken: operation.paging_token,
         },
-        createdAt: operation.created_at
+        createdAt: operation.created_at,
       };
 
       switch (operation.type) {
@@ -2922,7 +2896,7 @@ export class StellarService {
               startingBalance: operation.starting_balance,
               funder: operation.funder,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "payment":
@@ -2952,7 +2926,7 @@ export class StellarService {
                   ? "XLM"
                   : `${operation.source_asset_code}`,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "path_payment_strict_receive":
@@ -2986,7 +2960,7 @@ export class StellarService {
               },
               path: operation.path,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "change_trust":
@@ -3009,7 +2983,7 @@ export class StellarService {
               limit: operation.limit,
               trustor: operation.trustor,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "manage_sell_offer":
@@ -3049,7 +3023,7 @@ export class StellarService {
               price: operation.price,
               priceR: operation.price_r,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "create_passive_sell_offer":
@@ -3083,7 +3057,7 @@ export class StellarService {
               },
               price: operation.price,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "set_options":
@@ -3111,7 +3085,7 @@ export class StellarService {
                   }
                 : null,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "allow_trust":
@@ -3129,7 +3103,7 @@ export class StellarService {
               trustor: operation.trustor,
               authorize: operation.authorize,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "account_merge":
@@ -3145,7 +3119,7 @@ export class StellarService {
               mergedAccount: operation.account,
               destination: operation.destination,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "inflation":
@@ -3159,7 +3133,7 @@ export class StellarService {
             metadata: {
               ...baseRecord.metadata,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "manage_data":
@@ -3175,7 +3149,7 @@ export class StellarService {
               dataName: operation.name,
               dataValue: operation.value,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "bump_sequence":
@@ -3190,7 +3164,7 @@ export class StellarService {
               ...baseRecord.metadata,
               bumpTo: operation.bump_to,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "create_claimable_balance":
@@ -3217,7 +3191,7 @@ export class StellarService {
                 })) || [],
               sponsor: operation.sponsor,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "claim_claimable_balance":
@@ -3239,7 +3213,7 @@ export class StellarService {
               asset: operation.asset === "native" ? "XLM" : operation.asset,
               claimant: operation.claimant,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "clawback":
@@ -3264,7 +3238,7 @@ export class StellarService {
               },
               from: operation.from,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "clawback_claimable_balance":
@@ -3279,7 +3253,7 @@ export class StellarService {
               ...baseRecord.metadata,
               balanceId: operation.balance_id,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "set_trust_line_flags":
@@ -3300,7 +3274,7 @@ export class StellarService {
               clearFlags: operation.clear_flags,
               setFlags: operation.set_flags,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "liquidity_pool_deposit":
@@ -3322,7 +3296,7 @@ export class StellarService {
               reserveB: operation.reserve_b,
               shares: operation.shares_received,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         case "liquidity_pool_withdraw":
@@ -3342,7 +3316,7 @@ export class StellarService {
               reserveA: operation.reserve_a,
               reserveB: operation.reserve_b,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
 
         // Add more operation types as needed
@@ -3358,9 +3332,8 @@ export class StellarService {
               ...baseRecord.metadata,
               rawOperation: operation,
             },
-            createdAt: operation.created_at
+            createdAt: operation.created_at,
           };
-          
       }
     } catch (error) {
       console.error("Error parsing operation:", error, operation);
@@ -3475,7 +3448,55 @@ export class StellarService {
     return operations.filter((op) => types.includes(op.type));
   }
 
-  async getUserTransactionHistory(userId: string, limit: number = 10, cursor?: string): Promise<OperationRecord[]> {
+  async getUserAssets(userId: string) {
+    try {
+      const user = await storage.getUser(userId);
+      if (!user?.stellarSecretKey) {
+        throw new Error("User stellar account not found");
+      }
+
+      const userKeypair = Keypair.fromSecret(user?.stellarSecretKey);
+      const account = await server.loadAccount(userKeypair.publicKey());
+
+      console.log("Assets held by", userKeypair.publicKey());
+
+      const filteredAccount = account.balances.filter((balance: any) => {
+        // Include native XLM
+        if (balance.asset_type === "native") {
+          return true;
+        }
+        // Exclude any asset that contains "DOPE", "liquidity_pool_share in the asset
+        return (
+          !balance.asset_code?.includes("DOPE") &&
+          balance.asset_type !== "liquidity_pool_shares"
+        );
+      });
+
+      filteredAccount.forEach((balance: any) => {
+        if (balance.asset_type === "native") {
+          console.log(`XLM: ${balance.balance}`);
+        } else {
+          console.log(
+            `${balance.asset_code} (${balance.asset_issuer}): ${balance.balance}`,
+          );
+        }
+      });
+
+      return filteredAccount;
+    } catch (error: any) {
+      console.error(
+        "Error fetching account:",
+        error.response.data.extras.result_codes || error,
+      );
+      handleStellarError(error, "Failed to fetch account assets");
+    }
+  }
+
+  async getUserTransactionHistory(
+    userId: string,
+    limit: number = 10,
+    cursor?: string,
+  ): Promise<OperationRecord[]> {
     try {
       const user = await storage.getUser(userId);
       if (!user?.stellarSecretKey) {
@@ -3486,7 +3507,7 @@ export class StellarService {
       const operations = await this.getAccountOperations(
         userKeypair.publicKey(),
         limit,
-        cursor
+        cursor,
       );
 
       // Filter to only payment and claimable balance related operations
@@ -3499,6 +3520,9 @@ export class StellarService {
         "claimable_balance_created",
         "claimable_balance_claimed",
         "claimable_balance_clawed_back",
+        "change_trust",
+        "liquidity_pool_deposit",
+        "liquidity_pool_withdraw",
       ];
 
       return this.filterOperationsByType(operations, transactionTypes);

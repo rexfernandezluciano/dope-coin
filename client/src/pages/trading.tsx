@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useLocation } from "wouter";
 import {
   Card,
   CardContent,
@@ -101,6 +102,7 @@ export default function TradingPage() {
   const [pendingTradeData, setPendingTradeData] =
     useState<ExecuteTradeRequest | null>(null);
   const [currentSellAmount, setCurrentSellAmount] = useState<number>(0);
+  const [, navigate] = useLocation();
 
   // Fetch trading pairs
   const { data: tradingPairs, isLoading: tradingPairsLoading } = useQuery({
@@ -441,19 +443,25 @@ export default function TradingPage() {
 
   // Calculate liquidity amounts automatically
   const calculateLiquidityAmount = (amountA: string, selectedPair: string) => {
-    if (!amountA || !selectedPair) return;
+      if (!amountA || !selectedPair) return;
 
-    try {
-      // Simple ratio calculation for demo (1 XLM = 10 DOPE)
-      const rate = 10; // Always XLM to DOPE ratio for liquidity
-      const amountB = (parseFloat(amountA) * rate).toFixed(6);
+      try {
+        // Convert string to number
+        const depositAmount = parseFloat(amountA);
+        if (isNaN(depositAmount)) return;
 
-      liquidityForm.setValue("amountB", amountB);
-      liquidityForm.setValue("minPrice", (rate * 0.95).toFixed(6)); // 5% slippage
-      liquidityForm.setValue("maxPrice", (rate * 1.05).toFixed(6)); // 5% slippage
-    } catch (error) {
-      console.error("Error calculating liquidity amount:", error);
-    }
+        // For your requirements: if deposit = 1, min = 0.1, max = 1
+        // This suggests min = deposit * 0.1, max = deposit * 1.0
+        const minPrice = 0.1;
+        const maxPrice = (depositAmount * 1.0).toFixed(2);
+
+        // Set amountB to the deposit amount (or whatever ratio you need)
+        liquidityForm.setValue("amountB", (depositAmount * 10).toFixed(2));
+        liquidityForm.setValue("minPrice", parseFloat(minPrice.toString()).toString());
+        liquidityForm.setValue("maxPrice", maxPrice);
+      } catch (error) {
+        console.error("Error calculating liquidity amount:", error);
+      }
   };
 
   const onTradeSubmit = (data: z.infer<typeof tradeFormSchema>) => {
@@ -598,7 +606,7 @@ export default function TradingPage() {
                               type="number"
                               placeholder="0.00"
                               step="0.01"
-                              disabled
+                            
                             />
                           </FormControl>
                           <FormMessage />
@@ -633,6 +641,8 @@ export default function TradingPage() {
                         </div>
                       )}
                     </div>
+
+                    <Button type="button" className="w-full mb-3 hover:bg-muted-foreground hover:text-primary" onClick={() => navigate("/orders/create")}>Create Order</Button>
 
                     <Button
                       type="submit"

@@ -135,7 +135,7 @@ export const WalletCard = () => {
               <div className="text-xs text-muted-foreground">XLM</div>
             </div>
             <div className="text-center p-3 bg-secondary/10 rounded-lg">
-              <div className="text-xl font-bold text-secondary">
+              <div className="text-xl font-bold text-primary">
                 {parseFloat(wallet?.usdcBalance || "0").toFixed(2)}
               </div>
               <div className="text-xs text-muted-foreground">USDC</div>
@@ -160,7 +160,7 @@ export const WalletCard = () => {
             </Button>
             <Button
               variant="outline"
-              className="hover:bg-primary/10 hover:text-primary"
+              className="hover:bg-primary hover:text-white"
               size="sm"
               data-testid="button-receive"
               onClick={() => navigate("/receive")}
@@ -175,9 +175,9 @@ export const WalletCard = () => {
           <Dialog>
             <DialogTrigger asChild>
               <Button
-                variant={hasLowGas ? "default" : "outline"}
+                variant={hasLowGas ? "destructive" : "outline"}
                 size="sm"
-                className="w-full hover:bg-primary/10 hover:text-primary"
+                className="w-full hover:bg-primary hover:text-white"
               >
                 <Fuel className="w-4 h-4 mr-2" />
                 Get GAS

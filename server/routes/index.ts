@@ -480,7 +480,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
 
-      const transactions = await stellarService.getUserTransactionHistory(userId, limit);
+      const transactions = await stellarService.getUserTransactionHistory(
+        userId,
+        limit,
+      );
       res.json(transactions);
     } catch (error: any) {
       console.error("Transactions fetch error:", error);
@@ -676,23 +679,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
-  app.get("/api/protected/trade/orderbook", rateLimiter, async (req, res) => {
+  app.get("/api/protected/asset/holders", rateLimiter, async (req, res) => {
     try {
-      const validatedQuery = orderbookQuerySchema.parse(req.query);
-      const { sellAssetCode, sellAssetIssuer, buyAssetCode, buyAssetIssuer } =
-        validatedQuery;
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      const assets = await stellarService.getUserAssets(userId);
+      res.json(assets);
+    } catch (error: any) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/protected/trade/orderbook", rateLimiter, async (req, res) => {
+    try {
+      const validatedQuery = orderbookQuerySchema.parse(req.body);
+      const { selling, buying } = validatedQuery;
+
+      if (!selling || !buying) {
+        return res.status(400).json({ message: "Invalid parameters" });
+      }
 
       const sellAsset =
-        sellAssetCode === "XLM"
+        selling?.code === "XLM"
           ? Asset.native()
-          : new Asset(sellAssetCode, sellAssetIssuer);
+          : new Asset(selling?.code, selling?.issuer);
       const buyAsset =
-        buyAssetCode === "XLM"
+        buying?.code === "XLM"
           ? Asset.native()
-          : new Asset(buyAssetCode, buyAssetIssuer);
+          : new Asset(buying?.code, buying?.issuer);
 
       const orderbook = await stellarService.getOrderbook(sellAsset, buyAsset);
-      res.json(orderbook);
+      const bids = orderbook.bids;
+      const asks = orderbook.asks;
+      const allOrders = [...bids, ...asks].sort((a, b) => a.price - b.price);
+      res.json(allOrders);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         return res
@@ -700,9 +722,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .json({ message: "Validation error", errors: error.errors });
       }
       console.error("Orderbook error:", error);
-      res.status(500).json({ message: "Internal server error" });
+      res.status(500).json({ message: error.message || "Internal server error" });
     }
   });
+
+  app.post(
+    "/api/protected/trade/limit-orders",
+    rateLimiter,
+    async (req, res) => {
+      try {
+        const userId = req.user?.id;
+        if (!userId) {
+          return res.status(401).json({ message: "Unauthorized" });
+        }
+
+        const { sellAsset, amount, buyAsset, price, orderType } = req.body;
+
+        if (
+          !sellAsset?.code ||
+          !amount ||
+          !buyAsset?.code ||
+          !price ||
+          !orderType
+        ) {
+          return res.status(400).json({ message: "Invalid parameters" });
+        }
+
+        await stellarService.placeLimitOrder(
+          userId,
+          sellAsset?.code === "XLM"
+            ? Asset.native()
+            : new Asset(sellAsset?.code, sellAsset?.issuer),
+          buyAsset?.code === "XLM"
+            ? Asset.native()
+            : new Asset(buyAsset?.code, buyAsset?.issuer),
+          amount,
+          parseFloat(price).toString(),
+          orderType,
+        );
+        res.json({ message: "Limit order placed successfully" });
+      } catch (error: any) {
+        res.status(500).json({
+          message: error?.response?.data?.extras?.result_codes?.operations
+            ? Array.from(
+                error?.response?.data?.extras?.result_codes?.operations,
+              )
+            : error.message || "Internal server error",
+        });
+      }
+    },
+  );
+
+  app.get(
+    "/api/protected/trade/limit-orders",
+    rateLimiter,
+    async (req, res) => {
+      try {
+        const userId = req?.user?.id;
+
+        if (!userId) {
+          return res.status(401).json({ message: "Unauthorized" });
+        }
+
+        const orders = await stellarService.getUserOrders(userId);
+        res.json(orders);
+      } catch (error: any) {
+        res.status(500).json({
+          message: error.message || "Something went wrong.",
+        });
+      }
+    },
+  );
+
+  app.delete(
+    "/api/protected/trade/limit-orders/:id",
+    rateLimiter,
+    async (req, res) => {
+      try {
+        const userId = req?.user?.id;
+
+        if (!userId) {
+          return res.status(401).json({ message: "Unauthorized" });
+        }
+
+        const { id } = req.params;
+        const { selling, buying } = req.body;
+
+        await stellarService.cancelLimitOrder(
+          userId,
+          id,
+          new Asset(selling?.code, selling?.issuer),
+          new Asset(buying?.code, buying?.issuer),
+        );
+        res.json({ message: "Limit order cancelled successfully" });
+      } catch (error: any) {
+        res.status(500).json({
+          message: error.message || "Something went wrong.",
+        });
+      } finally {
+        console.log("Limit order cancelled successfully");
+      }
+    },
+  );
 
   // Liquidity pool routes
   app.post("/api/protected/liquidity/add", rateLimiter, async (req, res) => {

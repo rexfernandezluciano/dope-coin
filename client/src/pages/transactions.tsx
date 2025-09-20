@@ -10,6 +10,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { getActivityIcon, getActivityLabel, getStatusColor } from "../utils/activity-utils.js"
+import { formatTimeAgo } from "../utils/format-utils.js";
 
 export default function Transactions() {
   const [page, setPage] = useState(1);
@@ -70,10 +71,10 @@ export default function Transactions() {
                           {getActivityLabel(tx.type)}
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          {new Date(tx.createdAt).toLocaleString()}
+                          {formatTimeAgo(tx.createdAt)}
                         </div>
                         {tx.stellarTxId && (
-                          <div className="text-xs text-muted-foreground font-mono">
+                          <div className="text-xs text-muted-foreground truncate font-mono">
                             {tx.stellarTxId.slice(0, 8)}...
                           </div>
                         )}

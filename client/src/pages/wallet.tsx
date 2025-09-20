@@ -38,6 +38,8 @@ export default function WalletPage() {
       ),
   }) as any;
 
+  const { data: assets, isLoading: isAssetsLoading } = useQuery({queryKey: ["/api/protected/asset/holders"], queryFn: () => AuthService.authenticatedRequest("GET", "/api/protected/asset/holders")});
+
   const [, navigate] = useLocation();
 
   const actionButtons = [
@@ -72,24 +74,6 @@ export default function WalletPage() {
         <Lock className="w-6 h-6 group-hover:scale-110 transition-transform" />
       ),
       href: "/staking",
-    },
-  ];
-
-  const assets = [
-    {
-      assetCode: "XLM",
-      balance: walletData?.xlmBalance || "0",
-      price: 0.39,
-    },
-    {
-      assetCode: "GAS",
-      balance: walletData?.gasBalance || "0",
-      price: 0.0,
-    },
-    {
-      assetCode: "USDC",
-      balance: walletData?.usdcBalance || "0",
-      price: 1.0,
     },
   ];
 
@@ -155,21 +139,23 @@ export default function WalletPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {assets?.map((asset: any) => {
+                  {isAssetsLoading ? <div>
+                    <div className="h-8 bg-muted rounded animate-pulse mb-4" />
+                  </div> : assets?.map((asset: any) => {
                     return (
-                      <div key={asset.assetCode}>
+                      <div key={asset?.asset_code || asset.asset_type === "native" && "XLM"}>
                         <div className="flex justify-between items-center w-full py-4">
                           <div>
                             <div className="text-xl font-bold text-primary">
                               {parseFloat(asset.balance).toFixed(4)}
                             </div>
                             <div className="text-sm text-muted-foreground">
-                              {asset.assetCode}
+                              {asset?.asset_code || asset.asset_type === "native" && "XLM"}
                             </div>
                           </div>
                           <div>
                             <div className="text-sm font-bold text-success">
-                              ${asset.price}
+                              ${asset?.price || 0}
                             </div>
                           </div>
                         </div>
