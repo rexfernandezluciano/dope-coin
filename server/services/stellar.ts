@@ -1242,7 +1242,13 @@ export class StellarService {
     };
 
     try {
-      const orderbook = await server.orderbook(sell, buy).limit(10).call();
+      const orderbook = await server
+        .orderbook(
+          sell.getAssetType() === "native" ? Asset.native() : sell,
+          buy.getAssetType() === "native" ? Asset.native() : buy,
+        )
+        .limit(10)
+        .call();
       const bestAsk = parseFloat(orderbook.asks?.[0]?.price);
       const bestBid = parseFloat(orderbook.bids?.[0]?.price);
 
@@ -1252,7 +1258,9 @@ export class StellarService {
       if (bestAsk) bestPrice = bestAsk;
       if (bestBid) bestVolume = bestBid;
 
-      console.log("Price: " + bestPrice + " Volume: " + bestVolume + " Pair: " + pair);
+      console.log(
+        "Price: " + bestPrice + " Volume: " + bestVolume + " Pair: " + pair,
+      );
       console.log("Orderbook: " + JSON.stringify(orderbook));
 
       return (bestPrice + bestVolume) / 2;
