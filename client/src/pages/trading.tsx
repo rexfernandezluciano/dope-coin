@@ -419,6 +419,12 @@ export default function TradingPage() {
       } else if (selectedPair === "USDC/DOPE") {
         tradeForm.setValue("sellAsset", { code: "USDC", issuer: dopeIssuer });
         tradeForm.setValue("buyAsset", { code: "DOPE", issuer: dopeIssuer });
+      } else if (selectedPair === "EURC/DOPE") {
+        tradeForm.setValue("sellAsset", { code: "EURC", issuer: issuer });
+        tradeForm.setValue("buyAsset", { code: "DOPE", issuer: dopeIssuer });
+      } else if (selectedPair === "DOPE/EURC") {
+        tradeForm.setValue("sellAsset", { code: "DOPE", issuer: dopeIssuer });
+        tradeForm.setValue("buyAsset", { code: "EURC", issuer: issuer });
       }
 
       setSelectedPair(value);
@@ -443,25 +449,28 @@ export default function TradingPage() {
 
   // Calculate liquidity amounts automatically
   const calculateLiquidityAmount = (amountA: string, selectedPair: string) => {
-      if (!amountA || !selectedPair) return;
+    if (!amountA || !selectedPair) return;
 
-      try {
-        // Convert string to number
-        const depositAmount = parseFloat(amountA);
-        if (isNaN(depositAmount)) return;
+    try {
+      // Convert string to number
+      const depositAmount = parseFloat(amountA);
+      if (isNaN(depositAmount)) return;
 
-        // For your requirements: if deposit = 1, min = 0.1, max = 1
-        // This suggests min = deposit * 0.1, max = deposit * 1.0
-        const minPrice = 0.1;
-        const maxPrice = (depositAmount * 1.0).toFixed(2);
+      // For your requirements: if deposit = 1, min = 0.1, max = 1
+      // This suggests min = deposit * 0.1, max = deposit * 1.0
+      const minPrice = 0.1;
+      const maxPrice = (depositAmount * 1.0).toFixed(2);
 
-        // Set amountB to the deposit amount (or whatever ratio you need)
-        liquidityForm.setValue("amountB", (depositAmount * 10).toFixed(2));
-        liquidityForm.setValue("minPrice", parseFloat(minPrice.toString()).toString());
-        liquidityForm.setValue("maxPrice", maxPrice);
-      } catch (error) {
-        console.error("Error calculating liquidity amount:", error);
-      }
+      // Set amountB to the deposit amount (or whatever ratio you need)
+      liquidityForm.setValue("amountB", (depositAmount * 10).toFixed(2));
+      liquidityForm.setValue(
+        "minPrice",
+        parseFloat(minPrice.toString()).toString(),
+      );
+      liquidityForm.setValue("maxPrice", maxPrice);
+    } catch (error) {
+      console.error("Error calculating liquidity amount:", error);
+    }
   };
 
   const onTradeSubmit = (data: z.infer<typeof tradeFormSchema>) => {
@@ -524,7 +533,7 @@ export default function TradingPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <TrendingUp className="h-5 w-5" />
-                  Make a Trade
+                  Swap Assets
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -606,7 +615,7 @@ export default function TradingPage() {
                               type="number"
                               placeholder="0.00"
                               step="0.01"
-                            
+                              disabled
                             />
                           </FormControl>
                           <FormMessage />
@@ -631,7 +640,8 @@ export default function TradingPage() {
                           </div>
                           {exchangeRate?.estimatedAmount && (
                             <div className="text-sm text-muted-foreground mt-1">
-                              Est. receive: {exchangeRate?.estimatedAmount || 0}
+                              Est. receive: {exchangeRate?.estimatedAmount || 0}{" "}
+                              {tradeForm.getValues("buyAsset")?.code}
                             </div>
                           )}
                         </div>
@@ -642,7 +652,13 @@ export default function TradingPage() {
                       )}
                     </div>
 
-                    <Button type="button" className="w-full mb-3 hover:bg-muted-foreground hover:text-white" onClick={() => navigate("/orders/create")}>Create Order</Button>
+                    <Button
+                      type="button"
+                      className="w-full mb-3 hover:bg-muted-foreground hover:text-white"
+                      onClick={() => navigate("/orders/create")}
+                    >
+                      Create Order
+                    </Button>
 
                     <Button
                       type="submit"

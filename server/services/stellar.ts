@@ -1244,8 +1244,8 @@ export class StellarService {
     try {
       const orderbook = await server
         .orderbook(
-          sell.getAssetType() === "native" ? Asset.native() : sell,
-          buy.getAssetType() === "native" ? Asset.native() : buy,
+          sell.code === "XLM" ? Asset.native() : sell,
+          buy.code === "XLM" ? Asset.native() : buy,
         )
         .limit(10)
         .call();
