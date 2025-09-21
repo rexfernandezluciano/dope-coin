@@ -1,21 +1,44 @@
 NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
 
+# Account Information
+ACCOUNTS = [
+    "GDRXPV2DIWVGNYI7JYLMMDQU3USBETYQN6HSIBGP762LK5XFOUEK2IGV"
+]
+
+# Asset Information
 [[CURRENCIES]]
 code = "DOPE"
 issuer = "GDRXPV2DIWVGNYI7JYLMMDQU3USBETYQN6HSIBGP762LK5XFOUEK2IGV"
+display_decimals = 7
 name = "DOPE Coin"
 desc = "Utility token for the DOPE Chain app."
-image = "https://mine.dopp.eu.org/assets/dope.png"
-fixed_number = 100_000_000_000
-is_asset_anchored = false
 conditions = "Fixed supply; no further issuance planned."
+image = "https://mine.dopp.eu.org/assets/dope.png"
+fixed_number = 100000000000
+max_number = 100000000000
+is_unlimited = true
 
-[[CURRENCIES]]
-code = "GAS"
-issuer = "GDRXPV2DIWVGNYI7JYLMMDQU3USBETYQN6HSIBGP762LK5XFOUEK2IGV"
-name = "DOPE GAS"
-desc = "Sub-currency used for mining fees and transaction costs within the DOPE Chain ecosystem."
-image = "https://mine.dopp.eu.org/assets/gas.png"
-fixed_number = 1_000_000_000
-is_asset_anchored = false
-conditions = "Utility token for internal fee mechanics; limited supply."
+# Organization Information
+[DOCUMENTATION]
+ORG_NAME = "DOPE Social, Inc"
+ORG_DBA = "DOPE Social"
+ORG_URL = "https://www.dopp.eu.org"
+ORG_LOGO = "https://mine.dopp.eu.org/assets/dope.png"
+ORG_DESCRIPTION = "DOPE Social is a decentralized social network built on the Stellar blockchain."
+ORG_PHYSICAL_ADDRESS = "Sampaguita, General Tinio, Nueva Ecija, Philippines"
+ORG_PHYSICAL_ADDRESS_ATTESTATION = "https://mine.dopp.eu.org/assets/address_attestation.jpg"
+ORG_PHONE_NUMBER = "+639060471522"
+ORG_PHONE_NUMBER_ATTESTATION = "https://mine.dopp.eu.org/assets/phone_attestation.jpg"
+ORG_KEYBASE = "dopesocial"
+ORG_TWITTER = "dopesocial"
+ORG_GITHUB = "dopesocial"
+
+# Principals (Key personnel)
+[[PRINCIPALS]]
+name = "Rex Luciano"
+email = "rexluciano@dopp.eu.org"
+keybase = "rexluciano"
+twitter = "rexluciano_offc"
+github = "rexfernandezluciano"
+id_photo_hash = "hash_of_id_photo"
+verification_photo_hash = "hash_of_verification_photo"

@@ -82,9 +82,9 @@ export default function Transactions() {
                     </div>
 
                     <div className="text-right space-y-1">
-                      <div className="font-medium">
+                      <div className={parseFloat(tx.amount).toFixed(0).length > 4 ? "truncate w-20" : "font-medium"}>
                         {tx.type === "transfer" && tx.toAddress ? "-" : "+"}
-                        {parseFloat(tx.amount).toFixed(4)} {tx.assetType}
+                        <span className={parseFloat(tx.amount).toFixed(0).length > 4 ? "truncate w-20" : ""}>{parseFloat(tx.amount).toFixed(2)} </span>{" "}{tx.assetType}
                       </div>
                       <Badge variant={getStatusColor(tx.status)}>
                         {tx.status.toUpperCase()}

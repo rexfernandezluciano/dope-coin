@@ -18,6 +18,7 @@ const STELLAR_SERVER_URLS = {
   testnet: "https://horizon-testnet.stellar.org",
   mainnet: "https://horizon.stellar.org",
   futurenet: "https://horizon-futurenet.stellar.org",
+  pinetwork: "https://api.mainnet.minepi.com",
 } as any;
 
 const STELLAR_SERVER_URL =
@@ -37,7 +38,6 @@ const server = new Horizon.Server(STELLAR_SERVER_URL);
 
 const BASE_FEE = parseInt(NETWORK_FEE);
 const LIQUIDITY_FEE = parseFloat(process.env.LIQUIDITY_FEE || "3000");
-const ACCOUNT_FEE = parseFloat(process.env.ACCOUNT_FEE || "100000");
 
 // Platform DOPE token issuer (should be in environment variables in production)
 const DOPE_ISSUER_SECRET =
@@ -89,33 +89,68 @@ interface OperationRecord {
 }
 
 interface LiquidityPoolData {
-    poolId: string;
-    balance: string;
-    poolInfo: {
-      id: string;
-      assets: {
-        assetA: string;
-        assetB: string;
-      };
-      reserves: {
-        assetA: string;
-        assetB: string;
-      };
-      totalShares: string;
-      fee: number;
+  poolId: string;
+  balance: string;
+  poolInfo: {
+    id: string;
+    assets: {
+      assetA: string;
+      assetB: string;
     };
+    reserves: {
+      assetA: string;
+      assetB: string;
+    };
+    totalShares: string;
+    fee: number;
+  };
+}
+
+class NetworkHandler {
+  static isTestnet(): boolean {
+    return STELLAR_NETWORK === "testnet";
+  }
+
+  static isMainnet(): boolean {
+    return STELLAR_NETWORK === "mainnet";
+  }
+
+  static async fundTestnetAccount(publicKey: string): Promise<boolean> {
+    if (!this.isTestnet()) {
+      console.log("Skipping funding - not on testnet");
+      return true;
+    }
+
+    try {
+      await server.friendbot(publicKey).call();
+      console.log(`Account funded via friendbot: ${publicKey}`);
+      return true;
+    } catch (error: any) {
+      console.error("Friendbot funding failed:", error.message);
+      return false;
+    }
+  }
+
+  static validateMainnetOperation(): void {
+    if (this.isMainnet()) {
+      console.warn("Performing real transaction on MAINNET");
+      // Add any additional mainnet validations here
+    }
+  }
 }
 
 // Initialize platform accounts on startup
 async function initializePlatformAccounts() {
-  if (STELLAR_NETWORK === "testnet") {
+  if (STELLAR_NETWORK === "pinetwork") {
     try {
       // Fund issuer account
-      await server.friendbot(dopeIssuerKeypair.publicKey()).call();
+      await NetworkHandler.fundTestnetAccount(dopeIssuerKeypair.publicKey());
       console.log(`DOPE Issuer funded via friendbot`);
 
       // Fund distributor account
-      await server.friendbot(dopeDistributorKeypair.publicKey()).call();
+      await NetworkHandler.fundTestnetAccount(
+        dopeDistributorKeypair.publicKey(),
+      );
       console.log(`DOPE Distributor funded via friendbot`);
 
       // Wait for accounts to propagate
@@ -165,7 +200,7 @@ async function initializePlatformAccounts() {
       await server.submitTransaction(issueTransaction);
 
       // Set up GAS asset (issuer keeps control to mint on demand)
-      await new Promise((resolve) =>
+      return await new Promise((resolve) =>
         resolve("DOPE and GAS token platform setup completed"),
       );
     } catch (error: any) {
@@ -206,10 +241,12 @@ async function configureIssuer() {
 // Initialize platform accounts
 initializePlatformAccounts()
   .then((data: any) =>
-    console.log(`Platform accounts initialized: ${data.message}`),
+    console.log(`Platform accounts initialized: ${data?.message || data}`),
   )
   .catch((error: any) =>
-    console.error(`Error initializing platform accounts: ${error.message}`),
+    console.error(
+      `Error initializing platform accounts: ${error?.message || error}`,
+    ),
   );
 
 export class StellarService {
@@ -1202,7 +1239,7 @@ export class StellarService {
     buying: Asset,
     amount: string,
     price: string,
-    orderType: string = "sell"
+    orderType: string = "sell",
   ): Promise<any> {
     try {
       const user = await storage.getUser(userId);
@@ -1216,15 +1253,26 @@ export class StellarService {
       // Check balances before creating order
       const balances = account.balances;
       const sellingBalance = balances.find((b: any) => {
-        if (selling.isNative()) return b.asset_type === 'native';
-        return b.asset_code === selling.code && b.asset_issuer === selling.issuer;
+        if (selling.isNative()) return b.asset_type === "native";
+        return (
+          b.asset_code === selling.code && b.asset_issuer === selling.issuer
+        );
       });
 
-      if (!sellingBalance || parseFloat(sellingBalance.balance) < parseFloat(amount)) {
-        throw new Error(`Insufficient ${selling.code || 'XLM'} balance. Available: ${sellingBalance?.balance || '0'}, Required: ${amount}`);
+      if (
+        !sellingBalance ||
+        parseFloat(sellingBalance.balance) < parseFloat(amount)
+      ) {
+        throw new Error(
+          `Insufficient ${selling.code || "XLM"} balance. Available: ${sellingBalance?.balance || "0"}, Required: ${amount}`,
+        );
       }
 
-      this.createTrustline(userId, buying.code, buying.issuer);
+      try {
+        await this.createTrustline(userId, buying.code, buying.issuer);
+      } catch (error: any) {
+        console.error("Error creating trustline:", error.message);
+      }
 
       let operation;
 
@@ -1245,8 +1293,8 @@ export class StellarService {
         const buyAmount = (parseFloat(amount) * parseFloat(price)).toString();
 
         operation = Operation.manageBuyOffer({
-          selling: selling,    // Asset we're giving up (correct)
-          buying: buying,      // Asset we want to receive (correct)
+          selling: selling, // Asset we're giving up (correct)
+          buying: buying, // Asset we want to receive (correct)
           buyAmount: buyAmount, // Amount of buying asset we want
           price: (1 / parseFloat(price)).toString(), // Inverse price for manageBuyOffer
           offerId: "0",
@@ -1283,10 +1331,17 @@ export class StellarService {
       // Better error handling for Stellar errors
       if (error.response?.data?.extras?.result_codes) {
         const resultCodes = error.response.data.extras.result_codes;
-        if (resultCodes.operations && resultCodes.operations.includes('op_underfunded')) {
-          throw new Error(`Insufficient funds. Please check your ${selling.code || 'XLM'} balance.`);
+        if (
+          resultCodes.operations &&
+          resultCodes.operations.includes("op_underfunded")
+        ) {
+          throw new Error(
+            `Insufficient funds. Please check your ${selling.code || "XLM"} balance.`,
+          );
         }
-        throw new Error(`Stellar error: ${resultCodes.operations?.[0] || resultCodes.transaction}`);
+        throw new Error(
+          `Stellar error: ${resultCodes.operations?.[0] || resultCodes.transaction}`,
+        );
       }
 
       throw new Error(error.message || "Failed to place limit order");
@@ -1373,7 +1428,7 @@ export class StellarService {
           price: ask.price,
           amount: ask.amount,
           priceR: ask.price_r,
-          createdAt: ask.last_modified_time
+          createdAt: ask.last_modified_time,
         })),
         base: {
           assetType: sellingAsset.getAssetType(),
@@ -1416,7 +1471,7 @@ export class StellarService {
         price: offer.price,
         priceR: offer.price_r,
         lastModifiedLedger: offer.last_modified_ledger,
-        lastModifiedTime: offer.last_modified_time
+        lastModifiedTime: offer.last_modified_time,
       }));
     } catch (error) {
       console.error("Error fetching user orders:", error);
@@ -1750,7 +1805,7 @@ export class StellarService {
       // Build transaction
       transaction = new TransactionBuilder(account, {
         fee: (BASE_FEE * operations.length * 2).toString(), // Higher fee for multiple operations
-        networkPassphrase
+        networkPassphrase,
       });
 
       // Add all operations
@@ -1821,7 +1876,12 @@ export class StellarService {
         }
       }
 
-      handleStellarError(error, Array.from(error.response?.data?.extras.result_codes.operations).toString() || "Failed to add liquidity");
+      handleStellarError(
+        error,
+        Array.from(
+          error.response?.data?.extras.result_codes.operations,
+        ).toString() || "Failed to add liquidity",
+      );
     }
   }
 
@@ -2015,7 +2075,7 @@ export class StellarService {
 
       // Filter balances to find liquidity pool shares
       const liquidityPoolBalances = account.balances.filter(
-        (balance) => balance.asset_type === 'liquidity_pool_shares'
+        (balance) => balance.asset_type === "liquidity_pool_shares",
       ) as Horizon.HorizonApi.BalanceLineLiquidityPool[];
 
       // Fetch detailed pool information for each liquidity pool share
@@ -2024,7 +2084,8 @@ export class StellarService {
           const poolId = poolBalance.liquidity_pool_id;
 
           // Fetch liquidity pool details from Stellar
-          const poolResponse = await server.liquidityPools()
+          const poolResponse = await server
+            .liquidityPools()
             .liquidityPoolId(poolId)
             .call();
 
@@ -2032,13 +2093,15 @@ export class StellarService {
           if (!pool) continue;
 
           // Parse asset information
-          const assetA = pool.reserves[0].asset === 'native' 
-            ? 'XLM' 
-            : `${pool.reserves[0].asset.split(':')[0]}`;
+          const assetA =
+            pool.reserves[0].asset === "native"
+              ? "XLM"
+              : `${pool.reserves[0].asset.split(":")[0]}`;
 
-          const assetB = pool.reserves[1].asset === 'native' 
-            ? 'XLM' 
-            : `${pool.reserves[1].asset.split(':')[0]}`;
+          const assetB =
+            pool.reserves[1].asset === "native"
+              ? "XLM"
+              : `${pool.reserves[1].asset.split(":")[0]}`;
 
           const poolData: LiquidityPoolData = {
             poolId: poolId,
@@ -2060,37 +2123,48 @@ export class StellarService {
 
           pools.push(poolData);
         } catch (poolError) {
-          console.error(`Error fetching pool details for ${poolBalance.liquidity_pool_id}:`, poolError);
+          console.error(
+            `Error fetching pool details for ${poolBalance.liquidity_pool_id}:`,
+            poolError,
+          );
           // Continue with other pools even if one fails
         }
       }
 
       // Optional: Also get historical liquidity pool operations
-      const operations = await server.operations()
+      const operations = await server
+        .operations()
         .forAccount(accountId)
         .limit(200)
-        .order('desc')
+        .order("desc")
         .call();
 
       // Filter for liquidity pool operations to get additional context
-      const liquidityPoolOps = operations.records.filter(op => 
-        ['change_trust', 'liquidity_pool_deposit', 'liquidity_pool_withdraw'].includes(op.type)
+      const liquidityPoolOps = operations.records.filter((op) =>
+        [
+          "change_trust",
+          "liquidity_pool_deposit",
+          "liquidity_pool_withdraw",
+        ].includes(op.type),
       );
 
       // You can use liquidityPoolOps for additional analytics or transaction history
-      console.log(`Found ${pools.length} active liquidity pools for user ${userId}`);
-      console.log(`Found ${liquidityPoolOps.length} liquidity pool operations in recent history`);
+      console.log(
+        `Found ${pools.length} active liquidity pools for user ${userId}`,
+      );
+      console.log(
+        `Found ${liquidityPoolOps.length} liquidity pool operations in recent history`,
+      );
 
       return pools;
-
     } catch (error) {
       console.error("Error fetching user liquidity pools from Stellar:", error);
 
       // Handle specific Stellar errors
       if (error instanceof Error) {
-        if (error.message.includes('404')) {
+        if (error.message.includes("404")) {
           throw new Error("Stellar account not found or not funded");
-        } else if (error.message.includes('timeout')) {
+        } else if (error.message.includes("timeout")) {
           throw new Error("Stellar network timeout - please try again");
         }
       }
@@ -2103,17 +2177,19 @@ export class StellarService {
   async getPoolAnalytics(poolId: string, server: Horizon.Server) {
     try {
       // Get pool trades for volume calculation
-      const trades = await server.trades()
+      const trades = await server
+        .trades()
         .forLiquidityPool(poolId)
         .limit(100)
-        .order('desc')
+        .order("desc")
         .call();
 
       // Get pool operations for deposit/withdrawal activity
-      const operations = await server.operations()
+      const operations = await server
+        .operations()
         .forLiquidityPool(poolId)
         .limit(50)
-        .order('desc')
+        .order("desc")
         .call();
 
       return {
@@ -2140,7 +2216,7 @@ export class StellarService {
           ...pool,
           analytics,
         };
-      })
+      }),
     );
 
     return poolsWithAnalytics;
@@ -2774,7 +2850,7 @@ export class StellarService {
 
       transaction.sign(dopeDistributorKeypair);
 
-      const result = await server.submitTransaction(transaction);
+      await server.submitTransaction(transaction);
     } catch (error: any) {
       console.error("Error setting up distributor trustline:", error);
     }
@@ -2791,6 +2867,11 @@ export class StellarService {
     assetIssuer: string,
   ) => {
     try {
+      // Exclude native asset (XLM)
+      if (Asset.native().equals(new Asset(assetCode, assetIssuer))) {
+        throw new Error("Cannot create trustline for native asset (XLM)");
+      }
+
       const user = await storage.getUser(userId);
       if (!user?.stellarSecretKey) {
         throw new Error("User stellar account not found");
@@ -2822,7 +2903,7 @@ export class StellarService {
           .setTimeout(30)
           .build();
         transaction.sign(userKeypair);
-        const result = await server.submitTransaction(transaction);
+        await server.submitTransaction(transaction);
         console.log(`Trustline created for ${assetCode} by user ${userId}`);
       } else {
         throw new Error(`Trustline for ${assetCode} already exists`);
@@ -2872,6 +2953,7 @@ export class StellarService {
   ): Promise<OperationRecord | null> {
     try {
       const baseRecord = {
+        id: operation.id,
         stellarTxId: operation.transaction_hash,
         status: operation.transaction_successful ? "completed" : "failed",
         metadata: {
@@ -3523,45 +3605,15 @@ export class StellarService {
         "change_trust",
         "liquidity_pool_deposit",
         "liquidity_pool_withdraw",
+        "manage_sell_offer",
+        "manage_buy_offer",
       ];
 
-      return this.filterOperationsByType(operations, transactionTypes);
+      //return this.filterOperationsByType(operations, transactionTypes);
+      return operations;
     } catch (error) {
       console.error("Error getting user transaction history:", error);
       throw error;
-    }
-  }
-}
-
-class NetworkHandler {
-  static isTestnet(): boolean {
-    return STELLAR_NETWORK === "testnet";
-  }
-
-  static isMainnet(): boolean {
-    return STELLAR_NETWORK === "mainnet";
-  }
-
-  static async fundTestnetAccount(publicKey: string): Promise<boolean> {
-    if (!this.isTestnet()) {
-      console.log("Skipping funding - not on testnet");
-      return true;
-    }
-
-    try {
-      await server.friendbot(publicKey).call();
-      console.log(`Account funded via friendbot: ${publicKey}`);
-      return true;
-    } catch (error: any) {
-      console.error("Friendbot funding failed:", error.message);
-      return false;
-    }
-  }
-
-  static validateMainnetOperation(): void {
-    if (this.isMainnet()) {
-      console.warn("Performing real transaction on MAINNET");
-      // Add any additional mainnet validations here
     }
   }
 }

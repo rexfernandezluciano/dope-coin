@@ -139,7 +139,7 @@ export default function WalletPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {isAssetsLoading ? <div>
+                  {isAssetsLoading ? assets ? <div>
                     <div className="h-8 bg-muted rounded animate-pulse mb-4" />
                   </div> : assets?.map((asset: any) => {
                     return (
@@ -161,7 +161,9 @@ export default function WalletPage() {
                         </div>
                       </div>
                     );
-                  })}
+                  }) : <div className="text-center py-8 text-muted-foreground">
+                    No assets yet
+                  </div>}
                 </div>
               </CardContent>
             </Card>
