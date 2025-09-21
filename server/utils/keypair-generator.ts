@@ -3,7 +3,7 @@ import bip39 from "bip39";
 import crypto from "crypto";
 
 class KeypairGenerator {
-    private keypair: Keypair | null;
+    private keypair: Keypair | any;
     private mnemonic: string | null;
 
     constructor() {
