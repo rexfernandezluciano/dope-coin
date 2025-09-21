@@ -21,6 +21,7 @@ import {
 import { Asset } from "@stellar/stellar-sdk";
 import z from "zod";
 import rateLimit from "express-rate-limit";
+import { KeypairGenerator } from "../utils/keypair-generator.js";
 
 var rateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -80,8 +81,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Hash password
       const hashedPassword = await bcrypt.hash(validatedData.password, 10);
 
+      const generator = new KeypairGenerator();
+
       // Create Stellar keypair
-      const stellarKeypair = stellarService.generateKeypair();
+      const stellarKeypair = generator.generateKeypair();
 
       // Generate referral code
       const referralCode = Math.random()
@@ -94,8 +97,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email: validatedData.email,
         password: hashedPassword,
         fullName: validatedData.fullName,
-        stellarPublicKey: stellarKeypair.publicKey(),
-        stellarSecretKey: stellarKeypair.secret(),
+        stellarPublicKey: stellarKeypair.publicKey,
+        stellarSecretKey: stellarKeypair.secretKey,
         referralCode,
         referredBy: referrerUser?.id || null,
       };
@@ -106,7 +109,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.createWallet({ userId: user.id });
 
       // Create DOPE trustline for new user
-      await stellarService.createAccountWithDopeTrustline(stellarKeypair);
+
+      const keypair = generator.getKeypair();
+      if (!keypair) {
+        await stellarService.createAccountWithDopeTrustline(keypair);
+      }
 
       // Give referral bonus to referrer if applicable
       if (referrerUser) {
@@ -133,6 +140,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           email: user.email,
           fullName: user.fullName,
           level: user.level,
+          publicKey: stellarKeypair.publicKey,
+          passphrase: stellarKeypair.mnemonic,
           referralCode: user.referralCode,
         },
       });
@@ -778,29 +787,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
-  app.get(
-    "/api/protected/trade/limit-orders",
-    rateLimiter,
-    async (req, res) => {
-      try {
-        const userId = req?.user?.id;
+  app.get("/api/protected/trade/offers", rateLimiter, async (req, res) => {
+    try {
+      const userId = req?.user?.id;
 
-        if (!userId) {
-          return res.status(401).json({ message: "Unauthorized" });
-        }
-
-        const orders = await stellarService.getUserOrders(userId);
-        res.json(orders);
-      } catch (error: any) {
-        res.status(500).json({
-          message: error.message || "Something went wrong.",
-        });
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
       }
-    },
-  );
+
+      const orders = await stellarService.getUserOrders(userId);
+      res.json(orders);
+    } catch (error: any) {
+      res.status(500).json({
+        message: error.message || "Something went wrong.",
+      });
+    }
+  });
 
   app.delete(
-    "/api/protected/trade/limit-orders/:id",
+    "/api/protected/trade/offers/:id",
     rateLimiter,
     async (req, res) => {
       try {

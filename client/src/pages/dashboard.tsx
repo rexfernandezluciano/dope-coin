@@ -1,8 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "../components/ui/card.js";
-import { MiningInterface } from "../components/mining-interface.js";
 import { WalletCard } from "../components/wallet-card.js";
-import { ActivityFeed } from "../components/activity-feed.js";
 import { ProfileCard } from "../components/profile-card.js";
 import { NetworkStats } from "../components/network-stats.js";
 import { useAuth } from "../hooks/use-auth.js";
@@ -50,6 +48,12 @@ export default function Dashboard() {
         
         {/* Left Column: Main Mining Interface */}
         <div className="lg:col-span-2 space-y-6">
+
+          <div className="bg-yellow-200 p-3 rounded-lg shadow-sm border-lg">
+            <p className="text-sm text-muted-foreground">
+              <strong>Notice:</strong> DOPE Chain is currently in beta. Mining rewards are not yet available.
+            </p>
+          </div>
           
           {/* Welcome Section */}
           <Card data-testid="welcome-card">
@@ -60,25 +64,19 @@ export default function Dashboard() {
                     Welcome back, {user?.fullName?.split(' ')[0] || 'User'}!
                   </h1>
                   <p className="text-muted-foreground mt-1">
-                    Continue mining DOPE Coin on the Stellar network.
+                    Continue mining $DOPE Coin on the Stellar network.
                   </p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Mining Interface */}
-          <MiningInterface />
-
-          {/* Recent Activity */}
-          <ActivityFeed />
+          {/* Wallet Balance */}
+          <WalletCard />
         </div>
 
         {/* Right Column: Sidebar */}
         <div className="space-y-6">
-          
-          {/* Wallet Balance */}
-          <WalletCard />
 
           {/* User Profile Card */}
           <ProfileCard />

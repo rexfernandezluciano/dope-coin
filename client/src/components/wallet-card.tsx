@@ -6,13 +6,7 @@ import {
   CardTitle,
 } from "../components/ui/card.js";
 import { Button } from "../components/ui/button.js";
-import {
-  Wallet,
-  Send,
-  QrCode,
-  Loader2,
-  Fuel,
-} from "lucide-react";
+import { Wallet, Send, QrCode, Loader2, Fuel } from "lucide-react";
 import { useLocation } from "wouter";
 import { useState } from "react";
 import { Input } from "../components/ui/input.js";
@@ -183,7 +177,7 @@ export const WalletCard = () => {
                 Get GAS
               </Button>
             </DialogTrigger>
-            <DialogContent className="w-full h-full md:h-auto">
+            <DialogContent className="w-full h-full md:h-auto" aria-describedby="Converting XLM to GAS for DOPE Mining">
               <DialogHeader>
                 <DialogTitle>Convert XLM to GAS</DialogTitle>
                 <p className="text-sm text-muted-foreground">
@@ -196,9 +190,7 @@ export const WalletCard = () => {
 
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="convert-amount">
-                    Enter Amount
-                  </Label>
+                  <Label htmlFor="convert-amount">Enter Amount</Label>
                   <Input
                     className="mt-4"
                     id="convert-amount"
@@ -255,9 +247,7 @@ export const WalletCard = () => {
                   {convertMutation.isPending && (
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   )}
-                  {convertMutation.isPending
-                    ? "Converting..."
-                    : "Convert"}
+                  {convertMutation.isPending ? "Converting..." : "Convert"}
                 </Button>
 
                 {parseFloat(convertAmount || "0") >
@@ -269,6 +259,11 @@ export const WalletCard = () => {
               </div>
             </DialogContent>
           </Dialog>
+          {hasLowGas && (
+            <p className="text-sm text-red-500 mt-1">
+              Low GAS balance. Please convert XLM to GAS.
+            </p>
+          )}
         </div>
       </CardContent>
     </Card>

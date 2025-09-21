@@ -22,6 +22,7 @@ export default function Register() {
   const { register } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const [isDone, setIsDone] = useState(false);
 
   const totalSteps = 4;
 
@@ -94,9 +95,9 @@ export default function Register() {
       await register(formData);
       toast({
         title: "Registration successful",
-        description: "Welcome to DOPE Coin! Your Stellar wallet has been created.",
+        description: "Welcome to DOPE Chain! Your Wallet has been created. Activate it now to get started.",
       });
-      setLocation("/");
+      setIsDone(true);
     } catch (error) {
       toast({
         title: "Registration failed",
@@ -268,13 +269,12 @@ export default function Register() {
             </div>
           </div>
         );
-
       default:
         return null;
     }
   };
 
-  const handleKeyPress = (e) => {
+  const handleKeyPress = (e: any) => {
     if (e.key === 'Enter') {
       if (currentStep < totalSteps) {
         nextStep();
@@ -285,14 +285,14 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-white md:bg-background flex items-center justify-center md:p-4">
+    <div className="min-h-screen bg-white md:bg-background flex items-center justify-center md:p-4">{!isDone ?
       <Card className="w-full max-w-md rounded-none border-none md:rounded-lg shadow-none md:border-1">
         <CardHeader className="text-center">
           <div className="flex items-center justify-center space-x-2 mb-4">
             <div className="w-10 h-10 rounded-full gradient-bg flex items-center justify-center">
               <Coins className="w-6 h-6 text-white" />
             </div>
-            <span className="text-2xl font-bold text-primary">DOPE Coin</span>
+            <span className="text-2xl font-bold text-primary">DOPE Chain</span>
           </div>
           <CardTitle data-testid="title-register">
             {getStepTitle(currentStep)}
@@ -358,7 +358,34 @@ export default function Register() {
             </Link>
           </div>
         </CardContent>
-      </Card>
+      </Card> : <Card className="w-full max-w-md rounded-none border-none md:rounded-lg shadow-none md:border-1">
+        <CardHeader className="text-center">
+          <div className="flex items-center justify-center space-x-2">
+            <div className="w-10 h-10 rounded-full gradient-bg flex items-center justify-center">
+              <Coins className="w-6 h-6 text-white" />
+            </div>
+            <span className="text-2xl font-bold text-primary">DOPE Chain</span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-primary">Welcome to DOPE Chain!</h1>
+            <p className="text-muted-foreground">To get start mining $DOPE, you need to activate your account first.</p>
+          </div>
+          <div className="space-y-3 my-3">
+            <h3 className="font-bold text-1lg">How do I activate?</h3>
+            <p className="text-muted-foreground">1. Check your email for a verification link.</p>
+            <p className="text-muted-foreground">2. Click the link to verify your account.</p>
+            <p className="text-muted-foreground">3. Once verified, you can mine $DOPE.</p>
+          </div>
+          <div className="text-center">
+            <p className="text-muted-foreground">Didn't receive the email? <a className="text-primary hover:underline font-medium" href="/resend-verification">Resend</a></p>
+          </div>
+          <div className="flex justify-center mt-6">
+            <Button className="gradient-bg hover:opacity-90 text-1xl" onClick={() => setLocation('/dashboard')}>Let's go</Button>
+          </div>
+        </CardContent>
+      </Card>}
     </div>
   );
 }

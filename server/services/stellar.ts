@@ -1228,55 +1228,66 @@ export class StellarService {
 
   // Exchange rate logic with normalized assets
   getExchangeRate = async (sell: Asset, buy: Asset): Promise<number> => {
-      const sellCode = sell.code || "XLM";
-      const buyCode = buy.code || "XLM";
-      const pair = `${sellCode}->${buyCode}`;
+    const sellCode = sell.code || "XLM";
+    const buyCode = buy.code || "XLM";
+    const pair = `${sellCode}->${buyCode}`;
 
-      const fallbackRates: Record<string, number> = {
-        "XLM->DOPE": 10,
-        "DOPE->XLM": 0.1,
-        "USDC->DOPE": 8,
-        "DOPE->USDC": 0.125,
-        "XLM->USDC": 0.12,
-        "USDC->XLM": 8.3,
-      };
+    const fallbackRates: Record<string, number> = {
+      "XLM->DOPE": 10,
+      "DOPE->XLM": 0.1,
+      "USDC->DOPE": 8,
+      "DOPE->USDC": 0.125,
+      "XLM->USDC": 0.12,
+      "USDC->XLM": 8.3,
+    };
 
-      try {
-        const orderbook = await server
-          .orderbook(
-            sell.code === "XLM" ? Asset.native() : sell,
-            buy.code === "XLM" ? Asset.native() : buy,
-          )
-          .limit(10)
-          .call();
+    try {
+      const orderbook = await server
+        .orderbook(
+          sell.code === "XLM" ? Asset.native() : sell,
+          buy.code === "XLM" ? Asset.native() : buy,
+        )
+        .limit(10)
+        .call();
 
-        // For selling: you want the highest bid (best price someone will pay you)
-        // For buying: you want the lowest ask (best price you can buy at)
+      // For selling: you want the highest bid (best price someone will pay you)
+      // For buying: you want the lowest ask (best price you can buy at)
 
-        const bestBid = orderbook.bids?.[0] ? parseFloat(orderbook.bids[0].price) : 0;
-        const bestAsk = orderbook.asks?.[0] ? parseFloat(orderbook.asks[0].price) : 0;
+      const bestBid = orderbook.bids?.[0]
+        ? parseFloat(orderbook.bids[0].price)
+        : 0;
+      const bestAsk = orderbook.asks?.[0]
+        ? parseFloat(orderbook.asks[0].price)
+        : 0;
 
-        // Get the best available price (highest bid for immediate execution)
-        const bestPrice = bestBid > 0 ? bestBid : bestAsk;
+      // Get the best available price (highest bid for immediate execution)
+      const bestPrice = bestBid > 0 ? bestBid : bestAsk;
 
-        console.log(
-          "Best Bid: " + bestBid + " Best Ask: " + bestAsk + " Best Price: " + bestPrice + " Pair: " + pair,
-        );
+      console.log(
+        "Best Bid: " +
+          bestBid +
+          " Best Ask: " +
+          bestAsk +
+          " Best Price: " +
+          bestPrice +
+          " Pair: " +
+          pair,
+      );
 
-        if (bestPrice === 0) {
-          throw new Error("No valid prices available in orderbook");
-        }
-
-        return bestPrice;
-      } catch (err: any) {
-        console.warn(`Falling back to fixed rate for ${pair}: ${err.message}`);
-        if (!fallbackRates[pair]) {
-          throw new Error(
-            `Unsupported trading pair: ${pair}. Available pairs: ${Object.keys(fallbackRates).join(", ")}`,
-          );
-        }
-        return 0;
+      if (bestPrice === 0) {
+        throw new Error("No valid prices available in orderbook");
       }
+
+      return bestPrice;
+    } catch (err: any) {
+      console.warn(`Falling back to fixed rate for ${pair}: ${err.message}`);
+      if (!fallbackRates[pair]) {
+        throw new Error(
+          `Unsupported trading pair: ${pair}. Available pairs: ${Object.keys(fallbackRates).join(", ")}`,
+        );
+      }
+      return 0;
+    }
   };
   /**
    * Place a limit order on the DEX
@@ -2516,7 +2527,6 @@ export class StellarService {
       const accountExists = await this.accountExists(user.stellarPublicKey);
 
       let createAccountTxHash: string | null = null;
-
       // If account doesn't exist, create it with DOPE trustline
       if (!accountExists) {
         if (!user.stellarSecretKey) {
@@ -2526,10 +2536,8 @@ export class StellarService {
         }
 
         const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
-        createAccountTxHash = await this.createAccountWithDopeTrustline(
-          userKeypair,
-          "1.0",
-        );
+        createAccountTxHash =
+          await this.createAccountWithDopeTrustline(userKeypair);
 
         // Wait for account creation to propagate
         await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -2746,9 +2754,6 @@ export class StellarService {
 
       transaction.sign(userKeypair);
       const result = await server.submitTransaction(transaction);
-
-      // Update transaction status to completed
-      await storage.updateTransactionStatus(claimableBalanceId, "completed");
 
       console.log(
         `User ${userId} claimed claimable balance ${claimableBalanceId}`,
@@ -2972,7 +2977,9 @@ export class StellarService {
         .operations()
         .forAccount(publicKey)
         .order("desc")
-        .limit(limit);
+        .limit(limit)
+        .includeFail
+        ed(true);
 
       if (cursor) {
         operationsRequest = operationsRequest.cursor(cursor);
