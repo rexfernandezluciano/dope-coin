@@ -16,7 +16,7 @@ conditions = "Fixed supply; no further issuance planned."
 image = "https://mine.dopp.eu.org/assets/dope-coin.png"
 max_number = 100000000000 # 100 Billion DOPE
 is_unlimited = false
-status = "testnet"
+status = "test"
 
 [[CURRENCIES]]
 code = "GAS"
@@ -29,13 +29,13 @@ image = "https://mine.dopp.eu.org/assets/dope-coin.png"
 fixed_number = 1000000 # 1 Million GAS
 max_number = 1000000
 is_unlimited = false
-status = "testnet"
+status = "test"
 
 # Organization Information
 [DOCUMENTATION]
 ORG_NAME = "DOPE Social, Inc"
 ORG_DBA = "DOPE Social"
-ORG_URL = "https://www.dopp.eu.org"
+ORG_URL = "https://dopp.eu.org"
 ORG_LOGO = "https://mine.dopp.eu.org/assets/dope.png"
 ORG_DESCRIPTION = "DOPE Social is a decentralized social network built on the Stellar blockchain."
 ORG_PHYSICAL_ADDRESS = "Sampaguita, General Tinio, Nueva Ecija, Philippines"

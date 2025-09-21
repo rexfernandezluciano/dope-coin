@@ -19,6 +19,7 @@ import SendPage from "./pages/send.js";
 import ReceivePage from "./pages/receive.js";
 import TradingPage from "./pages/trading.js";
 import LimitOrderCreator from "./pages/limit-order.js";
+import HelpPage from "./pages/help.js"
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -224,6 +225,21 @@ function Router() {
                 <Header />
                 <main className="flex-1 main-content">
                   <LimitOrderCreator />
+                </main>
+                <MobileNav />
+              </div>
+            </ProtectedRoute>
+          )}
+        />
+
+        <Route
+          path="/help/:category/:page"
+          component={() => (
+            <ProtectedRoute>
+              <div className="flex flex-col min-h-screen">
+                <Header />
+                <main className="flex-1 main-content">
+                  <HelpPage />
                 </main>
                 <MobileNav />
               </div>

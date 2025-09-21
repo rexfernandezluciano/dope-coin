@@ -1,7 +1,13 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "../components/ui/button.js";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card.js";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card.js";
 import { Input } from "../components/ui/input.js";
 import { Label } from "../components/ui/label.js";
 import { useAuth } from "../hooks/use-auth.js";
@@ -23,33 +29,49 @@ export default function Register() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [isDone, setIsDone] = useState(false);
+  const [response, setResponse] = useState<any>(null);
 
   const totalSteps = 4;
 
   // Check for referral code in URL
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const refCode = urlParams.get('ref');
+    const refCode = urlParams.get("ref");
     if (refCode) {
-      setFormData(prev => ({ ...prev, referralCode: refCode }));
+      setFormData((prev) => ({ ...prev, referralCode: refCode }));
     }
   }, []);
 
   const handleChange = (e: any) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       [e.target.name]: e.target.value,
     }));
   };
 
+  const saveWallet = async (blob: any) => {
+    const a = document.createElement("a");
+    a.download = `wallet-${formData.username}.json`;
+    a.href = URL.createObjectURL(blob);
+    a.addEventListener("click", (e) => {
+      setTimeout(() => URL.revokeObjectURL(a.href), 30 * 1000);
+    });
+    a.click();
+  };
+
   const validateStep = (step: number) => {
     switch (step) {
       case 1:
-        return formData.fullName.trim() !== "" && formData.username.trim() !== "";
+        return (
+          formData.fullName.trim() !== "" && formData.username.trim() !== ""
+        );
       case 2:
         return formData.email.trim() !== "" && formData.email.includes("@");
       case 3:
-        return formData.password.length >= 6 && formData.password === formData.confirmPassword;
+        return (
+          formData.password.length >= 6 &&
+          formData.password === formData.confirmPassword
+        );
       case 4:
         return true; // Referral code is optional
       default:
@@ -59,7 +81,7 @@ export default function Register() {
 
   const nextStep = () => {
     if (validateStep(currentStep)) {
-      setCurrentStep(prev => Math.min(prev + 1, totalSteps));
+      setCurrentStep((prev) => Math.min(prev + 1, totalSteps));
     } else {
       toast({
         title: "Please complete this step",
@@ -70,7 +92,7 @@ export default function Register() {
   };
 
   const prevStep = () => {
-    setCurrentStep(prev => Math.max(prev - 1, 1));
+    setCurrentStep((prev) => Math.max(prev - 1, 1));
   };
 
   const getValidationMessage = (step: number) => {
@@ -80,8 +102,10 @@ export default function Register() {
       case 2:
         return "Please enter a valid email address";
       case 3:
-        if (formData.password.length < 6) return "Password must be at least 6 characters";
-        if (formData.password !== formData.confirmPassword) return "Passwords don't match";
+        if (formData.password.length < 6)
+          return "Password must be at least 6 characters";
+        if (formData.password !== formData.confirmPassword)
+          return "Passwords don't match";
         return "Please complete the password fields";
       default:
         return "Please complete the required fields";
@@ -92,16 +116,19 @@ export default function Register() {
     setIsLoading(true);
 
     try {
-      await register(formData);
+      const data = await register(formData);
       toast({
         title: "Registration successful",
-        description: "Welcome to DOPE Chain! Your Wallet has been created. Activate it now to get started.",
+        description:
+          "Welcome to DOPE Chain! Your Wallet has been created. Activate it now to get started.",
       });
+      setResponse(data);
       setIsDone(true);
     } catch (error) {
       toast({
         title: "Registration failed",
-        description: error instanceof Error ? error.message : "Registration failed",
+        description:
+          error instanceof Error ? error.message : "Registration failed",
         variant: "destructive",
       });
     } finally {
@@ -111,21 +138,31 @@ export default function Register() {
 
   const getStepTitle = (step: number) => {
     switch (step) {
-      case 1: return "Personal Information";
-      case 2: return "Email Address";
-      case 3: return "Create Password";
-      case 4: return "Referral Code";
-      default: return "Create Account";
+      case 1:
+        return "Personal Information";
+      case 2:
+        return "Email Address";
+      case 3:
+        return "Create Password";
+      case 4:
+        return "Referral Code";
+      default:
+        return "Create Account";
     }
   };
 
   const getStepDescription = (step: number) => {
     switch (step) {
-      case 1: return "Tell us your name and choose a username";
-      case 2: return "We'll use this to verify your account";
-      case 3: return "Choose a secure password for your account";
-      case 4: return "Have a referral code? Enter it here to earn bonus coins!";
-      default: return "Join the DOPE Coin network";
+      case 1:
+        return "Tell us your name and choose a username";
+      case 2:
+        return "We'll use this to verify your account";
+      case 3:
+        return "Choose a secure password for your account";
+      case 4:
+        return "Have a referral code? Enter it here to earn bonus coins!";
+      default:
+        return "Join the DOPE Coin network";
     }
   };
 
@@ -133,19 +170,23 @@ export default function Register() {
     <div className="flex items-center justify-center mb-6">
       {[1, 2, 3, 4].map((step) => (
         <div key={step} className="flex items-center">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-            step < currentStep 
-              ? 'bg-green-500 text-white' 
-              : step === currentStep 
-                ? 'bg-primary text-white' 
-                : 'bg-gray-200 text-gray-600'
-          }`}>
+          <div
+            className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+              step < currentStep
+                ? "bg-green-500 text-white"
+                : step === currentStep
+                  ? "bg-primary text-white"
+                  : "bg-gray-200 text-gray-600"
+            }`}
+          >
             {step < currentStep ? <Check className="w-4 h-4" /> : step}
           </div>
           {step < totalSteps && (
-            <div className={`w-12 h-0.5 mx-2 ${
-              step < currentStep ? 'bg-green-500' : 'bg-gray-200'
-            }`} />
+            <div
+              className={`w-12 h-0.5 mx-2 ${
+                step < currentStep ? "bg-green-500" : "bg-gray-200"
+              }`}
+            />
           )}
         </div>
       ))}
@@ -259,7 +300,8 @@ export default function Register() {
               />
               {formData.referralCode ? (
                 <p className="text-xs text-green-600">
-                  Great! You and your referrer will both receive bonus DOPE coins!
+                  Great! You and your referrer will both receive bonus DOPE
+                  coins!
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground">
@@ -275,7 +317,7 @@ export default function Register() {
   };
 
   const handleKeyPress = (e: any) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       if (currentStep < totalSteps) {
         nextStep();
       } else {
@@ -285,107 +327,154 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-white md:bg-background flex items-center justify-center md:p-4">{!isDone ?
-      <Card className="w-full max-w-md rounded-none border-none md:rounded-lg shadow-none md:border-1">
-        <CardHeader className="text-center">
-          <div className="flex items-center justify-center space-x-2 mb-4">
-            <div className="w-10 h-10 rounded-full gradient-bg flex items-center justify-center">
-              <Coins className="w-6 h-6 text-white" />
+    <div className="min-h-screen bg-white md:bg-background flex items-center justify-center md:p-4">
+      {!isDone ? (
+        <Card className="w-full max-w-md rounded-none border-none md:rounded-lg shadow-none md:border-1">
+          <CardHeader className="text-center">
+            <div className="flex items-center justify-center space-x-2 mb-4">
+              <div className="w-10 h-10 rounded-full gradient-bg flex items-center justify-center">
+                <Coins className="w-6 h-6 text-white" />
+              </div>
+              <span className="text-2xl font-bold text-primary">
+                DOPE Chain
+              </span>
             </div>
-            <span className="text-2xl font-bold text-primary">DOPE Chain</span>
-          </div>
-          <CardTitle data-testid="title-register">
-            {getStepTitle(currentStep)}
-          </CardTitle>
-          <CardDescription>
-            {getStepDescription(currentStep)}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {renderStepIndicator()}
+            <CardTitle data-testid="title-register">
+              {getStepTitle(currentStep)}
+            </CardTitle>
+            <CardDescription>{getStepDescription(currentStep)}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {renderStepIndicator()}
 
-          <div onKeyPress={handleKeyPress}>
-            {renderStepContent()}
+            <div onKeyPress={handleKeyPress}>
+              {renderStepContent()}
 
-            <div className="flex justify-between mt-6 space-x-2">
+              <div className="flex justify-between mt-6 space-x-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={prevStep}
+                  disabled={currentStep === 1}
+                  className="flex items-center space-x-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Back</span>
+                </Button>
+
+                {currentStep < totalSteps ? (
+                  <Button
+                    type="button"
+                    onClick={nextStep}
+                    className="flex items-center space-x-2 gradient-bg hover:opacity-90"
+                  >
+                    <span>Next</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    onClick={handleSubmit}
+                    className="flex items-center space-x-2 gradient-bg hover:opacity-90"
+                    disabled={isLoading}
+                    data-testid="button-register"
+                  >
+                    {isLoading ? (
+                      <span>Creating account...</span>
+                    ) : (
+                      <>
+                        <span>Create Account</span>
+                        <Check className="w-4 h-4" />
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 text-center text-sm">
+              <span className="text-muted-foreground">
+                Already have an account?{" "}
+              </span>
+              <Link href="/login">
+                <a
+                  className="text-primary hover:underline font-medium"
+                  data-testid="link-login"
+                >
+                  Sign in
+                </a>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="w-full max-w-md rounded-none border-none md:rounded-lg shadow-none md:border-1">
+          <CardHeader className="text-center">
+            <div className="flex items-center justify-center space-x-2">
+              <div className="w-10 h-10 rounded-full gradient-bg flex items-center justify-center">
+                <Coins className="w-6 h-6 text-white" />
+              </div>
+              <span className="text-2xl font-bold text-primary">
+                DOPE Chain
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center">
+              <h1 className="text-2xl font-bold text-primary">
+                Welcome to DOPE Chain!
+              </h1>
+              <p className="text-muted-foreground">
+                You have just created an account. You need to fund your account before using it.
+              </p>
+            </div>
+            <div className="space-y-3 my-3">
+              <h3 className="font-bold text-1lg">Your wallet address:</h3>
+              <div className="bg-gray-100 p-3 rounded-lg font-light text-center">
+                {response?.user?.publicKey || "GZAHSM..."}
+              </div>
+              <h3 className="font-bold text-1lg">Your seed passphrase:</h3>
+              <div className="bg-gray-100 p-3 rounded-lg font-light text-center">
+                {response?.user?.mnemonic || "Seed Passphrase"}
+              </div>
+              <div className="text-muted-foreground text-sm">
+                Ensure you save your seed passphrase in a safe place. You will
+                need it to recover your wallet if you lose access to your email.
+              </div>
+            </div>
+            <div className="text-center">
+              <p className="text-muted-foreground">
+                How to fund your account?{" "}
+                <a
+                  className="text-primary hover:underline font-medium"
+                  href="/help/activation/accounts"
+                >
+                  Buy XLM here
+                </a>
+              </p>
+            </div>
+            <div className="flex justify-center mt-6">
               <Button
-                type="button"
-                variant="outline"
-                onClick={prevStep}
-                disabled={currentStep === 1}
-                className="flex items-center space-x-2"
+                className="gradient-bg hover:opacity-90 text-1xl"
+                onClick={() => {
+                  const obj = {
+                    network: "Stellar",
+                    timestamp: new Date().toISOString(),
+                    publicKey: response?.user?.publicKey || "Wallet Address",
+                    passphrase: response?.user?.mnemonic || "Seed Passphrase",
+                  };
+                  const blob = new Blob([JSON.stringify(obj, null, 2)], {
+                    type: "application/json",
+                  });
+                  saveWallet(blob);
+                }}
               >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Back</span>
+                Download Wallet
               </Button>
-
-              {currentStep < totalSteps ? (
-                <Button
-                  type="button"
-                  onClick={nextStep}
-                  className="flex items-center space-x-2 gradient-bg hover:opacity-90"
-                >
-                  <span>Next</span>
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  onClick={handleSubmit}
-                  className="flex items-center space-x-2 gradient-bg hover:opacity-90"
-                  disabled={isLoading}
-                  data-testid="button-register"
-                >
-                  {isLoading ? (
-                    <span>Creating account...</span>
-                  ) : (
-                    <>
-                      <span>Create Account</span>
-                      <Check className="w-4 h-4" />
-                    </>
-                  )}
-                </Button>
-              )}
             </div>
-          </div>
-
-          <div className="mt-6 text-center text-sm">
-            <span className="text-muted-foreground">Already have an account? </span>
-            <Link href="/login">
-              <a className="text-primary hover:underline font-medium" data-testid="link-login">
-                Sign in
-              </a>
-            </Link>
-          </div>
-        </CardContent>
-      </Card> : <Card className="w-full max-w-md rounded-none border-none md:rounded-lg shadow-none md:border-1">
-        <CardHeader className="text-center">
-          <div className="flex items-center justify-center space-x-2">
-            <div className="w-10 h-10 rounded-full gradient-bg flex items-center justify-center">
-              <Coins className="w-6 h-6 text-white" />
-            </div>
-            <span className="text-2xl font-bold text-primary">DOPE Chain</span>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-primary">Welcome to DOPE Chain!</h1>
-            <p className="text-muted-foreground">To get start mining $DOPE, you need to activate your account first.</p>
-          </div>
-          <div className="space-y-3 my-3">
-            <h3 className="font-bold text-1lg">How do I activate?</h3>
-            <p className="text-muted-foreground">1. Check your email for a verification link.</p>
-            <p className="text-muted-foreground">2. Click the link to verify your account.</p>
-            <p className="text-muted-foreground">3. Once verified, you can mine $DOPE.</p>
-          </div>
-          <div className="text-center">
-            <p className="text-muted-foreground">Didn't receive the email? <a className="text-primary hover:underline font-medium" href="/resend-verification">Resend</a></p>
-          </div>
-          <div className="flex justify-center mt-6">
-            <Button className="gradient-bg hover:opacity-90 text-1xl" onClick={() => setLocation('/dashboard')}>Let's go</Button>
-          </div>
-        </CardContent>
-      </Card>}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

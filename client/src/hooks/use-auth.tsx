@@ -59,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const register = async (registerData: RegisterData) => {
+  const register = async (registerData: RegisterData): Promise<any> => {
     const response = await apiRequest("POST", "/api/auth/register", registerData);
     const data = await response.json();
     
@@ -71,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else {
       throw new Error("Invalid response from server");
     }
+    return data;
   };
 
   const logout = () => {
