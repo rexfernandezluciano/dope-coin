@@ -1249,10 +1249,11 @@ export class StellarService {
       let bestPrice = 0;
       let bestVolume = 0;
 
-      if (bestAsk) 
+      if (bestAsk) bestPrice = bestAsk;
       if (bestBid) bestVolume = bestBid;
 
-      bestPrice = bestAsk;
+      console.log("Price: " + bestPrice + " Volume: " + bestVolume + " Pair: " + pair);
+      console.log("Orderbook: " + JSON.stringify(orderbook));
 
       return (bestPrice + bestVolume) / 2;
     } catch (err: any) {
