@@ -245,7 +245,7 @@ export default function TradingPage() {
     onSuccess: (data) => {
       toast({
         title: "Trade Successful",
-        description: `Swapped ${data.result?.sellAmount} ${data.result?.sellAsset} for ${data.result?.receiveAmount} ${data.result?.buyAsset}`,
+        description: `Swapped ${data.result?.sellAmount} ${data.result?.sellAsset} for ${data.result?.receivedAmount} ${data.result?.buyAsset}`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/protected/wallet"] });
       queryClient.invalidateQueries({
@@ -635,12 +635,12 @@ export default function TradingPage() {
                             Exchange Rate
                           </div>
                           <div className="font-semibold text-lg">
-                            {exchangeRate?.rate} per{" "}
+                            {parseFloat(exchangeRate?.rate).toFixed(4)} per{" "}
                             {tradeForm.getValues("sellAsset")?.code}
                           </div>
                           {exchangeRate?.estimatedAmount && (
                             <div className="text-sm text-muted-foreground mt-1">
-                              Est. receive: {exchangeRate?.estimatedAmount || 0}{" "}
+                              Est. receive: {parseFloat(exchangeRate?.estimatedAmount).toFixed(4) || 0}{" "}
                               {tradeForm.getValues("buyAsset")?.code}
                             </div>
                           )}

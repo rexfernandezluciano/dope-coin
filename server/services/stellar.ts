@@ -1228,53 +1228,56 @@ export class StellarService {
 
   // Exchange rate logic with normalized assets
   getExchangeRate = async (sell: Asset, buy: Asset): Promise<number> => {
-    const sellCode = sell.code || "XLM";
-    const buyCode = buy.code || "XLM";
-    const pair = `${sellCode}->${buyCode}`;
+      const sellCode = sell.code || "XLM";
+      const buyCode = buy.code || "XLM";
+      const pair = `${sellCode}->${buyCode}`;
 
-    const fallbackRates: Record<string, number> = {
-      "XLM->DOPE": 10,
-      "DOPE->XLM": 0.1,
-      "USDC->DOPE": 8,
-      "DOPE->USDC": 0.125,
-      "XLM->USDC": 0.12,
-      "USDC->XLM": 8.3,
-    };
+      const fallbackRates: Record<string, number> = {
+        "XLM->DOPE": 10,
+        "DOPE->XLM": 0.1,
+        "USDC->DOPE": 8,
+        "DOPE->USDC": 0.125,
+        "XLM->USDC": 0.12,
+        "USDC->XLM": 8.3,
+      };
 
-    try {
-      const orderbook = await server
-        .orderbook(
-          sell.code === "XLM" ? Asset.native() : sell,
-          buy.code === "XLM" ? Asset.native() : buy,
-        )
-        .limit(10)
-        .call();
-      const bestAsk = parseFloat(orderbook.asks?.[0]?.price);
-      const bestBid = parseFloat(orderbook.bids?.[0]?.price);
+      try {
+        const orderbook = await server
+          .orderbook(
+            sell.code === "XLM" ? Asset.native() : sell,
+            buy.code === "XLM" ? Asset.native() : buy,
+          )
+          .limit(10)
+          .call();
 
-      let bestPrice = 0;
-      let bestVolume = 0;
+        // For selling: you want the highest bid (best price someone will pay you)
+        // For buying: you want the lowest ask (best price you can buy at)
 
-      if (bestAsk) bestPrice = bestAsk;
-      if (bestBid) bestVolume = bestBid;
+        const bestBid = orderbook.bids?.[0] ? parseFloat(orderbook.bids[0].price) : 0;
+        const bestAsk = orderbook.asks?.[0] ? parseFloat(orderbook.asks[0].price) : 0;
 
-      console.log(
-        "Price: " + bestPrice + " Volume: " + bestVolume + " Pair: " + pair,
-      );
-      console.log("Orderbook: " + JSON.stringify(orderbook));
+        // Get the best available price (highest bid for immediate execution)
+        const bestPrice = bestBid > 0 ? bestBid : bestAsk;
 
-      return (bestPrice + bestVolume) / 2;
-    } catch (err: any) {
-      console.warn(`Falling back to fixed rate for ${pair}: ${err.message}`);
-      if (!fallbackRates[pair]) {
-        throw new Error(
-          `Unsupported trading pair: ${pair}. Available pairs: ${Object.keys(fallbackRates).join(", ")}`,
+        console.log(
+          "Best Bid: " + bestBid + " Best Ask: " + bestAsk + " Best Price: " + bestPrice + " Pair: " + pair,
         );
-      }
-      return fallbackRates[pair];
-    }
-  };
 
+        if (bestPrice === 0) {
+          throw new Error("No valid prices available in orderbook");
+        }
+
+        return bestPrice;
+      } catch (err: any) {
+        console.warn(`Falling back to fixed rate for ${pair}: ${err.message}`);
+        if (!fallbackRates[pair]) {
+          throw new Error(
+            `Unsupported trading pair: ${pair}. Available pairs: ${Object.keys(fallbackRates).join(", ")}`,
+          );
+        }
+        return 0;
+      }
+  };
   /**
    * Place a limit order on the DEX
    */

@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   Card,
@@ -113,7 +113,7 @@ export default function WalletPage() {
               <div className="flex gap-2">
                 <div className="text-muted-foreground text-sm">DOPE Coin</div>
                 <span className="space-x-2">≈</span>
-                {isMarketValueLoading ? <div className="h-4 bg-muted rounded animate-pulse" /> : <div className="text-muted-foreground text-sm text-sm">${marketValue?.selling_price ? parseFloat(marketValue?.selling_price).toFixed(2) : "0.00"} XLM</div>}
+                {isMarketValueLoading ? <div className="h-4 bg-muted rounded animate-pulse" /> : <div className="text-muted-foreground text-sm text-sm">{marketValue?.selling_price ? parseFloat(marketValue?.selling_price).toFixed(2) : "0.00"} XLM</div>}
               </div>
             </div>
             

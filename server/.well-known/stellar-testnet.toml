@@ -11,23 +11,25 @@ code = "DOPE"
 issuer = "GDRXPV2DIWVGNYI7JYLMMDQU3USBETYQN6HSIBGP762LK5XFOUEK2IGV"
 display_decimals = 7
 name = "DOPE Coin"
-desc = "Utility token for the DOPE Chain app."
+desc = "DOPE Coin is the native token of the DOPE Social network."
 conditions = "Fixed supply; no further issuance planned."
-image = "https://mine.dopp.eu.org/assets/dope.png"
+image = "https://mine.dopp.eu.org/assets/dope-coin.png"
 max_number = 100000000000 # 100 Billion DOPE
 is_unlimited = false
+status = "testnet"
 
 [[CURRENCIES]]
 code = "GAS"
 issuer = "GDRXPV2DIWVGNYI7JYLMMDQU3USBETYQN6HSIBGP762LK5XFOUEK2IGV"
 display_decimals = 7
 name = "GAS Token"
-desc = "Internal token for the DOPE Chain app."
-conditions = "Internal token; limited supply."
-image = "https://mine.dopp.eu.org/assets/dope.png"
-fixed_number = 1000000
+desc = "GAS Token is the fuel for the DOPE Social network."
+conditions = "Fixed supply; no further issuance planned."
+image = "https://mine.dopp.eu.org/assets/dope-coin.png"
+fixed_number = 1000000 # 1 Million GAS
 max_number = 1000000
 is_unlimited = false
+status = "testnet"
 
 # Organization Information
 [DOCUMENTATION]
@@ -37,9 +39,6 @@ ORG_URL = "https://www.dopp.eu.org"
 ORG_LOGO = "https://mine.dopp.eu.org/assets/dope.png"
 ORG_DESCRIPTION = "DOPE Social is a decentralized social network built on the Stellar blockchain."
 ORG_PHYSICAL_ADDRESS = "Sampaguita, General Tinio, Nueva Ecija, Philippines"
-ORG_PHYSICAL_ADDRESS_ATTESTATION = "https://mine.dopp.eu.org/assets/address_attestation.jpg"
-ORG_PHONE_NUMBER = "+639060471522"
-ORG_PHONE_NUMBER_ATTESTATION = "https://mine.dopp.eu.org/assets/phone_attestation.jpg"
 ORG_KEYBASE = "dopesocial"
 ORG_TWITTER = "dopesocial"
 ORG_GITHUB = "dopesocial"
@@ -51,5 +50,3 @@ email = "rexluciano@dopp.eu.org"
 keybase = "rexluciano"
 twitter = "rexluciano_offc"
 github = "rexfernandezluciano"
-id_photo_hash = "hash_of_id_photo"
-verification_photo_hash = "hash_of_verification_photo"

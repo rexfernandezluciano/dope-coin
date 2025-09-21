@@ -48,10 +48,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // DOPE Image
-  app.get("/assets/dope.png", (req, res) => {
+  app.get("/assets/:path", (req, res) => {
+    const imagePath = req.params.path;
     res
       .header("Content-Type", "image/png")
-      .sendFile(path.join(import.meta.dirname, "../assets/dope.png"));
+      .sendFile(path.join(import.meta.dirname, `../assets/${imagePath}`));
   });
 
   // Auth routes
@@ -1200,10 +1201,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const marketValue = await stellarService.getMarketValue(userId) as any;
+      const marketValue = (await stellarService.getMarketValue(userId)) as any;
       res.json({
         selling_price: marketValue?.selling_price,
-        buying_price: marketValue?.buying_price
+        buying_price: marketValue?.buying_price,
       });
     } catch (error) {
       res.status(500).json({
