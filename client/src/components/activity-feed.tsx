@@ -73,7 +73,7 @@ export function ActivityFeed() {
                 </div>
                 <div className="text-right">
                   <div
-                    className={`font-semibold ${
+                    className={`${parseFloat(transaction.amount).toFixed(0).length > 4 ? "truncate w-20" : "font-medium"} ${
                       transaction.type === "send"
                         ? "text-destructive"
                         : "text-primary"

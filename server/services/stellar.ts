@@ -347,6 +347,37 @@ export class StellarService {
     }
   }
 
+  async getMarketValue(userId: string): Promise<Object> {
+    try {
+      const user = await storage.getUser(userId);
+      if (!user?.stellarPublicKey) {
+        throw new Error("User stellar account not found");
+      }
+
+      const account = await server.loadAccount(user.stellarPublicKey);
+
+      const asset = new Asset("DOPE", dopeIssuerKeypair.publicKey());
+
+      const assetValue = account.balances.find(
+        (balance: any) =>
+          balance.asset_type === asset?.getAssetType() &&
+          balance.asset_code === asset?.code &&
+          balance.asset_issuer === asset?.issuer,
+      ) as any;
+
+      return {
+        selling_price: parseFloat(assetValue?.selling_liabilities),
+        buying_price: assetValue?.buying_liabilities,
+      };
+    } catch (error) {
+      console.error("Error fetching price values:", error);
+      return {
+        selling_price: 0,
+        buying_price: 0,
+      };
+    }
+  }
+
   async fundAccount(publicKey: string): Promise<boolean> {
     if (STELLAR_NETWORK !== "testnet") return true;
 
@@ -1215,10 +1246,15 @@ export class StellarService {
       const bestAsk = parseFloat(orderbook.asks?.[0]?.price);
       const bestBid = parseFloat(orderbook.bids?.[0]?.price);
 
-      if (isNaN(bestAsk) || isNaN(bestBid))
-        throw new Error("No valid orderbook data");
+      let bestPrice = 0;
+      let bestVolume = 0;
 
-      return (bestAsk + bestBid) / 2;
+      if (bestAsk) 
+      if (bestBid) bestVolume = bestBid;
+
+      bestPrice = bestAsk;
+
+      return (bestPrice + bestVolume) / 2;
     } catch (err: any) {
       console.warn(`Falling back to fixed rate for ${pair}: ${err.message}`);
       if (!fallbackRates[pair]) {

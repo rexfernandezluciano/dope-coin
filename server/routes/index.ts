@@ -42,7 +42,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? "../.well-known/stellar-mainnet.toml"
         : "../.well-known/stellar-testnet.toml",
     );
-    res.header("Content-Type", "application/toml").sendFile(stellarTomlPath);
+    res
+      .header("Content-Type", "text/pain; charset=utf-8")
+      .sendFile(stellarTomlPath);
   });
 
   // DOPE Image
@@ -722,7 +724,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .json({ message: "Validation error", errors: error.errors });
       }
       console.error("Orderbook error:", error);
-      res.status(500).json({ message: error.message || "Internal server error" });
+      res
+        .status(500)
+        .json({ message: error.message || "Internal server error" });
     }
   });
 
@@ -1128,13 +1132,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const [user, wallet, recentTransactions, networkStats] =
-        (await Promise.all([
-          storage.getUser(userId),
-          storage.getWallet(userId),
-          storage.getTransactions(userId, 1, 5),
-          storage.getNetworkStats(),
-        ])) as any;
+      const [user, recentTransactions, networkStats] = (await Promise.all([
+        storage.getUser(userId),
+        storage.getTransactions(userId, 1, 5),
+        storage.getNetworkStats(),
+      ])) as any;
 
       const miningStatus = await miningService.getMiningStatus(userId);
 
@@ -1187,6 +1189,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Dashboard fetch error:", error);
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/protected/trade/values", async (req, res) => {
+    try {
+      const userId = req?.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const marketValue = await stellarService.getMarketValue(userId) as any;
+      res.json({
+        selling_price: marketValue?.selling_price,
+        buying_price: marketValue?.buying_price
+      });
+    } catch (error) {
+      res.status(500).json({
+        message: "Something went wrong",
+      });
     }
   });
 

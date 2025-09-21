@@ -14,9 +14,20 @@ name = "DOPE Coin"
 desc = "Utility token for the DOPE Chain app."
 conditions = "Fixed supply; no further issuance planned."
 image = "https://mine.dopp.eu.org/assets/dope.png"
-fixed_number = 100000000000
-max_number = 100000000000
-is_unlimited = true
+max_number = 100000000000 # 100 Billion DOPE
+is_unlimited = false
+
+[[CURRENCIES]]
+code = "GAS"
+issuer = "GDRXPV2DIWVGNYI7JYLMMDQU3USBETYQN6HSIBGP762LK5XFOUEK2IGV"
+display_decimals = 7
+name = "GAS Token"
+desc = "Internal token for the DOPE Chain app."
+conditions = "Internal token; limited supply."
+image = "https://mine.dopp.eu.org/assets/dope.png"
+fixed_number = 1000000
+max_number = 1000000
+is_unlimited = false
 
 # Organization Information
 [DOCUMENTATION]

@@ -10,15 +10,12 @@ import {
   Settings,
   TrendingUp,
   TrendingDown,
-  Wallet,
-  Users,
   Database,
   Hash,
   Coins,
   Lock,
   Unlock,
   Merge,
-  Banknote,
 } from "lucide-react";
 
 export const getActivityIcon = (type: string) => {

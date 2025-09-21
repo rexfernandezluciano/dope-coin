@@ -245,7 +245,7 @@ export default function TradingPage() {
     onSuccess: (data) => {
       toast({
         title: "Trade Successful",
-        description: `Swapped ${data.result?.sellAmount} ${data.result?.sellAsset?.code} for ${data.result?.receiveAmount} ${data.result?.buyAsset?.code}`,
+        description: `Swapped ${data.result?.sellAmount} ${data.result?.sellAsset} for ${data.result?.receiveAmount} ${data.result?.buyAsset}`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/protected/wallet"] });
       queryClient.invalidateQueries({
@@ -642,12 +642,12 @@ export default function TradingPage() {
                       )}
                     </div>
 
-                    <Button type="button" className="w-full mb-3 hover:bg-muted-foreground hover:text-primary" onClick={() => navigate("/orders/create")}>Create Order</Button>
+                    <Button type="button" className="w-full mb-3 hover:bg-muted-foreground hover:text-white" onClick={() => navigate("/orders/create")}>Create Order</Button>
 
                     <Button
                       type="submit"
                       disabled={executeTradeMutation.isPending}
-                      className="w-full"
+                      className="w-full hover:bg-muted-foreground hover:text-white"
                       data-testid="button-execute-trade"
                     >
                       {executeTradeMutation.isPending && (

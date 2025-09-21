@@ -15,7 +15,8 @@ import {
 import { Badge } from "../components/ui/badge.js";
 import { Button } from "../components/ui/button.js";
 import { AuthService } from "../lib/auth.js";
-import { Wallet, Send, BarChart3, Lock, Unlock } from "lucide-react";
+import { Wallet, Send, BarChart3, Lock, Unlock, TrendingUp,
+  TrendingDown } from "lucide-react";
 import {
   getActivityLabel,
   getActivityIcon,
@@ -29,6 +30,10 @@ export default function WalletPage() {
     refetchInterval: 30000,
   }) as any;
 
+  const { data: marketValue, isLoading: isMarketValueLoading } = useQuery({
+    queryKey: ["/api/protected/trade/values"]
+  }) as any;
+
   const { data: transactions } = useQuery({
     queryKey: ["/api/protected/transactions"],
     queryFn: () =>
@@ -38,7 +43,7 @@ export default function WalletPage() {
       ),
   }) as any;
 
-  const { data: assets, isLoading: isAssetsLoading } = useQuery({queryKey: ["/api/protected/asset/holders"], queryFn: () => AuthService.authenticatedRequest("GET", "/api/protected/asset/holders")});
+  const { data: assets, isLoading: isAssetsLoading } = useQuery({queryKey: ["/api/protected/asset/holders"], queryFn: () => AuthService.authenticatedRequest("GET", "/api/protected/asset/holders")}) as any;
 
   const [, navigate] = useLocation();
 
@@ -105,7 +110,11 @@ export default function WalletPage() {
           <CardContent className="space-y-3">
             <div>
               <div className="flex items-center text-3xl font-bold">{parseFloat(walletData?.dopeBalance).toFixed(4)}</div>
-              <div className="text-muted-foreground text-sm">DOPE Coin</div>
+              <div className="flex gap-2">
+                <div className="text-muted-foreground text-sm">DOPE Coin</div>
+                <span className="space-x-2">≈</span>
+                {isMarketValueLoading ? <div className="h-4 bg-muted rounded animate-pulse" /> : <div className="text-muted-foreground text-sm text-sm">${marketValue?.selling_price ? parseFloat(marketValue?.selling_price).toFixed(2) : "0.00"} XLM</div>}
+              </div>
             </div>
             
 
@@ -139,9 +148,9 @@ export default function WalletPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {isAssetsLoading ? assets ? <div>
+                  {isAssetsLoading  ? <div>
                     <div className="h-8 bg-muted rounded animate-pulse mb-4" />
-                  </div> : assets?.map((asset: any) => {
+                  </div> : assets && assets?.map((asset: any) => {
                     return (
                       <div key={asset?.asset_code || asset.asset_type === "native" && "XLM"}>
                         <div className="flex justify-between items-center w-full py-4">
@@ -154,16 +163,17 @@ export default function WalletPage() {
                             </div>
                           </div>
                           <div>
-                            <div className="text-sm font-bold text-success">
-                              ${asset?.price || 0}
+                            <div className="">
+                              <div className="flex text-sm font-bold text-success gap-1"><TrendingDown className="text-success" />${parseFloat(asset?.buying_liabilities).toFixed(4)}</div>
+                              <div className="flex text-red-500 gap-1 text-sm"><TrendingUp className="text-red-500" />${parseFloat(asset?.selling_liabilities).toFixed(4)}</div>
                             </div>
                           </div>
                         </div>
                       </div>
                     );
-                  }) : <div className="text-center py-8 text-muted-foreground">
+                  }) || (<div className="text-center py-8 text-muted-foreground">
                     No assets yet
-                  </div>}
+                  </div>)}
                 </div>
               </CardContent>
             </Card>
@@ -197,7 +207,7 @@ export default function WalletPage() {
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="font-medium">
+                          <div className={parseFloat(tx.amount).toFixed(0).length > 4 ? "truncate w-20" : "font-medium"}>
                             {tx.type === "transfer" && tx.toAddress ? "-" : "+"}
                             {parseFloat(tx.amount).toFixed(4)} {tx.assetType}
                           </div>
