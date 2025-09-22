@@ -211,15 +211,30 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
         console.warn('Backend session warning:', errorData.message);
         // Don't fail the import if backend session fails
       } else {
         console.log('Backend session established successfully');
       }
 
-      // Force sync vault to server
-      await keyVault.syncVaultToServer(vault);
+      // Force sync vault to server with retry
+      let syncAttempts = 0;
+      const maxSyncAttempts = 3;
+      
+      while (syncAttempts < maxSyncAttempts) {
+        try {
+          await keyVault.syncVaultToServer(vault);
+          console.log('Vault sync successful');
+          break;
+        } catch (syncError) {
+          syncAttempts++;
+          console.warn(`Vault sync attempt ${syncAttempts} failed:`, syncError);
+          if (syncAttempts < maxSyncAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
+          }
+        }
+      }
 
       setSuccess("Wallet imported successfully with PIN protection!");
       setTimeout(() => onComplete(vaultId), 1500);

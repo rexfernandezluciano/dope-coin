@@ -1150,7 +1150,11 @@ export class KeyVault {
 
       // Add to vault
       vault.wallets.push(walletData);
+      vault.lastAccessed = Date.now(); // Update access time
       await this.storage.storeVault(vault);
+
+      // Sync to server immediately after adding wallet
+      await this.syncVaultToServer(vault);
 
       // Add to memory
       const decryptedWallet: DecryptedWallet = {
@@ -1357,7 +1361,12 @@ export class KeyVault {
 
     try {
       const token = localStorage.getItem('token');
-      if (!token) return;
+      if (!token) {
+        console.warn('No auth token available for vault sync');
+        return;
+      }
+
+      console.log('Syncing vault to server:', vault.id);
 
       const response = await fetch('/api/protected/vault/sync', {
         method: 'POST',
@@ -1379,7 +1388,10 @@ export class KeyVault {
       });
 
       if (!response.ok) {
-        console.warn('Failed to sync vault to server:', response.statusText);
+        const errorText = await response.text().catch(() => response.statusText);
+        console.warn('Failed to sync vault to server:', response.status, errorText);
+      } else {
+        console.log('Vault synced to server successfully');
       }
     } catch (error) {
       console.warn('Vault server sync failed:', error);
@@ -1504,7 +1516,12 @@ export class KeyVault {
 
     try {
       const token = localStorage.getItem('token');
-      if (!token) return;
+      if (!token) {
+        console.log('No auth token, skipping server vault load');
+        return;
+      }
+
+      console.log('Loading user vaults from server...');
 
       const response = await fetch('/api/protected/vault/list', {
         headers: {
@@ -1512,14 +1529,30 @@ export class KeyVault {
         }
       });
 
-      if (!response.ok) return;
+      if (!response.ok) {
+        console.warn('Failed to load vaults from server:', response.status, response.statusText);
+        return;
+      }
 
       const { vaults } = await response.json();
+      console.log(`Found ${vaults.length} vaults on server`);
 
       for (const serverVault of vaults) {
-        const vaultData = JSON.parse(serverVault.encryptedData);
-        await this.storage.storeVault(vaultData);
+        try {
+          const vaultData = JSON.parse(serverVault.encryptedData);
+          
+          // Check if vault already exists locally
+          const existingVault = await this.storage.getVault(vaultData.id);
+          if (!existingVault || existingVault.lastAccessed < vaultData.lastAccessed) {
+            console.log(`Storing/updating vault ${vaultData.id} from server`);
+            await this.storage.storeVault(vaultData);
+          }
+        } catch (parseError) {
+          console.warn('Failed to parse vault data from server:', parseError);
+        }
       }
+
+      console.log('Finished loading vaults from server');
     } catch (error) {
       console.warn('Failed to load vaults from server:', error);
     }

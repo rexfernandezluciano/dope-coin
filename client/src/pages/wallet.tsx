@@ -131,10 +131,16 @@ export default function WalletPage() {
 
     setIsUnlocking(true);
     try {
+      // First, try to load vaults from server
+      console.log("Refreshing vaults from server...");
+      await keyVault.loadUserVaultsFromServer();
+
       const vaults = await keyVault.getAllVaults();
       if (vaults.length === 0) {
-        throw new Error("No vaults found. Please create a wallet first.");
+        throw new Error("No vaults found. Your wallet might need to be re-imported or created.");
       }
+
+      console.log(`Found ${vaults.length} vaults locally`);
 
       // Try to unlock the user's specific vault first
       const userVaultId = localStorage.getItem(`vaultId_${user?.id}`);
@@ -144,15 +150,25 @@ export default function WalletPage() {
         const userVault = vaults.find((v) => v.id === userVaultId);
         if (userVault) {
           vaultToUnlock = userVault;
+          console.log("Found user-specific vault:", userVaultId);
+        } else {
+          console.warn("User vault not found, using first available vault");
         }
       }
 
       console.log("Attempting to unlock vault:", vaultToUnlock.id);
+      console.log("Vault wallets count:", vaultToUnlock.wallets.length);
+      
       await keyVault.unlockVault(vaultToUnlock.id, unlockPassword);
 
       // Verify the vault is actually unlocked
       if (!keyVault.isVaultUnlocked()) {
         throw new Error("Vault unlock verification failed");
+      }
+
+      // Update stored vault ID if it changed
+      if (vaultToUnlock.id !== userVaultId) {
+        localStorage.setItem(`vaultId_${user?.id}`, vaultToUnlock.id);
       }
 
       setShowUnlockDialog(false);
@@ -167,12 +183,22 @@ export default function WalletPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/protected/wallet"] });
     } catch (error) {
       console.error("Unlock error:", error);
+      
+      let errorMessage = "Invalid password or corrupted wallet. Please check your password and try again.";
+      
+      if (error instanceof Error) {
+        if (error.message.includes("No vaults found")) {
+          errorMessage = "No wallets found. Please import or create a new wallet.";
+        } else if (error.message.includes("Incorrect password")) {
+          errorMessage = "Incorrect password. Please check your master password.";
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
       toast({
         title: "Unlock failed",
-        description:
-          error instanceof Error
-            ? error.message
-            : "Invalid password or corrupted wallet. Please check your password and try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
