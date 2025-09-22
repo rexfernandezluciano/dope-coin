@@ -4,7 +4,7 @@ import { Input } from "./ui/input.js";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.js";
 import { Alert, AlertDescription } from "./ui/alert.js";
-import { Wallet, Shield, Key, Download, AlertTriangle, RefreshCw } from "lucide-react";
+import { Wallet, Shield, Download, AlertTriangle, RefreshCw } from "lucide-react";
 import { Label } from "../components/ui/label.js";
 import { keyVault } from "../lib/keyVault.js";
 import { useAuth } from "../hooks/use-auth.js";
@@ -182,6 +182,12 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
         throw new Error("Failed to create new wallet");
       }
       const newPublicKey = wallets[0].publicKey;
+
+      console.log("New wallet public key:", newPublicKey);
+
+      if (!newPublicKey) {
+        throw new Error("Failed to retrieve new wallet public key");
+      }
 
       // Step 2: Prepare old account for migration
       setMigrationStep(2);

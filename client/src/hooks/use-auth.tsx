@@ -59,7 +59,7 @@ interface AuthContextType {
   logout: () => void;
   isLoading: boolean;
   isAuthenticated: boolean;
-  initializeUserWallet: (secretPhrase: string) => Promise<void>;
+  initializeUserWallet: (secretPhrase: string, password: string) => Promise<string | null>;
   processPayment: (amount: number, pin: string) => Promise<void>;
   signUserTransaction: (data: any) => Promise<any>;
   hasSecureWallet: boolean;
@@ -177,7 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Function to initialize user's wallet with secure storage
-  const initializeUserWallet = async (secretPhrase: string, password: string) => {
+  const initializeUserWallet = async (secretPhrase: string, password: string): Promise<string | null> => {
     if (!user) {
       throw new Error("User not logged in.");
     }
@@ -317,7 +317,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       setHasSecureWallet(hasSecureWalletSetup && hasVaultId);
       
-      return needsMigration;
+      return needsMigration || false;
     } catch (error) {
       console.error("Error checking wallet migration status:", error);
       return false;
