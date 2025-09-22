@@ -54,9 +54,9 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
     try {
       const vaultId = await createWallet(walletName, password);
       onComplete(vaultId);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Wallet creation failed:', error);
-      alert('Failed to create wallet. Please try again.');
+      alert('Failed to create wallet. Please try again: ' + error.message);
     } finally {
       setIsCreating(false);
     }
