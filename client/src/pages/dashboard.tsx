@@ -122,7 +122,7 @@ export default function Dashboard() {
                 
                 <Button
                   variant="outline"
-                  onClick={() => navigate("/help")}
+                  onClick={() => navigate("/help/default/home")}
                   className="p-4 h-auto flex flex-col items-center hover:bg-muted hover:text-primary transition-colors group"
                   data-testid="action-help"
                 >
