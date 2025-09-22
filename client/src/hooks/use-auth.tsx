@@ -3,48 +3,40 @@ import { apiRequest } from "../lib/queryClient.js";
 
 // --- Wallet Integration & Security Enhancements ---
 
-// Placeholder for KeyVault service (assuming it exists elsewhere)
-// const keyVault = new KeyVault();
+import { keyVault } from "../lib/keyVault.js";
 
-// Placeholder for JWT service fix (assuming it exists elsewhere)
-// const jwtService = new JwtService();
+// Real KeyVault integration for wallet operations
+const initializeWallet = async (secretPhrase: string, password: string): Promise<string> => {
+  try {
+    // Create vault with the secret phrase
+    const vaultId = await keyVault.createVault("Main Wallet", password, secretPhrase);
+    
+    // Unlock the vault
+    await keyVault.unlockVault(vaultId, password);
+    
+    // Add primary wallet
+    const walletId = await keyVault.addWallet("Primary Wallet", "m/44'/148'/0'/0/0", password);
+    const wallet = keyVault.getWallet(walletId);
+    
+    if (!wallet) {
+      throw new Error("Failed to create wallet");
+    }
 
-// Placeholder for Transaction Signing Service
-const createTransactionSigningService = () => {
-  const signTransaction = async (transactionData: any, privateKey: string) => {
-    console.log("Signing transaction...", transactionData);
-    // In a real implementation, this would involve cryptographic signing
-    // using the privateKey.
-    // Example: const signedTx = crypto.sign(transactionData, privateKey);
-    return { ...transactionData, signature: "mock_signature" }; // Mock signature
-  };
-  return { signTransaction };
+    return wallet.publicKey;
+  } catch (error) {
+    console.error("Wallet initialization error:", error);
+    throw error;
+  }
 };
 
-// Placeholder for PIN verification component/logic
-const verifyPin = async (pin: string): Promise<boolean> => {
-  console.log("Verifying PIN:", pin);
-  // In a real implementation, this would involve secure PIN verification.
-  // For demonstration, let's assume a hardcoded PIN for now, but this
-  // should be securely stored and validated.
-  return pin === "1234"; // Mock PIN validation
-};
-
-// Placeholder for wallet setup logic
-const initializeWallet = async (secretPhrase: string): Promise<string> => {
-  console.log("Initializing wallet with secret phrase...");
-  // In a real implementation, this would involve deriving keys from the secret phrase
-  // and setting up the wallet.
-  const walletAddress = `0x${Math.random().toString(36).substring(7)}`; // Mock wallet address
-  console.log("Wallet initialized. Address:", walletAddress);
-  return walletAddress;
-};
-
-// Placeholder for user migration logic
-const migrateUserToNewWallet = async (userId: string, newWalletAddress: string) => {
-  console.log(`Migrating user ${userId} to new wallet: ${newWalletAddress}`);
-  // API call to update user's wallet in the backend.
-  // await apiRequest("PUT", `/api/users/${userId}/wallet`, { walletAddress: newWalletAddress });
+// Real PIN verification using KeyVault
+const verifyPin = async (walletId: string, pin: string): Promise<boolean> => {
+  try {
+    return await keyVault.authorizeTransaction(walletId, pin);
+  } catch (error) {
+    console.error("PIN verification error:", error);
+    return false;
+  }
 };
 
 // --- Auth Context ---
@@ -185,38 +177,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Potentially clear wallet-related storage as well
   };
 
-  // Function to initialize user's wallet (Checklist Item 2 & 6)
-  const initializeUserWallet = async (secretPhrase: string) => {
+  // Function to initialize user's wallet with secure storage
+  const initializeUserWallet = async (secretPhrase: string, password: string) => {
     if (!user) {
       throw new Error("User not logged in.");
     }
     try {
-      const walletAddress = await initializeWallet(secretPhrase);
-      await migrateUserToNewWallet(user.id, walletAddress); // Migrate user to new wallet system
-      setUser({ ...user, walletAddress }); // Update user state with wallet address
-      localStorage.setItem("user", JSON.stringify({ ...user, walletAddress })); // Update local storage
-      console.log("Wallet successfully initialized and user migrated.");
+      const walletAddress = await initializeWallet(secretPhrase, password);
+      
+      // Store vault info securely
+      const vaultId = localStorage.getItem(`vaultId_${user.id}`);
+      if (vaultId) {
+        localStorage.setItem(`secureWallet_${user.id}`, "true");
+      }
+      
+      // Update user state
+      setUser({ ...user, walletAddress });
+      localStorage.setItem("user", JSON.stringify({ ...user, walletAddress }));
+      
+      console.log("Secure wallet successfully initialized.");
+      return vaultId;
     } catch (error) {
-      console.error("Failed to initialize wallet:", error);
+      console.error("Failed to initialize secure wallet:", error);
       throw error;
     }
   };
 
-  // Function to process payment using PIN (Checklist Item 3)
+  // Function to process payment using real PIN verification
   const processPayment = async (amount: number, pin: string) => {
     if (!isAuthenticated) {
       throw new Error("User must be logged in to process payments.");
     }
+    
     try {
-      const isPinValid = await verifyPin(pin);
+      // Get active wallet
+      const wallets = keyVault.getAllWallets();
+      if (wallets.length === 0) {
+        throw new Error("No active wallets found. Please unlock your vault.");
+      }
+      
+      const primaryWallet = wallets[0];
+      const isPinValid = await verifyPin(primaryWallet.id, pin);
+      
       if (!isPinValid) {
         throw new Error("Invalid PIN.");
       }
-      // Here, you would typically interact with a payment gateway or internal payment service.
-      // Also, consider securely handling transaction details and signing.
-      console.log(`Processing payment of ${amount} with valid PIN.`);
-      // Example: await apiRequest("POST", "/api/payments", { amount, userId: user.id });
-      alert(`Payment of ${amount} processed successfully!`);
+      
+      // Process payment with validated PIN
+      console.log(`Processing payment of ${amount} with verified PIN.`);
+      // Payment processing logic would go here
+      
     } catch (error) {
       console.error("Payment processing failed:", error);
       throw error;
@@ -245,22 +255,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Function to sign transactions on the device (Checklist Item 5)
-  const signUserTransaction = async (transactionData: any) => {
+  // Function to sign transactions securely using KeyVault
+  const signUserTransaction = async (transactionData: any, pin: string) => {
     if (!user || !user.walletAddress) {
       throw new Error("User not logged in or wallet not initialized.");
     }
+    
     try {
-      // You would need to securely retrieve the user's private key or manage it
-      // via a secure storage mechanism (e.g., hardware wallet, encrypted local storage).
-      // For this example, we'll simulate having the private key.
-      const mockPrivateKey = "mock_private_key_for_signing"; // IMPORTANT: NEVER HARDCODE PRIVATE KEYS
-      const signedTransaction = await transactionSigningService.signTransaction(
-        transactionData,
-        mockPrivateKey
+      // Get the active wallet from KeyVault
+      const wallets = keyVault.getAllWallets();
+      if (wallets.length === 0) {
+        throw new Error("No active wallets found. Please unlock your vault.");
+      }
+      
+      const primaryWallet = wallets[0]; // Use primary wallet
+      
+      // Sign transaction with PIN authorization
+      const signature = await keyVault.signTransaction(
+        primaryWallet.id,
+        pin,
+        transactionData
       );
-      console.log("Transaction signed successfully:", signedTransaction);
-      return signedTransaction;
+      
+      console.log("Transaction signed successfully");
+      return signature;
     } catch (error) {
       console.error("Failed to sign transaction:", error);
       throw error;

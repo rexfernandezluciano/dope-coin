@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Button } from './ui/button.js';
 import { Input } from './ui/input.js';
@@ -23,6 +22,7 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [copied, setCopied] = useState(false);
   const { createWallet } = useWallet();
+  const [error, setError] = useState('');
 
   const generateMnemonic = () => {
     const generated = keyVault.generateMnemonic(256); // 24 words
@@ -51,9 +51,46 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
     }
 
     setIsCreating(true);
+    setError(''); // Clear previous errors
     try {
-      const vaultId = await createWallet(walletName, password);
-      onComplete(vaultId);
+      // Create secure vault and wallet
+      console.log('Setting up secure wallet with PIN:', pin);
+
+      try {
+        // Create vault and wallet
+        const vaultId = await createWallet('Main Vault', password, mnemonic);
+
+        // Get the primary wallet's secret key
+        const wallets = keyVault.getAllWallets();
+        if (wallets.length === 0) {
+          throw new Error('No wallet created');
+        }
+
+        const primaryWallet = wallets[0];
+        const secretKey = primaryWallet.keypair.secret();
+
+        // Establish secure session with backend
+        const response = await fetch('/api/protected/wallet/session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({
+            secretKey,
+            pin
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to establish secure wallet session');
+        }
+
+        onComplete(vaultId);
+      } catch (error: any) {
+        console.error('Wallet setup error:', error);
+        setError('Failed to set up secure wallet session');
+      }
     } catch (error: any) {
       console.error('Wallet creation failed:', error);
       alert('Failed to create wallet. Please try again: ' + error.message);
@@ -85,7 +122,7 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
                 placeholder="Enter wallet name"
               />
             </div>
-            
+
             <div>
               <Label htmlFor="password">Master Password</Label>
               <Input
@@ -96,7 +133,7 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
                 placeholder="Create a strong password"
               />
             </div>
-            
+
             <div>
               <Label htmlFor="confirmPassword">Confirm Password</Label>
               <Input
@@ -122,7 +159,7 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
                 maxLength={6}
               />
             </div>
-            
+
             <div>
               <Label htmlFor="confirmPin">Confirm PIN</Label>
               <Input
@@ -137,7 +174,7 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
                 maxLength={6}
               />
             </div>
-
+            {error && <p className="text-red-500 text-sm">{error}</p>}
             <Button 
               onClick={generateMnemonic} 
               className="w-full"

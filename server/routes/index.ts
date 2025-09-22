@@ -4,6 +4,8 @@ import bcrypt from "bcrypt";
 import path from "path";
 import { storage } from "../storage.js";
 import { authMiddleware } from "../middleware/auth.js";
+import { walletAuthMiddleware } from "../middleware/wallet-auth.js";
+import { walletService } from "../services/wallet.js";
 import { jwtService } from "../services/jwt.js";
 import { stellarService } from "../services/stellar.js";
 import { miningService } from "../services/mining.js";
@@ -201,6 +203,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Protected routes
   app.use("/api/protected", rateLimiter, authMiddleware);
+
+  // Wallet session management
+  app.post("/api/protected/wallet/session", async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      const { secretKey, pin } = req.body;
+
+      if (!userId || !secretKey || !pin) {
+        return res.status(400).json({ message: "Missing required parameters" });
+      }
+
+      // Generate session password
+      const sessionPassword = walletService.generateSessionPassword(userId, pin);
+      
+      // Store encrypted secret key in session
+      await walletService.storeUserSecretKey(userId, secretKey, sessionPassword);
+      
+      res.json({ message: "Wallet session established successfully" });
+    } catch (error: any) {
+      console.error("Wallet session error:", error);
+      res.status(500).json({ message: error.message || "Failed to establish wallet session" });
+    }
+  });
+
+  app.delete("/api/protected/wallet/session", async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (userId) {
+        walletService.clearUserSession(userId);
+      }
+      res.json({ message: "Wallet session cleared" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to clear wallet session" });
+    }
+  });
 
   // User profile routes
   app.get("/api/protected/profile", async (req, res) => {
@@ -426,12 +463,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/protected/wallet/send", rateLimiter, async (req, res) => {
+  app.post("/api/protected/wallet/send", rateLimiter, walletAuthMiddleware, async (req, res) => {
     try {
-      const { secretKey } = req.query as any;
-      if (!secretKey) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
+      const secretKey = (req as any).secretKey;
       const { toAddress, amount, assetType } = req.body;
 
       if (!toAddress || !amount || amount <= 0) {
@@ -460,12 +494,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post(
     "/api/protected/wallet/convert-gas",
     rateLimiter,
+    walletAuthMiddleware,
     async (req, res) => {
       try {
-        const { secretKey } = req.query as any;
-        if (!secretKey) {
-          return res.status(401).json({ message: "Unauthorized" });
-        }
+        const secretKey = (req as any).secretKey;
 
         const { xlmAmount } = req.body;
         if (!xlmAmount || parseFloat(xlmAmount) <= 0) {
