@@ -150,7 +150,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error(
         "Registration error:",
-        error.response.data.extras.result_codes || error,
+        error?.response?.data?.extras.result_codes || error,
       );
       res
         .status(500)
