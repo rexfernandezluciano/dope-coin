@@ -9,9 +9,9 @@
   "compilerOptions": {
     "incremental": true,
     "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "target": "ES2020",
+    "module": "Node",
+    "moduleResolution": "Node",
+    "target": "ES2023",
     "strict": true,
     "lib": ["esnext", "dom", "dom.iterable"],
     "jsx": "preserve",
