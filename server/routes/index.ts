@@ -22,7 +22,7 @@ import {
 } from "../../shared/schema.js";
 import { Asset, Keypair } from "@stellar/stellar-sdk";
 import z from "zod";
-import rateLimit from "express-rate-limit";
+import { rateLimit } from "express-rate-limit";
 import { KeypairGenerator } from "../utils/keypair-generator.js";
 
 var rateLimiter = rateLimit({
@@ -240,15 +240,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Generate session password
-      const sessionPassword = walletService.generateSessionPassword(userId, pin);
+      const sessionPassword = walletService.generateSessionPassword(
+        userId,
+        pin,
+      );
 
       // Store encrypted secret key in session
-      await walletService.storeUserSecretKey(userId, secretKey, sessionPassword);
+      await walletService.storeUserSecretKey(
+        userId,
+        secretKey,
+        sessionPassword,
+      );
 
       res.json({ message: "Wallet session established successfully" });
     } catch (error: any) {
       console.error("Wallet session error:", error);
-      res.status(500).json({ message: error.message || "Failed to establish wallet session" });
+      res
+        .status(500)
+        .json({
+          message: error.message || "Failed to establish wallet session",
+        });
     }
   });
 
@@ -289,7 +300,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           level: user.level,
           isVerified: user.isVerified,
           referralCode: user.referralCode,
-          publicKey: wallet && wallet.publicKey || "",
+          publicKey: (wallet && wallet.publicKey) || "",
           createdAt: user.createdAt,
         },
         wallet,
@@ -433,7 +444,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { secretKey } = req.query;
 
-      const claimbleBalances = await miningService.getClaimbaleBalances(secretKey as string);
+      const claimbleBalances = await miningService.getClaimbaleBalances(
+        secretKey as string,
+      );
 
       if (!claimbleBalances || claimbleBalances.length < 0) {
         return res.status(404).json({ message: "No claimable balances found" });
@@ -470,7 +483,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      if (!vault || !vault.id || !vault.name || !vault.encryptedData || !vault.salt || !vault.iv || !vault.createdAt) {
+      if (
+        !vault ||
+        !vault.id ||
+        !vault.name ||
+        !vault.encryptedData ||
+        !vault.salt ||
+        !vault.iv ||
+        !vault.createdAt
+      ) {
         return res.status(400).json({ message: "Invalid vault data" });
       }
 
@@ -488,7 +509,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true, message: "Vault synced successfully" });
     } catch (error: any) {
       console.error("Error syncing vault:", error);
-      res.status(500).json({ error: "Failed to sync vault", details: error.message });
+      res
+        .status(500)
+        .json({ error: "Failed to sync vault", details: error.message });
     }
   });
 
@@ -502,7 +525,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ vaults });
     } catch (error: any) {
       console.error("Error fetching vaults:", error);
-      res.status(500).json({ error: "Failed to fetch vaults", details: error.message });
+      res
+        .status(500)
+        .json({ error: "Failed to fetch vaults", details: error.message });
     }
   });
 
@@ -534,33 +559,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/protected/wallet/send", rateLimiter, walletAuthMiddleware, async (req, res) => {
-    try {
-      const secretKey = (req as any).secretKey;
-      const { toAddress, amount, assetType } = req.body;
+  app.post(
+    "/api/protected/wallet/send",
+    rateLimiter,
+    walletAuthMiddleware,
+    async (req, res) => {
+      try {
+        const secretKey = (req as any).secretKey;
+        const { toAddress, amount, assetType } = req.body;
 
-      if (!toAddress || !amount || amount <= 0) {
-        return res.status(400).json({ message: "Invalid parameters" });
+        if (!toAddress || !amount || amount <= 0) {
+          return res.status(400).json({ message: "Invalid parameters" });
+        }
+
+        const transaction = await stellarService.sendTokens(
+          secretKey,
+          toAddress,
+          amount,
+          assetType,
+        );
+
+        res.json({
+          message: "Transaction sent",
+          transaction,
+        });
+      } catch (error: any) {
+        console.error("Send transaction error:", error);
+        res
+          .status(500)
+          .json({ message: error.message || "Internal server error" });
       }
-
-      const transaction = await stellarService.sendTokens(
-        secretKey,
-        toAddress,
-        amount,
-        assetType,
-      );
-
-      res.json({
-        message: "Transaction sent",
-        transaction,
-      });
-    } catch (error: any) {
-      console.error("Send transaction error:", error);
-      res
-        .status(500)
-        .json({ message: error.message || "Internal server error" });
-    }
-  });
+    },
+  );
 
   app.post(
     "/api/protected/wallet/convert-gas",
@@ -575,7 +605,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ message: "Invalid XLM amount" });
         }
 
-        const result = await stellarService.convertXLMToGAS(secretKey, xlmAmount);
+        const result = await stellarService.convertXLMToGAS(
+          secretKey,
+          xlmAmount,
+        );
         res.json(result);
       } catch (error: any) {
         console.error("GAS conversion error:", error);
@@ -612,7 +645,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User statistics endpoint
   app.get("/api/protected/stats", async (req, res) => {
     try {
-      const userId = req.user?.id
+      const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -648,63 +681,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const oldKeypair = Keypair.fromSecret(oldSecretKey);
       const currentWallet = await storage.getWallet(userId);
 
-      if (!currentWallet || currentWallet.publicKey !== oldKeypair.publicKey()) {
-        return res.status(400).json({ message: "Invalid old wallet credentials" });
+      if (
+        !currentWallet ||
+        currentWallet.publicKey !== oldKeypair.publicKey()
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Invalid old wallet credentials" });
       }
 
       // Prepare old account for merge
       await stellarService.prepareAccountForMerge(oldSecretKey);
 
       // Perform account merge
-      const mergeResult = await stellarService.mergeAccounts(oldSecretKey, newPublicKey);
+      const mergeResult = await stellarService.mergeAccounts(
+        oldSecretKey,
+        newPublicKey,
+      );
 
       // Update user's wallet in database
       await storage.updateWallet(userId, { publicKey: newPublicKey });
 
       res.json({
         message: "Wallet migration completed successfully",
-        result: mergeResult
+        result: mergeResult,
       });
-
     } catch (error: any) {
       console.error("Wallet migration error:", error);
-      res.status(500).json({ 
-        message: error.message || "Failed to migrate wallet"
+      res.status(500).json({
+        message: error.message || "Failed to migrate wallet",
       });
     }
   });
 
-  app.post("/api/protected/wallet/prepare-migration", rateLimiter, async (req, res) => {
-    try {
-      const userId = req.user?.id;
-      const { secretKey } = req.body;
+  app.post(
+    "/api/protected/wallet/prepare-migration",
+    rateLimiter,
+    async (req, res) => {
+      try {
+        const userId = req.user?.id;
+        const { secretKey } = req.body;
 
-      if (!userId || !secretKey) {
-        return res.status(400).json({ message: "Missing required parameters" });
+        if (!userId || !secretKey) {
+          return res
+            .status(400)
+            .json({ message: "Missing required parameters" });
+        }
+
+        // Validate the secret key belongs to the user
+        const keypair = Keypair.fromSecret(secretKey);
+        const currentWallet = await storage.getWallet(userId);
+
+        if (!currentWallet || currentWallet.publicKey !== keypair.publicKey()) {
+          return res
+            .status(400)
+            .json({ message: "Invalid wallet credentials" });
+        }
+
+        // Prepare account for migration
+        await stellarService.prepareAccountForMerge(secretKey);
+
+        res.json({
+          message: "Account prepared for migration successfully",
+        });
+      } catch (error: any) {
+        console.error("Prepare migration error:", error);
+        res.status(500).json({
+          message: error.message || "Failed to prepare account for migration",
+        });
       }
-
-      // Validate the secret key belongs to the user
-      const keypair = Keypair.fromSecret(secretKey);
-      const currentWallet = await storage.getWallet(userId);
-
-      if (!currentWallet || currentWallet.publicKey !== keypair.publicKey()) {
-        return res.status(400).json({ message: "Invalid wallet credentials" });
-      }
-
-      // Prepare account for migration
-      await stellarService.prepareAccountForMerge(secretKey);
-
-      res.json({
-        message: "Account prepared for migration successfully"
-      });
-
-    } catch (error: any) {
-      console.error("Prepare migration error:", error);
-      res.status(500).json({ 
-        message: error.message || "Failed to prepare account for migration"
-      });
-    }
-  });
+    },
+  );
 
   // Referrals endpoint
   app.get("/api/protected/referrals", async (req, res) => {
@@ -754,66 +801,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Trading routes
-  app.post("/api/protected/trade/execute", rateLimiter, walletAuthMiddleware, async (req, res) => {
-    try {
-      const secretKey = (req as any).secretKey;
+  app.post(
+    "/api/protected/trade/execute",
+    rateLimiter,
+    walletAuthMiddleware,
+    async (req, res) => {
+      try {
+        const secretKey = (req as any).secretKey;
 
-      const validatedData = executeTradeSchema.parse(req.body);
-      const { sellAsset, sellAmount, buyAsset, minBuyAmount } = validatedData;
+        const validatedData = executeTradeSchema.parse(req.body);
+        const { sellAsset, sellAmount, buyAsset, minBuyAmount } = validatedData;
 
-      // Convert schema assets to Stellar SDK assets
-      const stellarSellAsset =
-        sellAsset.type === "native"
-          ? Asset.native()
-          : new Asset(sellAsset.code!, sellAsset.issuer!);
-      const stellarBuyAsset =
-        buyAsset.type === "native"
-          ? Asset.native()
-          : new Asset(buyAsset.code!, buyAsset.issuer!);
+        // Convert schema assets to Stellar SDK assets
+        const stellarSellAsset =
+          sellAsset.type === "native"
+            ? Asset.native()
+            : new Asset(sellAsset.code!, sellAsset.issuer!);
+        const stellarBuyAsset =
+          buyAsset.type === "native"
+            ? Asset.native()
+            : new Asset(buyAsset.code!, buyAsset.issuer!);
 
-      const result = await stellarService.executeTrade(
-        secretKey,
-        stellarSellAsset,
-        sellAmount,
-        stellarBuyAsset,
-        minBuyAmount,
-      );
+        const result = await stellarService.executeTrade(
+          secretKey,
+          stellarSellAsset,
+          sellAmount,
+          stellarBuyAsset,
+          minBuyAmount,
+        );
 
-      res.json({ message: "Trade executed successfully", result });
-    } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return res
-          .status(400)
-          .json({ message: "Validation error", errors: error.errors });
+        res.json({ message: "Trade executed successfully", result });
+      } catch (error: any) {
+        if (error instanceof z.ZodError) {
+          return res
+            .status(400)
+            .json({ message: "Validation error", errors: error.errors });
+        }
+        console.error("Trade execution error:", error);
+        res
+          .status(500)
+          .json({ message: error.message || "Internal server error" });
       }
-      console.error("Trade execution error:", error);
-      res
-        .status(500)
-        .json({ message: error.message || "Internal server error" });
-    }
-  });
+    },
+  );
 
-  app.post("/api/protected/asset/trust", rateLimiter, walletAuthMiddleware, async (req, res) => {
-    try {
-      const secretKey = (req as any).secretKey;
-      const { assetCode, assetIssuer } = req.body;
+  app.post(
+    "/api/protected/asset/trust",
+    rateLimiter,
+    walletAuthMiddleware,
+    async (req, res) => {
+      try {
+        const secretKey = (req as any).secretKey;
+        const { assetCode, assetIssuer } = req.body;
 
-      if (!assetCode || !assetIssuer) {
-        return res.status(400).json({ message: "Invalid asset details" });
+        if (!assetCode || !assetIssuer) {
+          return res.status(400).json({ message: "Invalid asset details" });
+        }
+
+        await stellarService.createTrustline(secretKey, assetCode, assetIssuer);
+        return res.json({ message: "Trustline created successfully" });
+      } catch (error: any) {
+        console.error("Trustline error:", error);
+        return res.status(500).json({
+          message:
+            error.data?.extras?.result_codes?.operations ||
+            error.message ||
+            "Internal server error",
+        });
       }
-
-      await stellarService.createTrustline(secretKey, assetCode, assetIssuer);
-      return res.json({ message: "Trustline created successfully" });
-    } catch (error: any) {
-      console.error("Trustline error:", error);
-      return res.status(500).json({
-        message:
-          error.data?.extras?.result_codes?.operations ||
-          error.message ||
-          "Internal server error",
-      });
-    }
-  });
+    },
+  );
 
   app.get("/api/protected/trade/pairs", rateLimiter, async (req, res) => {
     try {
@@ -1005,92 +1062,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   // Liquidity pool routes
-  app.post("/api/protected/liquidity/add", rateLimiter, walletAuthMiddleware, async (req, res) => {
-    try {
-      const secretKey = (req as any).secretKey;
+  app.post(
+    "/api/protected/liquidity/add",
+    rateLimiter,
+    walletAuthMiddleware,
+    async (req, res) => {
+      try {
+        const secretKey = (req as any).secretKey;
 
-      const validatedData = addLiquiditySchema.parse(req.body);
-      const { assetA, assetB, amountA, amountB, minPrice, maxPrice } =
-        validatedData;
+        const validatedData = addLiquiditySchema.parse(req.body);
+        const { assetA, assetB, amountA, amountB, minPrice, maxPrice } =
+          validatedData;
 
-      // Convert schema assets to Stellar SDK assets
-      const stellarAssetA =
-        assetA.type === "native"
-          ? Asset.native()
-          : new Asset(assetA.code!, assetA.issuer!);
-      const stellarAssetB =
-        assetB.type === "native"
-          ? Asset.native()
-          : new Asset(assetB.code!, assetB.issuer!);
+        // Convert schema assets to Stellar SDK assets
+        const stellarAssetA =
+          assetA.type === "native"
+            ? Asset.native()
+            : new Asset(assetA.code!, assetA.issuer!);
+        const stellarAssetB =
+          assetB.type === "native"
+            ? Asset.native()
+            : new Asset(assetB.code!, assetB.issuer!);
 
-      const result = await stellarService.addLiquidity(
-        secretKey,
-        stellarAssetA,
-        stellarAssetB,
-        amountA,
-        amountB,
-        minPrice,
-        maxPrice,
-      );
+        const result = await stellarService.addLiquidity(
+          secretKey,
+          stellarAssetA,
+          stellarAssetB,
+          amountA,
+          amountB,
+          minPrice,
+          maxPrice,
+        );
 
-      res.json({ message: "Liquidity added successfully", result });
-    } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return res
-          .status(400)
-          .json({ message: "Validation error", errors: error.errors });
+        res.json({ message: "Liquidity added successfully", result });
+      } catch (error: any) {
+        if (error instanceof z.ZodError) {
+          return res
+            .status(400)
+            .json({ message: "Validation error", errors: error.errors });
+        }
+        console.error("Add liquidity error:", error);
+        console.error(
+          "Error details:",
+          error.response?.data?.extras.result_codes.operations,
+        );
+        res
+          .status(500)
+          .json({ message: error.message || "Internal server error" });
       }
-      console.error("Add liquidity error:", error);
-      console.error(
-        "Error details:",
-        error.response?.data?.extras.result_codes.operations,
-      );
-      res
-        .status(500)
-        .json({ message: error.message || "Internal server error" });
-    }
-  });
+    },
+  );
 
-  app.post("/api/protected/liquidity/remove", rateLimiter, walletAuthMiddleware, async (req, res) => {
-    try {
-      const secretKey = (req as any).secretKey;
+  app.post(
+    "/api/protected/liquidity/remove",
+    rateLimiter,
+    walletAuthMiddleware,
+    async (req, res) => {
+      try {
+        const secretKey = (req as any).secretKey;
 
-      const validatedData = removeLiquiditySchema.parse(req.body);
-      const { poolId, amount, minAmountA, minAmountB } = validatedData;
+        const validatedData = removeLiquiditySchema.parse(req.body);
+        const { poolId, amount, minAmountA, minAmountB } = validatedData;
 
-      const result = await stellarService.removeLiquidity(
-        secretKey,
-        poolId,
-        amount,
-        minAmountA,
-        minAmountB,
-      );
+        const result = await stellarService.removeLiquidity(
+          secretKey,
+          poolId,
+          amount,
+          minAmountA,
+          minAmountB,
+        );
 
-      res.json({ message: "Liquidity removed successfully", result });
-    } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return res
-          .status(400)
-          .json({ message: "Validation error", errors: error.errors });
+        res.json({ message: "Liquidity removed successfully", result });
+      } catch (error: any) {
+        if (error instanceof z.ZodError) {
+          return res
+            .status(400)
+            .json({ message: "Validation error", errors: error.errors });
+        }
+        console.error("Remove liquidity error:", error);
+        res
+          .status(500)
+          .json({ message: error.message || "Internal server error" });
       }
-      console.error("Remove liquidity error:", error);
-      res
-        .status(500)
-        .json({ message: error.message || "Internal server error" });
-    }
-  });
+    },
+  );
 
-  app.get("/api/protected/liquidity/pools", rateLimiter, walletAuthMiddleware, async (req, res) => {
-    try {
-      const secretKey = (req as any).secretKey;
+  app.get(
+    "/api/protected/liquidity/pools",
+    rateLimiter,
+    walletAuthMiddleware,
+    async (req, res) => {
+      try {
+        const secretKey = (req as any).secretKey;
 
-      const pools = await stellarService.getUserLiquidityPools(secretKey);
-      res.json(pools);
-    } catch (error: any) {
-      console.error("Liquidity pools error:", error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
+        const pools = await stellarService.getUserLiquidityPools(secretKey);
+        res.json(pools);
+      } catch (error: any) {
+        console.error("Liquidity pools error:", error);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    },
+  );
 
   app.get(
     "/api/protected/liquidity/pool/:id",
@@ -1298,12 +1370,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const [user, wallet, networkStats] =
-        (await Promise.all([
-          storage.getUser(userId),
-          storage.getWallet(userId),
-          storage.getNetworkStats(),
-        ])) as any;
+      const [user, wallet, networkStats] = (await Promise.all([
+        storage.getUser(userId),
+        storage.getWallet(userId),
+        storage.getNetworkStats(),
+      ])) as any;
 
       const miningStatus = await miningService.getMiningStatus(userId);
 
@@ -1315,7 +1386,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             email: user.email,
             fullName: user.fullName,
             profilePicture: user.profilePicture,
-            publicKey: wallet && wallet.publicKey || "",
+            publicKey: (wallet && wallet.publicKey) || "",
             isVerified: user.isVerified,
             level: user.level,
             referralCode: user.referralCode,
@@ -1335,7 +1406,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const gasBalance = await stellarService.getGASBalance(userId);
 
       res.json({
-        user: { ...safeUser, isActivated: await stellarService.accountExists(wallet.publicKey) && xlmBalance >= 2 },
+        user: {
+          ...safeUser,
+          isActivated:
+            (await stellarService.accountExists(wallet.publicKey)) &&
+            xlmBalance >= 2,
+        },
         wallet: {
           xlmBalance: xlmBalance.toString(),
           dopeBalance: dopeBalance.toString(),
