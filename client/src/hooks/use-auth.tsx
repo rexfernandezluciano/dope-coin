@@ -230,12 +230,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       // Check if user has old wallet but no secure wallet setup
       const hasOldWallet = user.walletAddress && user.walletAddress.length > 0;
-      const hasSecureWalletSetup = localStorage.getItem(`secureWallet_${user.id}`) !== null;
+      const hasSecureWalletSetup = localStorage.getItem(`secureWallet_${user.id}`) === "true";
+      const hasVaultId = localStorage.getItem(`vaultId_${user.id}`) !== null;
       
-      // User needs migration if they have an old wallet but no secure wallet
-      const needsMigration = hasOldWallet && !hasSecureWalletSetup;
+      // User needs migration if they have an old wallet but no secure wallet OR vault
+      const needsMigration = hasOldWallet && (!hasSecureWalletSetup || !hasVaultId);
       
-      setHasSecureWallet(hasSecureWalletSetup);
+      setHasSecureWallet(hasSecureWalletSetup && hasVaultId);
       
       return needsMigration;
     } catch (error) {

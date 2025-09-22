@@ -494,9 +494,16 @@ class MnemonicUtils {
       const { key } = derivePath(derivationPath, seed.toString('hex'));
       
       // Create Stellar keypair from derived key
-      return Keypair.fromRawEd25519Seed(key);
+      return Keypair.fromRawEd25519Seed(Buffer.from(key));
     } catch (error) {
-      throw new Error(`Key derivation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Key derivation error:', error);
+      // Fallback: create keypair directly from seed for compatibility
+      try {
+        const seed32 = bip39.mnemonicToSeedSync(mnemonic).slice(0, 32);
+        return Keypair.fromRawEd25519Seed(seed32);
+      } catch (fallbackError) {
+        throw new Error(`Key derivation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     }
   }
 

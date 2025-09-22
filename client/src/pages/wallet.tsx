@@ -75,13 +75,16 @@ export default function WalletPage() {
       const migrationNeeded = await checkWalletMigrationStatus();
       setNeedsMigration(migrationNeeded);
 
-      // Check if user has secure wallet setup but it's locked
+      // If user has secure wallet setup but it's locked
       if (hasSecureWallet && isLocked) {
         setShowUnlockDialog(true);
-      } else if (migrationNeeded) {
+      } 
+      // If user needs migration (has old wallet but no secure wallet)
+      else if (migrationNeeded) {
         setShowMigrationDialog(true);
-      } else if (!hasSecureWallet && !migrationNeeded) {
-        // New user needs wallet setup
+      } 
+      // Only show wallet setup for completely new users (no wallet at all)
+      else if (!hasSecureWallet && !user.walletAddress) {
         setShowWalletSetup(true);
       }
     };
@@ -397,21 +400,21 @@ export default function WalletPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Shield className="w-5 h-5" />
-              Secure Wallet Migration
+              Secure Wallet Upgrade Required
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              We've enhanced security! Migrate your existing wallet to our new secure system with PIN protection.
+              Your existing wallet (public key: {user?.walletAddress?.substring(0, 10)}...) needs to be upgraded to our new secure system.
             </p>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-              <div className="text-sm text-yellow-800">
-                <strong>Benefits:</strong>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="text-sm text-blue-800">
+                <strong>What happens:</strong>
                 <ul className="mt-2 space-y-1">
-                  <li>• PIN-protected transactions</li>
-                  <li>• Hardware-level encryption</li>
-                  <li>• Secure seed phrase backup</li>
-                  <li>• Local device signing</li>
+                  <li>• Your existing balance stays safe</li>
+                  <li>• Create new secure credentials</li>
+                  <li>• Enable PIN-protected transactions</li>
+                  <li>• Get secure backup seed phrase</li>
                 </ul>
               </div>
             </div>
@@ -430,7 +433,7 @@ export default function WalletPage() {
                 }}
                 className="flex-1"
               >
-                Migrate Now
+                Upgrade Now
               </Button>
             </div>
           </div>
