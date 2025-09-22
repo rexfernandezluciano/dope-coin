@@ -16,8 +16,17 @@ import {
 import { Badge } from "../components/ui/badge.js";
 import { Button } from "../components/ui/button.js";
 import { AuthService } from "../lib/auth.js";
-import { Wallet, Send, BarChart3, Lock, Unlock, TrendingUp,
-  TrendingDown, Shield, Key } from "lucide-react";
+import {
+  Wallet,
+  Send,
+  BarChart3,
+  Lock,
+  Unlock,
+  TrendingUp,
+  TrendingDown,
+  Shield,
+  Key,
+} from "lucide-react";
 import {
   getActivityLabel,
   getActivityIcon,
@@ -26,15 +35,21 @@ import {
 import { formatTimeAgo } from "../utils/format-utils.js";
 import { useAuth } from "../hooks/use-auth.js";
 import { useWallet } from "../hooks/use-wallet.js";
+import { keyVault } from "../lib/keyVault.js";
 import { WalletSetup } from "../components/wallet-setup.js";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog.js";
 import { Input } from "../components/ui/input.js";
 import { Label } from "../components/ui/label.js";
-import { toast } from "../components/ui/use-toast.js";
+import { useToast } from "../hooks/use-toast.js";
 
 export default function WalletPage() {
   const { user, checkWalletMigrationStatus, hasSecureWallet } = useAuth();
-  const { isInitialized, isLocked, unlockWallet, setIsVaultLocked } = useWallet();
+  const { isInitialized, isLocked, unlockWallet, lockWallet } = useWallet();
   const queryClient = useQueryClient();
   const [showWalletSetup, setShowWalletSetup] = useState(false);
   const [showUnlockDialog, setShowUnlockDialog] = useState(false);
@@ -43,13 +58,15 @@ export default function WalletPage() {
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [needsMigration, setNeedsMigration] = useState(false);
 
+  const { toast } = useToast();
+
   const { data: walletData, isLoading } = useQuery({
     queryKey: ["/api/protected/wallet"],
     refetchInterval: 30000,
   }) as any;
 
   const { data: marketValue, isLoading: isMarketValueLoading } = useQuery({
-    queryKey: ["/api/protected/trade/values"]
+    queryKey: ["/api/protected/trade/values"],
   }) as any;
 
   const { data: transactions } = useQuery({
@@ -62,8 +79,9 @@ export default function WalletPage() {
   }) as any;
 
   const { data: assets, isLoading: isAssetsLoading } = useQuery({
-    queryKey: ["/api/protected/asset/holders"], 
-    queryFn: () => AuthService.authenticatedRequest("GET", "/api/protected/asset/holders")
+    queryKey: ["/api/protected/asset/holders"],
+    queryFn: () =>
+      AuthService.authenticatedRequest("GET", "/api/protected/asset/holders"),
   }) as any;
 
   const [, navigate] = useLocation();
@@ -79,11 +97,11 @@ export default function WalletPage() {
       // If user has secure wallet setup but it's locked
       if (hasSecureWallet && isLocked) {
         setShowUnlockDialog(true);
-      } 
+      }
       // If user needs migration (has old wallet but no secure wallet)
       else if (migrationNeeded) {
         setShowMigrationDialog(true);
-      } 
+      }
       // Only show wallet setup for completely new users (no wallet at all)
       else if (!hasSecureWallet && !user.walletAddress) {
         setShowWalletSetup(true);
@@ -93,7 +111,13 @@ export default function WalletPage() {
     if (isInitialized) {
       checkWalletStatus();
     }
-  }, [user, isInitialized, hasSecureWallet, isLocked, checkWalletMigrationStatus]);
+  }, [
+    user,
+    isInitialized,
+    hasSecureWallet,
+    isLocked,
+    checkWalletMigrationStatus,
+  ]);
 
   const handleUnlockWallet = async () => {
     if (!unlockPassword) {
@@ -117,7 +141,7 @@ export default function WalletPage() {
       let vaultToUnlock = vaults[0]; // Default to first vault
 
       if (userVaultId) {
-        const userVault = vaults.find(v => v.id === userVaultId);
+        const userVault = vaults.find((v) => v.id === userVaultId);
         if (userVault) {
           vaultToUnlock = userVault;
         }
@@ -133,7 +157,6 @@ export default function WalletPage() {
 
       setShowUnlockDialog(false);
       setUnlockPassword("");
-      setIsVaultLocked(false);
 
       toast({
         title: "Wallet unlocked",
@@ -146,7 +169,10 @@ export default function WalletPage() {
       console.error("Unlock error:", error);
       toast({
         title: "Unlock failed",
-        description: error instanceof Error ? error.message : "Invalid password or corrupted wallet. Please check your password and try again.",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Invalid password or corrupted wallet. Please check your password and try again.",
         variant: "destructive",
       });
     } finally {
@@ -248,7 +274,10 @@ export default function WalletPage() {
                     <div className="h-4 bg-muted rounded animate-pulse" />
                   ) : (
                     <div className="text-muted-foreground text-sm">
-                      {marketValue?.selling_price ? parseFloat(marketValue?.selling_price).toFixed(2) : "0.00"} XLM
+                      {marketValue?.selling_price
+                        ? parseFloat(marketValue?.selling_price).toFixed(2)
+                        : "0.00"}{" "}
+                      XLM
                     </div>
                   )}
                 </div>
@@ -259,9 +288,9 @@ export default function WalletPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 {actionButtons?.map((button) => (
-                  <Button 
-                    key={button.key} 
-                    className="flex items-center justify-around space-y-2 text-white hover:bg-muted hover:text-primary" 
+                  <Button
+                    key={button.key}
+                    className="flex items-center justify-around space-y-2 text-white hover:bg-muted hover:text-primary"
                     onClick={() => navigate(button.href)}
                   >
                     {button.icon}
@@ -303,18 +332,23 @@ export default function WalletPage() {
                                 {parseFloat(asset.balance).toFixed(4)}
                               </div>
                               <div className="text-sm text-muted-foreground">
-                                {asset?.asset_code || (asset.asset_type === "native" && "XLM")}
+                                {asset?.asset_code ||
+                                  (asset.asset_type === "native" && "XLM")}
                               </div>
                             </div>
                             <div>
                               <div className="">
                                 <div className="flex text-sm font-bold text-success gap-1">
-                                  <TrendingDown className="text-success" />
-                                  ${parseFloat(asset?.buying_liabilities || "0").toFixed(4)}
+                                  <TrendingDown className="text-success" />$
+                                  {parseFloat(
+                                    asset?.buying_liabilities || "0",
+                                  ).toFixed(4)}
                                 </div>
                                 <div className="flex text-red-500 gap-1 text-sm">
-                                  <TrendingUp className="text-red-500" />
-                                  ${parseFloat(asset?.selling_liabilities || "0").toFixed(4)}
+                                  <TrendingUp className="text-red-500" />$
+                                  {parseFloat(
+                                    asset?.selling_liabilities || "0",
+                                  ).toFixed(4)}
                                 </div>
                               </div>
                             </div>
@@ -359,8 +393,16 @@ export default function WalletPage() {
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className={parseFloat(tx.amount).toFixed(0).length > 4 ? "truncate w-20" : "font-medium"}>
-                              {tx.type === "transfer" && tx.toAddress ? "-" : "+"}
+                            <div
+                              className={
+                                parseFloat(tx.amount).toFixed(0).length > 4
+                                  ? "truncate w-20"
+                                  : "font-medium"
+                              }
+                            >
+                              {tx.type === "transfer" && tx.toAddress
+                                ? "-"
+                                : "+"}
                               {parseFloat(tx.amount).toFixed(4)} {tx.assetType}
                             </div>
                             <div className="text-sm text-muted-foreground">
@@ -438,7 +480,9 @@ export default function WalletPage() {
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Your existing wallet (public key: {user?.walletAddress?.substring(0, 10)}...) needs to be upgraded to our new secure system.
+              Your existing wallet (public key:{" "}
+              {user?.walletAddress?.substring(0, 10)}...) needs to be upgraded
+              to our new secure system.
             </p>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <div className="text-sm text-blue-800">
