@@ -485,15 +485,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Transaction history
   app.get("/api/protected/transactions", async (req, res) => {
     try {
-      const { secretKey } = req.query as any;
-      if (!secretKey) {
+      const userId = req?.user?.id;
+      if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
 
       const transactions = await stellarService.getUserTransactionHistory(
-        secretKey,
+        userId,
         limit,
       );
       res.json(transactions);
@@ -689,11 +689,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/protected/asset/holders", rateLimiter, async (req, res) => {
     try {
-      const { secretKey } = req.query as any;
-      if (!secretKey) {
+      const userId = req?.user?.id;
+      if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
-      const assets = await stellarService.getUserAssets(secretKey);
+      const assets = await stellarService.getUserAssets(userId);
       res.json(assets);
     } catch (error: any) {
       res.status(500).json({ message: "Internal server error" });
@@ -1134,11 +1134,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const [user, wallet, recentTransactions, networkStats] =
+      const [user, wallet, networkStats] =
         (await Promise.all([
           storage.getUser(userId),
           storage.getWallet(userId),
-          storage.getTransactions(userId, 1, 5),
           storage.getNetworkStats(),
         ])) as any;
 
@@ -1152,7 +1151,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             email: user.email,
             fullName: user.fullName,
             profilePicture: user.profilePicture,
-            publicKey: userId.publicKey,
+            publicKey: wallet && wallet.publicKey || "",
             isVerified: user.isVerified,
             level: user.level,
             referralCode: user.referralCode,
@@ -1180,7 +1179,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           gasBalance: gasBalance.toString(),
         },
         mining: miningStatus,
-        recentTransactions,
         networkStats: {
           id: networkStats.id,
           activeMiners: networkStats.activeMiners,

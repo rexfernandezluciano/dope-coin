@@ -35,7 +35,6 @@ export const wallets = pgTable("wallets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
   publicKey: varchar("public_key").notNull(),
-  dopeBalance: decimal("dope_balance", { precision: 18, scale: 8 }).default("0"),
   lastUpdated: timestamp("last_updated").default(sql`now()`),
 });
 
