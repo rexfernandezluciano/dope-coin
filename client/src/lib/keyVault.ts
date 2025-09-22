@@ -1346,8 +1346,8 @@ export class KeyVault {
     return this.memory.getStats();
   }
 
-  // Expose storage for debugging
-  get storage() {
+  // Expose storage for debugging (removed duplicate)
+  get storageInstance() {
     return this.storage;
   }
 
