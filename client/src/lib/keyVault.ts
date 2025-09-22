@@ -1,6 +1,12 @@
 import * as bip39 from 'bip39';
 import { Keypair } from '@stellar/stellar-sdk';
 import { derivePath } from 'ed25519-hd-key';
+import { Buffer } from 'buffer';
+
+// Make Buffer available globally for bip39 library
+if (typeof window !== 'undefined') {
+  window.Buffer = Buffer;
+}
 
 // =====================================================
 // TYPE DEFINITIONS AND INTERFACES
