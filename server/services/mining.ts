@@ -50,7 +50,7 @@ export class MiningService {
       }
 
       // Check GAS balance - require 10 GAS to start mining
-      const gasBalance = await stellarService.getGASBalance(secretKey);
+      const gasBalance = await stellarService.getGASBalance(userId);
       const requiredGas = 10;
 
       if (gasBalance < requiredGas) {
@@ -89,7 +89,7 @@ export class MiningService {
   private async deductGasFee(secretKey: string, gasAmount: number): Promise<void> {
     try {
       console.log(
-        `Starting GAS deduction for user ${userId}, amount: ${gasAmount}`,
+        `Starting GAS deduction for user, amount: ${gasAmount}`,
       );
 
       // Validate input
@@ -101,7 +101,7 @@ export class MiningService {
         throw new Error("User stellar account not found");
       }
 
-      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const userKeypair = Keypair.fromSecret(secretKey);
       console.log(`User public key: ${userKeypair.publicKey()}`);
 
       // Load account with detailed logging
@@ -194,7 +194,7 @@ export class MiningService {
       const result = await server.submitTransaction(transaction);
 
       console.log(
-        `Successfully deducted ${gasAmount} GAS from user ${userId}. Transaction: ${result.hash}`,
+        `Successfully deducted ${gasAmount} GAS from user. Transaction: ${result.hash}`,
       );
     } catch (error: any) {
       console.error("Detailed error information:");
@@ -425,10 +425,6 @@ export class MiningService {
       if (Array.isArray(claimableBalances) && claimableBalances.length > 0) {
         for (const balance of claimableBalances) {
           await stellarService.claimBalance(userId, balance.id);
-          storage.updateTransactionStatus(balance.id, "completed");
-          await storage.updateWallet(userId, {
-            dopeBalance: balance.amount,
-          });
         }
       }
     } catch (error) {
