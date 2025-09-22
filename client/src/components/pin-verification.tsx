@@ -37,6 +37,14 @@ export function PinVerification({
     setError('');
 
     try {
+      // Check if vault is unlocked first
+      if (!keyVault.isVaultUnlocked()) {
+        setError('Wallet vault is locked. Please unlock your wallet first.');
+        return;
+      }
+
+      // For PIN verification, we can either authorize the transaction or just validate the PIN
+      // Since we're dealing with wallet sessions, let's verify the PIN is correct
       const isAuthorized = await keyVault.authorizeTransaction(walletId, pin);
       if (isAuthorized) {
         onVerified(pin);

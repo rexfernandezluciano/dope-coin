@@ -1,5 +1,4 @@
-
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useState, useEffect } from "react";
 import {
@@ -31,10 +30,12 @@ import { WalletSetup } from "../components/wallet-setup.js";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog.js";
 import { Input } from "../components/ui/input.js";
 import { Label } from "../components/ui/label.js";
+import { toast } from "../components/ui/use-toast.js";
 
 export default function WalletPage() {
   const { user, checkWalletMigrationStatus, hasSecureWallet } = useAuth();
-  const { isInitialized, isLocked, unlockWallet } = useWallet();
+  const { isInitialized, isLocked, unlockWallet, setIsVaultLocked } = useWallet();
+  const queryClient = useQueryClient();
   const [showWalletSetup, setShowWalletSetup] = useState(false);
   const [showUnlockDialog, setShowUnlockDialog] = useState(false);
   const [showMigrationDialog, setShowMigrationDialog] = useState(false);
@@ -95,21 +96,59 @@ export default function WalletPage() {
   }, [user, isInitialized, hasSecureWallet, isLocked, checkWalletMigrationStatus]);
 
   const handleUnlockWallet = async () => {
-    if (!unlockPassword) return;
+    if (!unlockPassword) {
+      toast({
+        title: "Password required",
+        description: "Please enter your master password.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsUnlocking(true);
     try {
-      const vaultId = localStorage.getItem(`vaultId_${user?.id}`);
-      if (vaultId) {
-        await unlockWallet(vaultId, unlockPassword);
-        setShowUnlockDialog(false);
-        setUnlockPassword("");
-      } else {
-        throw new Error("No vault found for user");
+      const vaults = await keyVault.getAllVaults();
+      if (vaults.length === 0) {
+        throw new Error("No vaults found. Please create a wallet first.");
       }
+
+      // Try to unlock the user's specific vault first
+      const userVaultId = localStorage.getItem(`vaultId_${user?.id}`);
+      let vaultToUnlock = vaults[0]; // Default to first vault
+
+      if (userVaultId) {
+        const userVault = vaults.find(v => v.id === userVaultId);
+        if (userVault) {
+          vaultToUnlock = userVault;
+        }
+      }
+
+      console.log("Attempting to unlock vault:", vaultToUnlock.id);
+      await keyVault.unlockVault(vaultToUnlock.id, unlockPassword);
+
+      // Verify the vault is actually unlocked
+      if (!keyVault.isVaultUnlocked()) {
+        throw new Error("Vault unlock verification failed");
+      }
+
+      setShowUnlockDialog(false);
+      setUnlockPassword("");
+      setIsVaultLocked(false);
+
+      toast({
+        title: "Wallet unlocked",
+        description: "Your secure wallet has been unlocked successfully.",
+      });
+
+      // Trigger a refresh of wallet data
+      queryClient.invalidateQueries({ queryKey: ["/api/protected/wallet"] });
     } catch (error) {
-      console.error("Failed to unlock wallet:", error);
-      alert("Failed to unlock wallet. Please check your password.");
+      console.error("Unlock error:", error);
+      toast({
+        title: "Unlock failed",
+        description: error instanceof Error ? error.message : "Invalid password or corrupted wallet. Please check your password and try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsUnlocking(false);
     }

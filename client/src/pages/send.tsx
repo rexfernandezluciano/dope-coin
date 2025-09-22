@@ -22,6 +22,7 @@ import { Send, ArrowLeft, Copy } from "lucide-react";
 import { useLocation } from "wouter";
 import { PinVerification } from "../components/pin-verification.js";
 import { useAuth } from "../hooks/use-auth.js";
+import { keyVault } from "../lib/keyVault.js";
 
 export default function SendPage() {
   const { toast } = useToast();

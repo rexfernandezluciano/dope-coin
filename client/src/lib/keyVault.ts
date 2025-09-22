@@ -927,9 +927,10 @@ export class KeyVault {
     try {
       const vault = await this.storage.getVault(vaultId);
       if (!vault) {
-        throw new Error("Vault not found");
+        throw new Error("Vault not found. Please check your vault ID.");
       }
 
+      console.log("Attempting to decrypt vault mnemonic...");
       // Verify password by attempting to decrypt mnemonic
       const mnemonic = await CryptoUtils.decrypt(
         vault.encryptedMnemonic,
@@ -938,8 +939,9 @@ export class KeyVault {
         vault.iv,
       );
 
+      console.log("Validating decrypted mnemonic...");
       if (!MnemonicUtils.validate(mnemonic)) {
-        throw new Error("Vault integrity check failed");
+        throw new Error("Vault integrity check failed - corrupted vault data");
       }
 
       // Update last accessed
@@ -949,17 +951,31 @@ export class KeyVault {
       this.currentVaultId = vaultId;
       this.memory.unlock();
 
+      console.log("Loading wallets into memory...");
       // Load wallets into memory
       for (const walletData of vault.wallets) {
         await this.loadWalletIntoMemory(walletData, mnemonic, password);
       }
 
+      console.log("Vault unlocked successfully, wallets loaded:", vault.wallets.length);
+
       // Secure wipe the mnemonic
       CryptoUtils.secureWipe(mnemonic);
     } catch (error) {
-      throw new Error(
-        `Failed to unlock vault: ${error instanceof Error ? error.message : "Invalid password or corrupted vault"}`,
-      );
+      console.error("Vault unlock error:", error);
+      
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes("Decryption failed")) {
+          throw new Error("Incorrect password. Please check your password and try again.");
+        } else if (error.message.includes("Vault not found")) {
+          throw new Error("Vault not found. Please check if your wallet exists.");
+        } else {
+          throw new Error(`Unlock failed: ${error.message}`);
+        }
+      } else {
+        throw new Error("Failed to unlock vault: Unknown error occurred");
+      }
     }
   }
 
@@ -1334,6 +1350,7 @@ export class KeyVault {
       // Try to load from encrypted private key first (preferred method)
       if (walletData.encryptedPrivateKey && walletData.iv) {
         try {
+          console.log(`Loading wallet ${walletData.name} from encrypted private key...`);
           const privateKeyHex = await CryptoUtils.decrypt(
             walletData.encryptedPrivateKey,
             password,
@@ -1341,7 +1358,9 @@ export class KeyVault {
             walletData.iv,
           );
           keypair = Keypair.fromSecret(privateKeyHex);
+          console.log(`Successfully loaded wallet ${walletData.name} from private key`);
         } catch (error) {
+          console.log(`Private key decryption failed for ${walletData.name}, falling back to mnemonic derivation`);
           // Fall back to mnemonic derivation if private key decryption fails
           keypair = MnemonicUtils.deriveKeypair(
             mnemonic,
@@ -1349,11 +1368,18 @@ export class KeyVault {
           );
         }
       } else {
+        console.log(`Loading wallet ${walletData.name} from mnemonic derivation...`);
         // Derive from mnemonic
         keypair = MnemonicUtils.deriveKeypair(
           mnemonic,
           walletData.derivationPath,
         );
+      }
+
+      // Verify the public key matches
+      if (keypair.publicKey() !== walletData.publicKey) {
+        console.error(`Public key mismatch for wallet ${walletData.name}. Expected: ${walletData.publicKey}, Got: ${keypair.publicKey()}`);
+        throw new Error(`Wallet ${walletData.name} public key verification failed`);
       }
 
       const decryptedWallet: DecryptedWallet = {
@@ -1365,11 +1391,13 @@ export class KeyVault {
       };
 
       this.memory.addWallet(decryptedWallet);
+      console.log(`Successfully loaded wallet ${walletData.name} into memory`);
     } catch (error) {
       console.error(
-        `Failed to load wallet ${walletData.id} into memory:`,
+        `Failed to load wallet ${walletData.id} (${walletData.name}) into memory:`,
         error,
       );
+      // Don't throw here, just skip this wallet
     }
   }
 
