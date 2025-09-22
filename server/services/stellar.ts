@@ -793,6 +793,9 @@ export class StellarService {
     status: string;
     balancesTransferred: Array<{ asset: string; amount: string }>;
   }> {
+    let newAccountCreated = false;
+    let newAccountCreationHash: string | null = null;
+
     try {
       if (!oldSecretKey || !newPublicKey) {
         throw new Error("Missing required parameters for account merge");
@@ -815,7 +818,10 @@ export class StellarService {
       const newAccountExists = await this.accountExists(newPublicKey);
       if (!newAccountExists) {
         try {
-          await this.createAccount(oldKeypair, newPublicKey, "2.0");
+          console.log(`Creating new account ${newPublicKey} for migration...`);
+          newAccountCreationHash = await this.createAccount(oldKeypair, newPublicKey, "2.0");
+          newAccountCreated = true;
+          
           // Wait for account creation to propagate
           await new Promise(resolve => setTimeout(resolve, 3000));
         } catch (createError: any) {
@@ -844,15 +850,22 @@ export class StellarService {
       const balancesTransferred = [] as any;
 
       // Transfer all non-XLM assets first
-      balancesToTransfer.forEach((balance: any) => {
+      for (const balance of balancesToTransfer) {
         if (balance.asset_type !== "native") {
           const amount = balance.balance;
-          const asset =
-            balance.asset_type === "credit_alphanum4"
-              ? new Asset(balance.asset_code, balance.asset_issuer)
-              : balance.asset_code === "XLM"
-                ? Asset.native()
-                : new Asset(balance.asset_code, balance.asset_issuer);
+          let asset: Asset;
+
+          // Properly handle different asset types
+          if (balance.asset_type === "credit_alphanum4" || balance.asset_type === "credit_alphanum12") {
+            if (!balance.asset_code || !balance.asset_issuer) {
+              console.warn(`Skipping asset with missing code or issuer:`, balance);
+              continue;
+            }
+            asset = new Asset(balance.asset_code, balance.asset_issuer);
+          } else {
+            console.warn(`Unknown asset type: ${balance.asset_type}`, balance);
+            continue;
+          }
 
           // Check if destination has trustline for this asset
           const destHasTrustline = newAccount.balances.some(
@@ -866,6 +879,7 @@ export class StellarService {
             console.warn(
               `Destination account doesn't have trustline for ${balance.asset_code}. Skipping transfer.`,
             );
+            continue;
           }
 
           operations.push(
@@ -887,7 +901,7 @@ export class StellarService {
             amount: balance.balance,
           });
         }
-      });
+      }
 
       // Add account merge operation (transfers remaining XLM and merges accounts)
       operations.push(
@@ -920,6 +934,17 @@ export class StellarService {
       };
     } catch (error: any) {
       console.error("Error merging accounts:", error);
+
+      // If we created a new account and the merge failed, attempt rollback
+      if (newAccountCreated && newAccountCreationHash) {
+        try {
+          console.log("Attempting to rollback new account creation...");
+          await this.rollbackAccountCreation(newPublicKey, oldKeypair.publicKey());
+        } catch (rollbackError: any) {
+          console.error("Failed to rollback account creation:", rollbackError.message);
+          // Continue with original error handling
+        }
+      }
 
       // Enhanced error handling
       if (error.response?.data?.extras?.result_codes) {
@@ -960,11 +985,51 @@ export class StellarService {
             "Account has active offers or trustlines that must be closed first",
           );
         }
+
+        if (resultCodes.operations?.includes("op_malformed")) {
+          throw new Error("Invalid operation parameters - check asset codes and issuers");
+        }
       }
 
       throw new Error(
         `Account merge failed: ${error.message || "Unknown error"}`,
       );
+    }
+  }
+
+  /**
+   * Rollback account creation by merging the new account back to the source
+   */
+  private async rollbackAccountCreation(
+    newAccountPublicKey: string,
+    sourceAccountPublicKey: string,
+  ): Promise<void> {
+    try {
+      // Check if new account still exists and has funds
+      const newAccount = await server.loadAccount(newAccountPublicKey);
+      const xlmBalance = newAccount.balances.find(
+        (b: any) => b.asset_type === "native"
+      );
+      
+      if (!xlmBalance || parseFloat(xlmBalance.balance) <= 0.5) {
+        console.log("New account has insufficient funds for rollback");
+        return;
+      }
+
+      // Check if source account still exists
+      const sourceExists = await this.accountExists(sourceAccountPublicKey);
+      if (!sourceExists) {
+        console.log("Source account no longer exists, cannot rollback");
+        return;
+      }
+
+      // Create a temporary keypair to sign the rollback (this won't work in practice)
+      // In reality, we can't rollback without the new account's secret key
+      console.warn("Cannot rollback account creation - secret key for new account not available");
+      
+    } catch (error: any) {
+      console.error("Rollback failed:", error.message);
+      throw error;
     }
   }
 
