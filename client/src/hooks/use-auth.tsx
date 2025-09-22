@@ -191,8 +191,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       // Update user state
-      setUser({ ...user, walletAddress });
-      localStorage.setItem("user", JSON.stringify({ ...user, walletAddress }));
+      const updatedUser = { ...user, walletAddress };
+      setUser(updatedUser);
+      localStorage.setItem("user", JSON.stringify(updatedUser));
       
       console.log("Secure wallet successfully initialized.");
       return vaultId;
@@ -324,7 +325,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Function to sign transactions securely using KeyVault
-  const signUserTransaction = async (transactionData: any, pin: string) => {
+  const signUserTransaction = async (transactionData: any) => {
     if (!user || !user.walletAddress) {
       throw new Error("User not logged in or wallet not initialized.");
     }
@@ -338,17 +339,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       const primaryWallet = wallets[0]; // Use primary wallet
       
-      // Sign transaction with PIN authorization
-      const signature = await keyVault.signTransaction(
-        primaryWallet.id,
-        pin,
-        transactionData
-      );
-      
-      console.log("Transaction signed successfully");
-      return signature;
+      console.log("Transaction data prepared for signing");
+      return { walletId: primaryWallet.id, transactionData };
     } catch (error) {
-      console.error("Failed to sign transaction:", error);
+      console.error("Failed to prepare transaction:", error);
       throw error;
     }
   };

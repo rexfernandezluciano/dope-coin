@@ -923,10 +923,19 @@ export class StellarService {
         .call();
 
       for (const offer of offers.records) {
+        // Convert Horizon API offer assets to Stellar SDK Asset objects
+        const sellingAsset = offer.selling.asset_type === "native" 
+          ? Asset.native()
+          : new Asset(offer.selling.asset_code, offer.selling.asset_issuer);
+          
+        const buyingAsset = offer.buying.asset_type === "native"
+          ? Asset.native()
+          : new Asset(offer.buying.asset_code, offer.buying.asset_issuer);
+
         operations.push(
           Operation.manageSellOffer({
-            selling: offer.selling,
-            buying: offer.buying,
+            selling: sellingAsset,
+            buying: buyingAsset,
             amount: "0", // 0 amount cancels the offer
             price: "1",
             offerId: offer.id,

@@ -8,7 +8,6 @@ import { Wallet, Shield, Key, Download, AlertTriangle, RefreshCw } from "lucide-
 import { Label } from "../components/ui/label.js";
 import { keyVault } from "../lib/keyVault.js";
 import { useAuth } from "../hooks/use-auth.js";
-import { useWallet } from "../hooks/use-wallet.js"
 
 interface WalletSetupProps {
   onComplete: (vaultId: string) => void;
@@ -25,7 +24,7 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
   const [walletName, setWalletName] = useState("");
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
-  const { createWallet } = useWallet();
+  
   const [isLocked, setIsLocked] = useState(true);
 
   // Create new wallet states
@@ -78,7 +77,9 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
 
       try {
         // Create vault and wallet
-        const vaultId = await createWallet('Main Vault', password);
+        const vaultId = await keyVault.createVault('Main Vault', password);
+        await keyVault.unlockVault(vaultId, password);
+        await keyVault.addWallet('Primary Wallet', "m/44'/148'/0'/0/0", password);
 
         // Get the primary wallet's secret key
         const wallets = keyVault.getAllWallets();
