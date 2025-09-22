@@ -24,7 +24,8 @@
     "paths": {
       "@/*": ["./client/src/*"],
       "@shared/*": ["./shared/*"]
-    }
+    },
+    "allowSyntheticDefaultImports": true
   },
   "files": [],
   "references": [
