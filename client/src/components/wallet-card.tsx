@@ -240,7 +240,7 @@ export const WalletCard = () => {
                   disabled={
                     !convertAmount ||
                     convertMutation.isPending ||
-                    parseFloat(convertAmount) > parseFloat(wallet.xlmBalance)
+                    parseFloat(convertAmount) > parseFloat(wallet?.xlmBalance)
                   }
                   className="w-full"
                 >
@@ -251,7 +251,7 @@ export const WalletCard = () => {
                 </Button>
 
                 {parseFloat(convertAmount || "0") >
-                  parseFloat(wallet.xlmBalance) && (
+                  parseFloat(wallet?.xlmBalance) && (
                   <p className="text-sm text-red-500">
                     Insufficient XLM balance
                   </p>
