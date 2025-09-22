@@ -1010,21 +1010,32 @@ export class KeyVault {
       vault.salt = encryptionResult.salt;
       vault.iv = encryptionResult.iv;
 
-      // Re-encrypt all wallet private keys with unique IVs
+      // Re-encrypt all wallet private keys with unique IVs  
       for (const walletData of vault.wallets) {
-        const decryptedPrivateKey = await CryptoUtils.decrypt(
-          walletData.encryptedPrivateKey,
-          currentPassword,
-          vault.salt,
-          walletData.iv,
-        );
+        if (walletData.encryptedPrivateKey && walletData.iv) {
+          try {
+            const decryptedPrivateKey = await CryptoUtils.decrypt(
+              walletData.encryptedPrivateKey,
+              currentPassword,
+              vault.salt, // Use the old vault salt for decryption
+              walletData.iv,
+            );
 
-        const reEncrypted = await CryptoUtils.encrypt(
-          decryptedPrivateKey,
-          newPassword,
-        );
-        walletData.encryptedPrivateKey = reEncrypted.encrypted;
-        walletData.iv = reEncrypted.iv; // New IV for wallet
+            const reEncrypted = await CryptoUtils.encrypt(
+              decryptedPrivateKey,
+              newPassword,
+            );
+            walletData.encryptedPrivateKey = reEncrypted.encrypted;
+            walletData.iv = reEncrypted.iv; // New IV for wallet
+            
+            // Secure wipe the decrypted key
+            CryptoUtils.secureWipe(decryptedPrivateKey);
+          } catch (error) {
+            console.warn(`Failed to re-encrypt wallet ${walletData.name}:`, error);
+            // Remove the wallet data if it can't be re-encrypted
+            vault.wallets = vault.wallets.filter(w => w.id !== walletData.id);
+          }
+        }
       }
 
       await this.storage.storeVault(vault);
@@ -1351,16 +1362,23 @@ export class KeyVault {
       if (walletData.encryptedPrivateKey && walletData.iv) {
         try {
           console.log(`Loading wallet ${walletData.name} from encrypted private key...`);
+          
+          // Get the current vault to access its salt
+          const currentVault = await this.storage.getVault(this.currentVaultId!);
+          if (!currentVault) {
+            throw new Error('Current vault not found');
+          }
+          
           const privateKeyHex = await CryptoUtils.decrypt(
             walletData.encryptedPrivateKey,
             password,
-            "", // Salt is embedded in the vault level
+            currentVault.salt, // Use vault's salt for wallet private key decryption
             walletData.iv,
           );
           keypair = Keypair.fromSecret(privateKeyHex);
           console.log(`Successfully loaded wallet ${walletData.name} from private key`);
         } catch (error) {
-          console.log(`Private key decryption failed for ${walletData.name}, falling back to mnemonic derivation`);
+          console.log(`Private key decryption failed for ${walletData.name}, falling back to mnemonic derivation:`, error);
           // Fall back to mnemonic derivation if private key decryption fails
           keypair = MnemonicUtils.deriveKeypair(
             mnemonic,

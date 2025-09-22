@@ -57,64 +57,86 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
 
   const handleCreateWallet = async () => {
     if (password !== confirmPassword) {
-      alert('Passwords do not match');
+      setError('Passwords do not match');
       return;
     }
     if (pin !== confirmPin) {
-      alert('PINs do not match');
+      setError('PINs do not match');
       return;
     }
     if (pin.length < 4) {
-      alert('PIN must be at least 4 digits');
+      setError('PIN must be at least 4 digits');
       return;
     }
 
     setIsCreating(true);
-    setError(''); // Clear previous errors
+    setError('');
+    
     try {
-      // Create secure vault and wallet
-      console.log('Setting up secure wallet with PIN:', pin);
+      console.log('Creating secure vault with wallet...');
 
-      try {
-        // Create vault and wallet
-        const vaultId = await keyVault.createVault('Main Vault', password);
-        await keyVault.unlockVault(vaultId, password);
-        await keyVault.addWallet('Primary Wallet', "m/44'/148'/0'/0/0", password);
-
-        // Get the primary wallet's secret key
-        const wallets = keyVault.getAllWallets();
-        if (wallets.length === 0) {
-          throw new Error('No wallet created');
-        }
-
-        const primaryWallet = wallets[0];
-        const secretKey = primaryWallet.keypair.secret();
-
-        // Establish secure session with backend
-        const response = await fetch('/api/protected/wallet/session', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          },
-          body: JSON.stringify({
-            secretKey,
-            pin
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to establish secure wallet session');
-        }
-
-        onComplete(vaultId);
-      } catch (error: any) {
-        console.error('Wallet setup error:', error);
-        setError('Failed to set up secure wallet session');
+      // Step 1: Create vault with generated mnemonic
+      const mnemonic = keyVault.generateMnemonic(128); // 12 words for faster generation
+      const vaultId = await keyVault.createVault(walletName || 'Main Vault', password, mnemonic);
+      
+      console.log('Vault created, unlocking...');
+      // Step 2: Unlock the vault
+      await keyVault.unlockVault(vaultId, password);
+      
+      console.log('Adding primary wallet to vault...');
+      // Step 3: Add wallet to the vault (this saves to both memory and vault storage)
+      const walletId = await keyVault.addWallet('Primary Wallet', "m/44'/148'/0'/0/0", password);
+      
+      // Step 4: Verify wallet was created
+      const wallets = keyVault.getAllWallets();
+      console.log('Wallets in memory:', wallets.length);
+      
+      if (wallets.length === 0) {
+        throw new Error('Wallet was not properly created in vault');
       }
+
+      const primaryWallet = wallets[0];
+      const secretKey = primaryWallet.keypair.secret();
+
+      console.log('Establishing secure session with backend...');
+      // Step 5: Store PIN and establish session
+      await keyVault.authorizeTransaction(walletId, pin);
+      
+      // Step 6: Sync with backend
+      const response = await fetch('/api/protected/wallet/session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          secretKey,
+          pin
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to establish secure wallet session');
+      }
+
+      // Step 7: Store vault ID and completion
+      localStorage.setItem(`vaultId_${user?.id}`, vaultId);
+      localStorage.setItem(`walletPin_${user?.id}`, pin);
+      
+      setSuccess('Secure wallet created successfully!');
+      setTimeout(() => onComplete(vaultId), 1500);
+
     } catch (error: any) {
       console.error('Wallet creation failed:', error);
-      alert('Failed to create wallet. Please try again: ' + error.message);
+      setError(`Failed to create wallet: ${error.message}`);
+      
+      // Clean up on failure
+      try {
+        await keyVault.lockVault();
+      } catch (cleanupError) {
+        console.error('Cleanup error:', cleanupError);
+      }
     } finally {
       setIsCreating(false);
     }
@@ -135,21 +157,60 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
     setError("");
 
     try {
-      // Create vault with imported mnemonic
-      const vaultId = await keyVault.createVault("Imported Wallet", importPassword, importMnemonic.trim());
+      // Validate mnemonic first
+      const normalizedMnemonic = importMnemonic.trim();
+      if (!keyVault.validateMnemonic(normalizedMnemonic)) {
+        throw new Error("Invalid mnemonic phrase. Please check your seed phrase.");
+      }
 
+      console.log('Creating vault with imported mnemonic...');
+      // Create vault with imported mnemonic
+      const vaultId = await keyVault.createVault("Imported Wallet", importPassword, normalizedMnemonic);
+
+      console.log('Unlocking imported vault...');
       // Unlock vault
       await keyVault.unlockVault(vaultId, importPassword);
 
-      // Add primary wallet to new vault
-      await keyVault.addWallet("Primary Wallet", "m/44'/148'/0'/0/0", importPassword);
+      console.log('Adding wallet to imported vault...');
+      // Add primary wallet to new vault (this saves to vault storage)
+      const walletId = await keyVault.addWallet("Primary Wallet", "m/44'/148'/0'/0/0", importPassword);
 
-      // Set up PIN for the imported wallet
+      // Verify wallet was created
       const wallets = keyVault.getAllWallets();
-      if (wallets.length > 0) {
-        const primaryWallet = wallets[0];
-        await keyVault.authorizeTransaction(primaryWallet.id, pin);
-        localStorage.setItem(`walletPin_${user?.id}`, pin);
+      console.log('Imported wallets in memory:', wallets.length);
+      
+      if (wallets.length === 0) {
+        throw new Error('Imported wallet was not properly created in vault');
+      }
+
+      // Set up PIN and session
+      const primaryWallet = wallets[0];
+      await keyVault.authorizeTransaction(walletId, pin);
+      
+      // Store references
+      localStorage.setItem(`vaultId_${user?.id}`, vaultId);
+      localStorage.setItem(`walletPin_${user?.id}`, pin);
+
+      // Try to establish backend session
+      try {
+        const secretKey = primaryWallet.keypair.secret();
+        const response = await fetch('/api/protected/wallet/session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({
+            secretKey,
+            pin
+          })
+        });
+
+        if (!response.ok) {
+          console.warn('Failed to establish backend session, but wallet imported locally');
+        }
+      } catch (sessionError) {
+        console.warn('Backend session setup failed:', sessionError);
       }
 
       setSuccess("Wallet imported successfully with PIN protection!");

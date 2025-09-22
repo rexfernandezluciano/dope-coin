@@ -189,3 +189,78 @@ function useToast() {
 }
 
 export { useToast, toast }
+import React, { useState } from "react";
+
+interface Toast {
+  id: string;
+  title?: string;
+  description?: string;
+  variant?: "default" | "destructive";
+}
+
+let toastQueue: Toast[] = [];
+let toastSubscribers: Array<(toasts: Toast[]) => void> = [];
+
+const generateId = () => Math.random().toString(36).substring(2, 15);
+
+export function toast({
+  title,
+  description,
+  variant = "default"
+}: {
+  title?: string;
+  description?: string;
+  variant?: "default" | "destructive";
+}) {
+  const id = generateId();
+  const newToast: Toast = {
+    id,
+    title,
+    description,
+    variant
+  };
+
+  toastQueue = [...toastQueue, newToast];
+  toastSubscribers.forEach(subscriber => subscriber(toastQueue));
+
+  // Auto-remove after 5 seconds
+  setTimeout(() => {
+    toastQueue = toastQueue.filter(t => t.id !== id);
+    toastSubscribers.forEach(subscriber => subscriber(toastQueue));
+  }, 5000);
+
+  return {
+    id,
+    dismiss: () => {
+      toastQueue = toastQueue.filter(t => t.id !== id);
+      toastSubscribers.forEach(subscriber => subscriber(toastQueue));
+    }
+  };
+}
+
+export function useToast() {
+  const [toasts, setToasts] = useState<Toast[]>(toastQueue);
+
+  // Subscribe to toast changes
+  React.useEffect(() => {
+    const subscriber = (newToasts: Toast[]) => {
+      setToasts(newToasts);
+    };
+    toastSubscribers.push(subscriber);
+
+    return () => {
+      toastSubscribers = toastSubscribers.filter(s => s !== subscriber);
+    };
+  }, []);
+
+  const dismiss = (toastId: string) => {
+    toastQueue = toastQueue.filter(t => t.id !== toastId);
+    toastSubscribers.forEach(subscriber => subscriber(toastQueue));
+  };
+
+  return {
+    toast,
+    toasts,
+    dismiss
+  };
+}
