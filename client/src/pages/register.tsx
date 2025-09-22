@@ -420,56 +420,59 @@ export default function Register() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-center">
-              <h1 className="text-2xl font-bold text-primary">
-                Welcome to DOPE Chain!
-              </h1>
-              <p className="text-muted-foreground">
-                You have just created an account. You need to fund your account before using it.
-              </p>
-            </div>
-            <div className="space-y-3 my-3">
-              <h3 className="font-bold text-1lg">Your wallet address:</h3>
-              <div className="bg-gray-100 p-3 rounded-lg font-light break-words">
-                {response?.user?.publicKey || "GZAHSM..."}
+            <div className="text-center space-y-4">
+              <div className="w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center">
+                <Check className="w-8 h-8 text-green-600" />
               </div>
-              <h3 className="font-bold text-1lg">Your seed passphrase:</h3>
-              <div className="bg-gray-100 p-3 rounded-lg font-light text-center">
-                {response?.user?.passphrase || "Seed Passphrase"}
-              </div>
-              <div className="text-muted-foreground text-sm">
-                Ensure you save your seed passphrase in a safe place. You will
-                need it to recover your wallet if you lose access to your email.
+              <div>
+                <h1 className="text-2xl font-bold text-primary mb-2">
+                  Account Created Successfully!
+                </h1>
+                <p className="text-muted-foreground">
+                  Your secure wallet has been set up. You can now access your dashboard to start using DOPE Chain.
+                </p>
               </div>
             </div>
-            <div className="text-center">
-              <p className="text-muted-foreground">
-                How to fund your account?{" "}
-                <a
-                  className="text-primary hover:underline font-medium"
-                  href="/help/activation/accounts"
-                >
-                  Buy XLM here
-                </a>
-              </p>
+
+            <div className="space-y-4 my-6">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="font-semibold text-blue-900 mb-2">🔐 Your Wallet is Secure</h3>
+                <p className="text-sm text-blue-800">
+                  Your wallet keys are encrypted and stored securely. You can access your wallet using your login credentials and PIN.
+                </p>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <h3 className="font-semibold text-amber-900 mb-2">⚡ Next Steps</h3>
+                <ul className="text-sm text-amber-800 space-y-1">
+                  <li>• Set up your wallet PIN for transactions</li>
+                  <li>• Add funds to start trading</li>
+                  <li>• Explore DOPE coin features</li>
+                </ul>
+              </div>
+
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <h3 className="font-semibold text-green-900 mb-2">🎉 Welcome Bonus</h3>
+                <p className="text-sm text-green-800">
+                  Your account is ready to receive DOPE coins and start mining!
+                </p>
+              </div>
             </div>
-            <div className="flex justify-center mt-6">
+
+            <div className="flex flex-col space-y-3">
               <Button
-                className="gradient-bg hover:opacity-90 text-1xl"
-                onClick={() => {
-                  const obj = {
-                    network: "Stellar",
-                    timestamp: new Date().toISOString(),
-                    publicKey: response?.user?.publicKey || "Wallet Address",
-                    passphrase: response?.user?.passphrase || "Seed Passphrase",
-                  };
-                  const blob = new Blob([JSON.stringify(obj, null, 2)], {
-                    type: "application/json",
-                  });
-                  saveWallet(blob);
-                }}
+                className="gradient-bg hover:opacity-90"
+                onClick={() => setLocation("/wallet")}
+                data-testid="button-go-to-wallet"
               >
-                Download Wallet
+                Access My Wallet
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setLocation("/dashboard")}
+                data-testid="button-go-to-dashboard"
+              >
+                Go to Dashboard
               </Button>
             </div>
           </CardContent>

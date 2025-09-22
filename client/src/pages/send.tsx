@@ -20,11 +20,15 @@ import { useToast } from "../hooks/use-toast.js";
 import { AuthService } from "../lib/auth.js";
 import { Send, ArrowLeft, Copy } from "lucide-react";
 import { useLocation } from "wouter";
+import { PinVerification } from "../components/pin-verification.js";
+import { useAuth } from "../hooks/use-auth.js";
 
 export default function SendPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
+  const { user } = useAuth();
+  const [showPinVerification, setShowPinVerification] = useState(false);
   const [sendForm, setSendForm] = useState({
     toAddress: "",
     amount: "",
@@ -37,7 +41,7 @@ export default function SendPage() {
   }) as any;
 
   const sendTokens = useMutation({
-    mutationFn: (data: typeof sendForm) =>
+    mutationFn: (data: typeof sendForm & { pin: string }) =>
       AuthService.authenticatedRequest(
         "POST",
         "/api/protected/wallet/send",
@@ -49,6 +53,7 @@ export default function SendPage() {
         queryKey: ["/api/protected/transactions"],
       });
       setSendForm({ toAddress: "", amount: "", assetType: "DOPE" });
+      setShowPinVerification(false);
       toast({
         title: "Transaction sent",
         description: "Your transaction has been submitted successfully.",
@@ -57,6 +62,7 @@ export default function SendPage() {
       setTimeout(() => navigate("/wallet"), 2000);
     },
     onError: (error) => {
+      setShowPinVerification(false);
       toast({
         title: "Transaction failed",
         description: error.message,
@@ -91,7 +97,17 @@ export default function SendPage() {
       return;
     }
 
-    sendTokens.mutate(sendForm);
+    // Show PIN verification instead of directly sending
+    setShowPinVerification(true);
+  };
+
+  const handlePinVerified = (pin: string) => {
+    // Send tokens with PIN included
+    sendTokens.mutate({ ...sendForm, pin });
+  };
+
+  const handlePinCancel = () => {
+    setShowPinVerification(false);
   };
 
   const setMaxAmount = () => {
@@ -293,6 +309,21 @@ export default function SendPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* PIN Verification Modal */}
+        {showPinVerification && user && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-background p-6 rounded-lg max-w-md w-full mx-4">
+              <PinVerification
+                walletId={localStorage.getItem(`walletId_${user.id}`) || ""}
+                onVerified={handlePinVerified}
+                onCancel={handlePinCancel}
+                title="Authorize Transaction"
+                description={`Enter your PIN to send ${sendForm.amount} ${sendForm.assetType} to the recipient.`}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

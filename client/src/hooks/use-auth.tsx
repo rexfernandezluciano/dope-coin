@@ -155,12 +155,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         username: data.user.username || "",
         level: data.user.level || 0,
         referralCode: data.user.referralCode || "",
-        walletAddress: data.user.walletAddress || null,
+        walletAddress: data.user.publicKey || null,
       };
       setUser(userData);
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(userData));
       setIsAuthenticated(true);
+
+      // Automatically set up KeyVault with the returned stellar keypair
+      if (data.passphrase && data.secretKey && data.user.publicKey) {
+        try {
+          await keyVault.initialize();
+          
+          // Create vault with mnemonic and user's password
+          const vaultId = await keyVault.createVault(
+            "Main Wallet", 
+            registerData.password, 
+            data.passphrase
+          );
+          
+          // Unlock the vault and add the primary wallet
+          await keyVault.unlockVault(vaultId, registerData.password);
+          const walletId = await keyVault.addWallet(
+            "Primary Wallet", 
+            "m/44'/148'/0'/0/0", 
+            registerData.password
+          );
+          
+          // Note: PIN will be set up by user later in wallet setup
+          // Do not store a default PIN for security reasons
+          
+          // Store vault and wallet information
+          localStorage.setItem(`vaultId_${userData.id}`, vaultId);
+          localStorage.setItem(`walletId_${userData.id}`, walletId);
+          localStorage.setItem(`secureWallet_${userData.id}`, "true");
+          
+          console.log("KeyVault successfully set up during registration");
+          setHasSecureWallet(true);
+          
+          // Broadcast wallet unlocked event for immediate session only
+          window.dispatchEvent(new CustomEvent("wallet:unlocked"));
+        } catch (error) {
+          console.error("Failed to set up KeyVault during registration:", error);
+          // Don't fail registration if KeyVault setup fails, user can set it up later
+        }
+      }
     } else {
       throw new Error("Registration failed or invalid response from server");
     }

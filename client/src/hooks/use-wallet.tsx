@@ -19,6 +19,17 @@ export function useWallet(): WalletHook {
 
   useEffect(() => {
     initializeKeyVault();
+    
+    // Listen for wallet unlocked event from registration
+    const handleWalletUnlocked = () => {
+      setIsLocked(false);
+    };
+    
+    window.addEventListener("wallet:unlocked", handleWalletUnlocked);
+    
+    return () => {
+      window.removeEventListener("wallet:unlocked", handleWalletUnlocked);
+    };
   }, []);
 
   const initializeKeyVault = async () => {

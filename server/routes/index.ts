@@ -135,6 +135,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const token = jwtService.generateToken(user.id);
 
+      // Note: Secret key will be stored in wallet service when user sets up their PIN
+      // Do not store with default PIN for security reasons
+
       res.status(201).json({
         message: "User created successfully",
         token,
@@ -145,10 +148,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           fullName: user.fullName,
           level: user.level,
           publicKey: publicKey,
-          secretKey: secretKey,
-          passphrase: mnemonic,
           referralCode: user.referralCode,
         },
+        // Security: Include sensitive keys only for initial setup
+        // TODO: Move to client-side key generation for better security
+        secretKey: secretKey,
+        passphrase: mnemonic,
       });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -691,12 +696,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Trading routes
-  app.post("/api/protected/trade/execute", rateLimiter, async (req, res) => {
+  app.post("/api/protected/trade/execute", rateLimiter, walletAuthMiddleware, async (req, res) => {
     try {
-      const { secretKey } = req.query as any;
-      if (!secretKey) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
+      const secretKey = (req as any).secretKey;
 
       const validatedData = executeTradeSchema.parse(req.body);
       const { sellAsset, sellAmount, buyAsset, minBuyAmount } = validatedData;
@@ -733,12 +735,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/protected/asset/trust", rateLimiter, async (req, res) => {
+  app.post("/api/protected/asset/trust", rateLimiter, walletAuthMiddleware, async (req, res) => {
     try {
+      const secretKey = (req as any).secretKey;
+      const { assetCode, assetIssuer } = req.body;
 
-      const { assetCode, assetIssuer, secretKey } = req.body;
-
-      if (!assetCode || !assetIssuer || !secretKey) {
+      if (!assetCode || !assetIssuer) {
         return res.status(400).json({ message: "Invalid asset details" });
       }
 
@@ -945,12 +947,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   // Liquidity pool routes
-  app.post("/api/protected/liquidity/add", rateLimiter, async (req, res) => {
+  app.post("/api/protected/liquidity/add", rateLimiter, walletAuthMiddleware, async (req, res) => {
     try {
-      const { secretKey } = req.query as any;
-      if (!secretKey) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
+      const secretKey = (req as any).secretKey;
 
       const validatedData = addLiquiditySchema.parse(req.body);
       const { assetA, assetB, amountA, amountB, minPrice, maxPrice } =
@@ -994,12 +993,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/protected/liquidity/remove", rateLimiter, async (req, res) => {
+  app.post("/api/protected/liquidity/remove", rateLimiter, walletAuthMiddleware, async (req, res) => {
     try {
-      const { secretKey } = req.query as any;
-      if (!secretKey) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
+      const secretKey = (req as any).secretKey;
 
       const validatedData = removeLiquiditySchema.parse(req.body);
       const { poolId, amount, minAmountA, minAmountB } = validatedData;
@@ -1026,12 +1022,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/protected/liquidity/pools", rateLimiter, async (req, res) => {
+  app.get("/api/protected/liquidity/pools", rateLimiter, walletAuthMiddleware, async (req, res) => {
     try {
-      const { secretKey } = req.query as any;
-      if (!secretKey) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
+      const secretKey = (req as any).secretKey;
 
       const pools = await stellarService.getUserLiquidityPools(secretKey);
       res.json(pools);
