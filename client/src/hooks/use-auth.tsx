@@ -139,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       username: data.user.username || "",
       level: data.user.level || 0,
       referralCode: data.user.referralCode || "",
-      walletAddress: data.user.walletAddress || null, // Include wallet address if provided by API
+      walletAddress: data.user.publicKey || null, // Include wallet address if provided by API
     };
 
     localStorage.setItem("token", data.token);

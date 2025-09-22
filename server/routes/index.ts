@@ -184,6 +184,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           email: user.email,
           fullName: user.fullName,
           level: user.level,
+          publicKey: (await storage.getWallet(user.id))?.publicKey || "",
           referralCode: user.referralCode,
         },
       });

@@ -87,8 +87,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
-    return user || undefined;
+    const [result] = await db
+      .select()
+      .from(users)
+      .leftJoin(wallets, eq(users.id, wallets.userId))
+      .where(eq(users.email, email));
+    return result?.users || undefined;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
@@ -168,8 +172,6 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return session;
   }
-
-  
 
   // Stats methods
   async getUserStats(userId: string): Promise<{
