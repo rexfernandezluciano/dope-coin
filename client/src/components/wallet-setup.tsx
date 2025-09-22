@@ -58,7 +58,7 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
 
       try {
         // Create vault and wallet
-        const vaultId = await createWallet('Main Vault', password, mnemonic);
+        const vaultId = await createWallet('Main Vault', password);
 
         // Get the primary wallet's secret key
         const wallets = keyVault.getAllWallets();

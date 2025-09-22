@@ -1,6 +1,6 @@
 
 import { keyVault } from './keyVault.js';
-import * as StellarSDK from 'stellar-sdk';
+import * as StellarSDK from '@stellar/stellar-sdk';
 
 export class TransactionSigner {
   static async signTransaction(
@@ -32,7 +32,7 @@ export class TransactionSigner {
     networkPassphrase: string = StellarSDK.Networks.TESTNET
   ): Promise<string> {
     try {
-      const server = new StellarSDK.Server('https://horizon-testnet.stellar.org');
+      const server = new StellarSDK.Horizon.Server('https://horizon-testnet.stellar.org');
       const account = await server.loadAccount(sourceAccount);
       
       const transaction = new StellarSDK.TransactionBuilder(account, {

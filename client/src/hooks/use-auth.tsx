@@ -83,9 +83,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [hasSecureWallet, setHasSecureWallet] = useState(false);
 
-  // Services initialization
-  const transactionSigningService = createTransactionSigningService();
-
   useEffect(() => {
     const storedToken = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
