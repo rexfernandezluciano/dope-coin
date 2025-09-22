@@ -66,10 +66,12 @@ interface AuthContextType {
   register: (data: RegisterData) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
-  isAuthenticated: boolean; // Added for authentication state
-  initializeUserWallet: (secretPhrase: string) => Promise<void>; // For wallet setup
-  processPayment: (amount: number, pin: string) => Promise<void>; // For PIN payment
-  signUserTransaction: (data: any) => Promise<any>; // For transaction signing
+  isAuthenticated: boolean;
+  initializeUserWallet: (secretPhrase: string) => Promise<void>;
+  processPayment: (amount: number, pin: string) => Promise<void>;
+  signUserTransaction: (data: any) => Promise<any>;
+  hasSecureWallet: boolean;
+  checkWalletMigrationStatus: () => Promise<boolean>;
 }
 
 interface RegisterData {
@@ -86,7 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false); // Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [hasSecureWallet, setHasSecureWallet] = useState(false);
 
   // Services initialization
   const transactionSigningService = createTransactionSigningService();
@@ -96,10 +99,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const storedUser = localStorage.getItem("user");
 
     if (storedToken && storedUser) {
-      setToken(storedToken);
-      const parsedUser = JSON.parse(storedUser);
-      setUser(parsedUser);
-      setIsAuthenticated(true); // Set authenticated if token/user found
+      try {
+        // Verify token is still valid before using it
+        const parsedUser = JSON.parse(storedUser);
+        setToken(storedToken);
+        setUser(parsedUser);
+        setIsAuthenticated(true);
+      } catch (error) {
+        console.error("Error parsing stored user data:", error);
+        // Clear invalid data
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+      }
     }
     setIsLoading(false);
   }, []);
@@ -212,6 +223,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Function to check if user needs wallet migration
+  const checkWalletMigrationStatus = async (): Promise<boolean> => {
+    if (!user) return false;
+    
+    try {
+      // Check if user has old wallet but no secure wallet setup
+      const hasOldWallet = user.walletAddress && user.walletAddress.length > 0;
+      const hasSecureWalletSetup = localStorage.getItem(`secureWallet_${user.id}`) !== null;
+      
+      // User needs migration if they have an old wallet but no secure wallet
+      const needsMigration = hasOldWallet && !hasSecureWalletSetup;
+      
+      setHasSecureWallet(hasSecureWalletSetup);
+      
+      return needsMigration;
+    } catch (error) {
+      console.error("Error checking wallet migration status:", error);
+      return false;
+    }
+  };
+
   // Function to sign transactions on the device (Checklist Item 5)
   const signUserTransaction = async (transactionData: any) => {
     if (!user || !user.walletAddress) {
@@ -243,10 +275,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         isLoading,
-        isAuthenticated, // Provide isAuthenticated state
-        initializeUserWallet, // Provide wallet initialization function
-        processPayment, // Provide payment processing function
-        signUserTransaction, // Provide transaction signing function
+        isAuthenticated,
+        initializeUserWallet,
+        processPayment,
+        signUserTransaction,
+        hasSecureWallet,
+        checkWalletMigrationStatus,
       }}
     >
       {children}

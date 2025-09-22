@@ -3,6 +3,7 @@ import {
   miningSessions,
   wallets,
   networkStats,
+  transactions,
   type User,
   type InsertUser,
   type MiningSession,
