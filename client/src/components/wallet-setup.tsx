@@ -5,8 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.js";
 import { Alert, AlertDescription } from "./ui/alert.js";
 import { Wallet, Shield, Key, Download, AlertTriangle, RefreshCw } from "lucide-react";
+import { Label } from "../components/ui/label.js";
 import { keyVault } from "../lib/keyVault.js";
 import { useAuth } from "../hooks/use-auth.js";
+import { useWallet } from "../hooks/use-wallet.js"
 
 interface WalletSetupProps {
   onComplete: (vaultId: string) => void;
@@ -18,6 +20,13 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [step, setStep] = useState(1);
+  const [walletName, setWalletName] = useState("");
+  const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const { createWallet } = useWallet();
+  const [isLocked, setIsLocked] = useState(true);
 
   // Create new wallet states
   const [password, setPassword] = useState("");
@@ -332,7 +341,7 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
           </CardContent>
         </TabsContent>
 
-        <TabsContent value="migrate" className="space-y-6">
+        <TabsContent value="migrate" className="space-y-6 p-4">
           <div className="text-center space-y-2">
             <Shield className="w-12 h-12 text-blue-500 mx-auto" />
             <h3 className="text-lg font-semibold">Migrate Your Wallet</h3>

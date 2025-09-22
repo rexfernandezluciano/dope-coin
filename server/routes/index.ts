@@ -20,7 +20,7 @@ import {
   updateUsernameSchema,
   verifyEmailSchema,
 } from "../../shared/schema.js";
-import { Asset } from "@stellar/stellar-sdk";
+import { Asset, Keypair } from "@stellar/stellar-sdk";
 import z from "zod";
 import rateLimit from "express-rate-limit";
 import { KeypairGenerator } from "../utils/keypair-generator.js";
