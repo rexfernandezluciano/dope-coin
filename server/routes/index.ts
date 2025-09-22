@@ -563,6 +563,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Wallet migration endpoints
+  app.post("/api/protected/wallet/migrate", rateLimiter, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      const { oldSecretKey, newPublicKey } = req.body;
+
+      if (!userId || !oldSecretKey || !newPublicKey) {
+        return res.status(400).json({ message: "Missing required parameters" });
+      }
+
+      // Validate the old secret key belongs to the user
+      const oldKeypair = Keypair.fromSecret(oldSecretKey);
+      const currentWallet = await storage.getWallet(userId);
+      
+      if (!currentWallet || currentWallet.publicKey !== oldKeypair.publicKey()) {
+        return res.status(400).json({ message: "Invalid old wallet credentials" });
+      }
+
+      // Check if new account exists
+      const newAccountExists = await stellarService.accountExists(newPublicKey);
+      if (!newAccountExists) {
+        return res.status(400).json({ 
+          message: "New account does not exist. Please create the new account first." 
+        });
+      }
+
+      // Prepare old account for merge
+      await stellarService.prepareAccountForMerge(oldSecretKey);
+
+      // Perform account merge
+      const mergeResult = await stellarService.mergeAccounts(oldSecretKey, newPublicKey);
+
+      // Update user's wallet in database
+      await storage.updateWallet(userId, { publicKey: newPublicKey });
+
+      res.json({
+        message: "Wallet migration completed successfully",
+        result: mergeResult
+      });
+
+    } catch (error: any) {
+      console.error("Wallet migration error:", error);
+      res.status(500).json({ 
+        message: error.message || "Failed to migrate wallet"
+      });
+    }
+  });
+
+  app.post("/api/protected/wallet/prepare-migration", rateLimiter, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      const { secretKey } = req.body;
+
+      if (!userId || !secretKey) {
+        return res.status(400).json({ message: "Missing required parameters" });
+      }
+
+      // Validate the secret key belongs to the user
+      const keypair = Keypair.fromSecret(secretKey);
+      const currentWallet = await storage.getWallet(userId);
+      
+      if (!currentWallet || currentWallet.publicKey !== keypair.publicKey()) {
+        return res.status(400).json({ message: "Invalid wallet credentials" });
+      }
+
+      // Prepare account for migration
+      await stellarService.prepareAccountForMerge(secretKey);
+
+      res.json({
+        message: "Account prepared for migration successfully"
+      });
+
+    } catch (error: any) {
+      console.error("Prepare migration error:", error);
+      res.status(500).json({ 
+        message: error.message || "Failed to prepare account for migration"
+      });
+    }
+  });
+
   // Referrals endpoint
   app.get("/api/protected/referrals", async (req, res) => {
     try {

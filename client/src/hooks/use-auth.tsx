@@ -64,6 +64,8 @@ interface AuthContextType {
   signUserTransaction: (data: any) => Promise<any>;
   hasSecureWallet: boolean;
   checkWalletMigrationStatus: () => Promise<boolean>;
+  migrateWallet: (oldSecretKey: string, newPublicKey: string) => Promise<any>;
+  prepareWalletMigration: (oldSecretKey: string) => Promise<void>;
 }
 
 interface RegisterData {
@@ -200,6 +202,75 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Function to migrate old wallet to new secure wallet
+  const migrateWallet = async (oldSecretKey: string, newPublicKey: string) => {
+    if (!user) {
+      throw new Error("User not logged in.");
+    }
+
+    try {
+      const response = await fetch("/api/protected/wallet/migrate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          oldSecretKey,
+          newPublicKey
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Migration failed");
+      }
+
+      const data = await response.json();
+
+      // Update user state with new wallet address
+      const updatedUser = { ...user, walletAddress: newPublicKey };
+      setUser(updatedUser);
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+
+      console.log("Wallet migration completed successfully");
+      return data.result;
+    } catch (error) {
+      console.error("Failed to migrate wallet:", error);
+      throw error;
+    }
+  };
+
+  // Function to prepare old wallet for migration
+  const prepareWalletMigration = async (oldSecretKey: string) => {
+    if (!user || !token) {
+      throw new Error("User not logged in.");
+    }
+
+    try {
+      const response = await fetch("/api/protected/wallet/prepare-migration", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          secretKey: oldSecretKey
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to prepare migration");
+      }
+
+      console.log("Wallet prepared for migration successfully");
+    } catch (error) {
+      console.error("Failed to prepare wallet migration:", error);
+      throw error;
+    }
+  };
+
   // Function to process payment using real PIN verification
   const processPayment = async (amount: number, pin: string) => {
     if (!isAuthenticated) {
@@ -297,6 +368,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signUserTransaction,
         hasSecureWallet,
         checkWalletMigrationStatus,
+        migrateWallet,
+        prepareWalletMigration,
       }}
     >
       {children}

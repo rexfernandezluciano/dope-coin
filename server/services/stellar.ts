@@ -763,6 +763,215 @@ export class StellarService {
     }
   }
 
+  /**
+   * Merge old account into new account for wallet migration
+   * This transfers all balances and merges the accounts
+   */
+  async mergeAccounts(oldSecretKey: string, newPublicKey: string): Promise<{
+    hash: string;
+    status: string;
+    balancesTransferred: Array<{ asset: string; amount: string }>;
+  }> {
+    try {
+      if (!oldSecretKey || !newPublicKey) {
+        throw new Error("Missing required parameters for account merge");
+      }
+
+      const oldKeypair = Keypair.fromSecret(oldSecretKey);
+      const oldAccount = await server.loadAccount(oldKeypair.publicKey());
+
+      // Check if new account exists
+      const newAccountExists = await this.accountExists(newPublicKey);
+      if (!newAccountExists) {
+        throw new Error("Destination account does not exist. Create the new account first.");
+      }
+
+      const newAccount = await server.loadAccount(newPublicKey);
+
+      // Get all balances from old account
+      const balancesToTransfer = oldAccount.balances.filter(
+        (balance: any) => parseFloat(balance.balance) > 0
+      );
+
+      const operations = [];
+      const balancesTransferred = [];
+
+      // Transfer all non-XLM assets first
+      for (const balance of balancesToTransfer) {
+        if (balance.asset_type !== "native") {
+          const amount = balance.balance;
+          const asset = balance.asset_type === "credit_alphanum4" 
+            ? new Asset(balance.asset_code, balance.asset_issuer)
+            : new Asset(balance.asset_code, balance.asset_issuer);
+
+          // Check if destination has trustline for this asset
+          const destHasTrustline = newAccount.balances.some(
+            (b: any) => 
+              b.asset_type === balance.asset_type &&
+              b.asset_code === balance.asset_code &&
+              b.asset_issuer === balance.asset_issuer
+          );
+
+          if (!destHasTrustline) {
+            console.warn(`Destination account doesn't have trustline for ${balance.asset_code}. Skipping transfer.`);
+            continue;
+          }
+
+          operations.push(
+            Operation.payment({
+              destination: newPublicKey,
+              asset: asset,
+              amount: amount,
+            })
+          );
+
+          balancesTransferred.push({
+            asset: `${balance.asset_code} (${balance.asset_issuer})`,
+            amount: amount
+          });
+        } else {
+          // Handle XLM - will be transferred via account merge
+          balancesTransferred.push({
+            asset: "XLM",
+            amount: balance.balance
+          });
+        }
+      }
+
+      // Add account merge operation (transfers remaining XLM and merges accounts)
+      operations.push(
+        Operation.accountMerge({
+          destination: newPublicKey,
+        })
+      );
+
+      // Build and submit transaction
+      const transaction = new TransactionBuilder(oldAccount, {
+        fee: (BASE_FEE * operations.length).toString(),
+        networkPassphrase,
+      });
+
+      operations.forEach((op) => transaction.addOperation(op));
+
+      const builtTransaction = transaction.setTimeout(30).build();
+      builtTransaction.sign(oldKeypair);
+
+      const result = await server.submitTransaction(builtTransaction);
+
+      console.log(`Account merge completed. Old account ${oldKeypair.publicKey()} merged into ${newPublicKey}`);
+
+      return {
+        hash: result.hash,
+        status: "completed",
+        balancesTransferred
+      };
+
+    } catch (error: any) {
+      console.error("Error merging accounts:", error);
+
+      // Enhanced error handling
+      if (error.response?.data?.extras?.result_codes) {
+        const resultCodes = error.response.data.extras.result_codes;
+        
+        if (resultCodes.transaction === "tx_insufficient_balance") {
+          throw new Error("Insufficient balance to pay transaction fees");
+        }
+        
+        if (resultCodes.operations?.includes("op_no_destination")) {
+          throw new Error("Destination account does not exist");
+        }
+        
+        if (resultCodes.operations?.includes("op_no_trust")) {
+          throw new Error("Destination account missing required trustlines");
+        }
+        
+        if (resultCodes.operations?.includes("op_account_merge_malformed")) {
+          throw new Error("Invalid account merge operation");
+        }
+
+        if (resultCodes.operations?.includes("op_account_merge_no_account")) {
+          throw new Error("Source account does not exist");
+        }
+
+        if (resultCodes.operations?.includes("op_account_merge_immutable_set")) {
+          throw new Error("Account has AUTH_IMMUTABLE flag set and cannot be merged");
+        }
+
+        if (resultCodes.operations?.includes("op_account_merge_has_sub_entries")) {
+          throw new Error("Account has active offers or trustlines that must be closed first");
+        }
+      }
+
+      throw new Error(`Account merge failed: ${error.message || "Unknown error"}`);
+    }
+  }
+
+  /**
+   * Prepare account for merge by closing offers and unused trustlines
+   */
+  async prepareAccountForMerge(secretKey: string): Promise<void> {
+    try {
+      const keypair = Keypair.fromSecret(secretKey);
+      const account = await server.loadAccount(keypair.publicKey());
+
+      const operations = [];
+
+      // Get all offers and close them
+      const offers = await server
+        .offers()
+        .forAccount(keypair.publicKey())
+        .call();
+
+      for (const offer of offers.records) {
+        operations.push(
+          Operation.manageSellOffer({
+            selling: offer.selling,
+            buying: offer.buying,
+            amount: "0", // 0 amount cancels the offer
+            price: "1",
+            offerId: offer.id,
+          })
+        );
+      }
+
+      // Close unused trustlines (those with 0 balance)
+      const zeroBalanceTrustlines = account.balances.filter(
+        (balance: any) => 
+          balance.asset_type !== "native" && 
+          parseFloat(balance.balance) === 0
+      );
+
+      for (const trustline of zeroBalanceTrustlines) {
+        const asset = new Asset(trustline.asset_code, trustline.asset_issuer);
+        operations.push(
+          Operation.changeTrust({
+            asset: asset,
+            limit: "0", // 0 limit removes the trustline
+          })
+        );
+      }
+
+      if (operations.length > 0) {
+        const transaction = new TransactionBuilder(account, {
+          fee: (BASE_FEE * operations.length).toString(),
+          networkPassphrase,
+        });
+
+        operations.forEach((op) => transaction.addOperation(op));
+
+        const builtTransaction = transaction.setTimeout(30).build();
+        builtTransaction.sign(keypair);
+
+        await server.submitTransaction(builtTransaction);
+        console.log(`Prepared account ${keypair.publicKey()} for merge by closing ${operations.length} sub-entries`);
+      }
+
+    } catch (error: any) {
+      console.error("Error preparing account for merge:", error);
+      throw new Error(`Failed to prepare account: ${error.message || "Unknown error"}`);
+    }
+  }
+
   // ============= TRADING METHODS =============
 
   /**

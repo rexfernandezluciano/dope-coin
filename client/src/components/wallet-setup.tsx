@@ -1,37 +1,48 @@
-import { useState } from 'react';
-import { Button } from './ui/button.js';
-import { Input } from './ui/input.js';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card.js';
-import { Label } from './ui/label.js';
-import { Wallet, Shield, Key, Copy, Check } from 'lucide-react';
-import { useWallet } from '../hooks/use-wallet.js';
-import { keyVault } from '../lib/keyVault.js';
+import { useState } from "react";
+import { Button } from "./ui/button.js";
+import { Input } from "./ui/input.js";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.js";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.js";
+import { Alert, AlertDescription } from "./ui/alert.js";
+import { Wallet, Shield, Key, Download, AlertTriangle, RefreshCw } from "lucide-react";
+import { keyVault } from "../lib/keyVault.js";
+import { useAuth } from "../hooks/use-auth.js";
 
 interface WalletSetupProps {
   onComplete: (vaultId: string) => void;
 }
 
 export function WalletSetup({ onComplete }: WalletSetupProps) {
-  const [step, setStep] = useState(1);
-  const [walletName, setWalletName] = useState('My DOPE Wallet');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [pin, setPin] = useState('');
-  const [confirmPin, setConfirmPin] = useState('');
-  const [mnemonic, setMnemonic] = useState('');
+  const { user, migrateWallet, prepareWalletMigration } = useAuth();
+  const [activeTab, setActiveTab] = useState("create");
   const [isCreating, setIsCreating] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const { createWallet } = useWallet();
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  // Create new wallet states
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [generatedMnemonic, setGeneratedMnemonic] = useState("");
+  const [mnemonicConfirmed, setMnemonicConfirmed] = useState(false);
+
+  // Import wallet states
+  const [importMnemonic, setImportMnemonic] = useState("");
+  const [importPassword, setImportPassword] = useState("");
+
+  // Migration states
+  const [oldSecretKey, setOldSecretKey] = useState("");
+  const [migrationPassword, setMigrationPassword] = useState("");
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [migrationStep, setMigrationStep] = useState(1);
 
   const generateMnemonic = () => {
     const generated = keyVault.generateMnemonic(256); // 24 words
-    setMnemonic(generated);
+    setGeneratedMnemonic(generated);
     setStep(2);
   };
 
   const copyMnemonic = async () => {
-    await navigator.clipboard.writeText(mnemonic);
+    await navigator.clipboard.writeText(generatedMnemonic);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -99,10 +110,108 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
     }
   };
 
+  const handleImportWallet = async () => {
+    if (!importMnemonic.trim() || !importPassword) {
+      setError("Please enter both mnemonic phrase and password");
+      return;
+    }
+
+    setIsCreating(true);
+    setError("");
+
+    try {
+      // Validate mnemonic
+      if (!keyVault.validateMnemonic(importMnemonic.trim())) {
+        throw new Error("Invalid mnemonic phrase");
+      }
+
+      // Create vault with imported mnemonic
+      const vaultId = await keyVault.createVault("Imported Wallet", importPassword, importMnemonic.trim());
+
+      // Unlock vault
+      await keyVault.unlockVault(vaultId, importPassword);
+
+      // Add primary wallet
+      await keyVault.addWallet("Primary Wallet", "m/44'/148'/0'/0/0", importPassword);
+
+      setSuccess("Wallet imported successfully!");
+      setTimeout(() => onComplete(vaultId), 1500);
+
+    } catch (error) {
+      console.error("Import wallet error:", error);
+      setError(error instanceof Error ? error.message : "Failed to import wallet");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleMigrateWallet = async () => {
+    if (!oldSecretKey || !migrationPassword) {
+      setError("Please enter both your old secret key and new password");
+      return;
+    }
+
+    setIsMigrating(true);
+    setError("");
+
+    try {
+      // Step 1: Create new secure vault
+      setMigrationStep(1);
+      const newMnemonic = keyVault.generateMnemonic(128);
+      const vaultId = await keyVault.createVault("Migrated Wallet", migrationPassword, newMnemonic);
+
+      // Unlock new vault
+      await keyVault.unlockVault(vaultId, migrationPassword);
+
+      // Add primary wallet to new vault
+      await keyVault.addWallet("Primary Wallet", "m/44'/148'/0'/0/0", migrationPassword);
+
+      // Get new wallet public key
+      const wallets = keyVault.getAllWallets();
+      if (wallets.length === 0) {
+        throw new Error("Failed to create new wallet");
+      }
+      const newPublicKey = wallets[0].publicKey;
+
+      // Step 2: Prepare old account for migration
+      setMigrationStep(2);
+      await prepareWalletMigration(oldSecretKey);
+
+      // Step 3: Perform account merge
+      setMigrationStep(3);
+      const migrationResult = await migrateWallet(oldSecretKey, newPublicKey);
+
+      setSuccess(`Migration completed! Transferred ${migrationResult.balancesTransferred.length} assets to new secure wallet.`);
+      setTimeout(() => onComplete(vaultId), 2000);
+
+    } catch (error) {
+      console.error("Migration error:", error);
+      setError(error instanceof Error ? error.message : "Failed to migrate wallet");
+    } finally {
+      setIsMigrating(false);
+      setMigrationStep(1);
+    }
+  };
+
   return (
-    <div className="max-w-md mx-auto">
-      {step === 1 && (
-        <Card>
+    <Card className="max-w-md mx-auto">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="create" className="flex items-center gap-2">
+            <Wallet className="w-4 h-4" />
+            Create New
+          </TabsTrigger>
+          <TabsTrigger value="import" className="flex items-center gap-2">
+            <Download className="w-4 h-4" />
+            Import Existing
+          </TabsTrigger>
+          <TabsTrigger value="migrate" className="flex items-center gap-2">
+            <RefreshCw className="w-4 h-4" />
+            Migrate Wallet
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="create" className="space-y-6">
           <CardHeader className="text-center">
             <div className="w-12 h-12 mx-auto mb-4 bg-primary/10 rounded-full flex items-center justify-center">
               <Wallet className="w-6 h-6 text-primary" />
@@ -175,76 +284,151 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
               />
             </div>
             {error && <p className="text-red-500 text-sm">{error}</p>}
-            <Button 
-              onClick={generateMnemonic} 
+            <Button
+              onClick={generateMnemonic}
               className="w-full"
               disabled={!walletName || !password || !confirmPassword || !pin || !confirmPin}
             >
               Generate Seed Phrase
             </Button>
           </CardContent>
-        </Card>
-      )}
+        </TabsContent>
 
-      {step === 2 && (
-        <Card>
+        <TabsContent value="import" className="space-y-6">
           <CardHeader className="text-center">
-            <div className="w-12 h-12 mx-auto mb-4 bg-yellow-100 rounded-full flex items-center justify-center">
-              <Key className="w-6 h-6 text-yellow-600" />
+            <div className="w-12 h-12 mx-auto mb-4 bg-primary/10 rounded-full flex items-center justify-center">
+              <Download className="w-6 h-6 text-primary" />
             </div>
-            <CardTitle>Your Seed Phrase</CardTitle>
+            <CardTitle>Import Your Existing Wallet</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Write down these words in order and store them safely. This is the only way to recover your wallet.
+              Enter your existing seed phrase and password to access your wallet
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-2 p-4 bg-muted rounded-lg">
-              {mnemonic.split(' ').map((word, index) => (
-                <div key={index} className="text-sm text-center p-2 bg-background rounded">
-                  <span className="text-xs text-muted-foreground">{index + 1}.</span>
-                  <div className="font-medium">{word}</div>
-                </div>
-              ))}
+            <div>
+              <Label htmlFor="importMnemonic">Seed Phrase</Label>
+              <Input
+                id="importMnemonic"
+                value={importMnemonic}
+                onChange={(e) => setImportMnemonic(e.target.value)}
+                placeholder="Enter your 12 or 24 word seed phrase"
+              />
+            </div>
+            <div>
+              <Label htmlFor="importPassword">Wallet Password</Label>
+              <Input
+                id="importPassword"
+                type="password"
+                value={importPassword}
+                onChange={(e) => setImportPassword(e.target.value)}
+                placeholder="Enter your wallet password"
+              />
+            </div>
+            {error && <p className="text-red-500 text-sm">{error}</p>}
+            {success && <p className="text-green-500 text-sm">{success}</p>}
+            <Button onClick={handleImportWallet} className="w-full" disabled={isCreating}>
+              {isCreating ? 'Importing...' : 'Import Wallet'}
+            </Button>
+          </CardContent>
+        </TabsContent>
+
+        <TabsContent value="migrate" className="space-y-6">
+          <div className="text-center space-y-2">
+            <Shield className="w-12 h-12 text-blue-500 mx-auto" />
+            <h3 className="text-lg font-semibold">Migrate Your Wallet</h3>
+            <p className="text-sm text-muted-foreground">
+              Upgrade your existing wallet to our new secure system with PIN protection
+            </p>
+          </div>
+
+          {user?.walletAddress && (
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                <strong>Current wallet:</strong> {user.walletAddress.substring(0, 10)}...
+                <br />
+                All assets will be transferred to your new secure wallet.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="oldSecretKey">Current Wallet Secret Key</Label>
+              <Input
+                id="oldSecretKey"
+                type="password"
+                value={oldSecretKey}
+                onChange={(e) => setOldSecretKey(e.target.value)}
+                placeholder="Enter your current wallet secret key"
+                disabled={isMigrating}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                This is needed to transfer your assets to the new secure wallet
+              </p>
             </div>
 
-            <Button onClick={copyMnemonic} variant="outline" className="w-full">
-              {copied ? (
+            <div>
+              <Label htmlFor="migrationPassword">New Secure Wallet Password</Label>
+              <Input
+                id="migrationPassword"
+                type="password"
+                value={migrationPassword}
+                onChange={(e) => setMigrationPassword(e.target.value)}
+                placeholder="Create a strong password for your new secure wallet"
+                disabled={isMigrating}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Use a strong password - you'll need this to unlock your wallet
+              </p>
+            </div>
+
+            {isMigrating && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm text-blue-600">
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  {migrationStep === 1 && "Creating new secure wallet..."}
+                  {migrationStep === 2 && "Preparing old account for migration..."}
+                  {migrationStep === 3 && "Transferring assets to new wallet..."}
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(migrationStep / 3) * 100}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
+
+            <Button
+              onClick={handleMigrateWallet}
+              disabled={!oldSecretKey || !migrationPassword || isMigrating}
+              className="w-full"
+              size="lg"
+            >
+              {isMigrating ? (
                 <>
-                  <Check className="w-4 h-4 mr-2" />
-                  Copied!
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Migrating Wallet...
                 </>
               ) : (
                 <>
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copy Seed Phrase
+                  <Shield className="w-4 h-4 mr-2" />
+                  Migrate to Secure Wallet
                 </>
               )}
             </Button>
 
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-              <div className="flex items-start">
-                <Shield className="w-5 h-5 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" />
-                <div className="text-sm text-yellow-800">
-                  <strong>Important:</strong> Anyone with access to this seed phrase can control your wallet. Never share it online or with anyone.
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(1)} className="flex-1">
-                Back
-              </Button>
-              <Button 
-                onClick={handleCreateWallet} 
-                className="flex-1"
-                disabled={isCreating}
-              >
-                {isCreating ? 'Creating...' : 'Create Wallet'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+            <Alert>
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                <strong>Important:</strong> Make sure to save your new wallet password securely.
+                After migration, your old secret key will no longer be valid.
+              </AlertDescription>
+            </Alert>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </Card>
   );
 }
