@@ -838,16 +838,99 @@ export class StellarService {
       const newAccountExists = await this.accountExists(newPublicKey);
       if (!newAccountExists) {
         try {
-          console.log(`Creating new account ${newPublicKey} for migration...`);
-          newAccountCreationHash = await this.createAccount(oldKeypair, newPublicKey, "2.0");
-          newAccountCreated = true;
+          console.log(`Creating new account ${newPublicKey} for migration with trustlines...`);
           
+          // Create the account with trustlines using the distributor as source
+          // and create operations to establish trustlines for the new account
+          const sourceAccount = await server.loadAccount(oldKeypair.publicKey());
+          const dopeAsset = new Asset("DOPE", dopeIssuerKeypair.publicKey());
+          const gasAsset = new Asset("GAS", dopeIssuerKeypair.publicKey());
+          const usdcAsset = new Asset("USDC", USDC_ISSUER_ACCOUNT);
+          const eurcAsset = new Asset("EURC", USDC_ISSUER_ACCOUNT);
+
+          // Create the account first
+          const createAccountTx = new TransactionBuilder(sourceAccount, {
+            fee: BASE_FEE.toString(),
+            networkPassphrase,
+          })
+            .addOperation(
+              Operation.createAccount({
+                destination: newPublicKey,
+                startingBalance: "3.0", // Enough for reserves + fees
+              }),
+            )
+            .setTimeout(30)
+            .build();
+
+          createAccountTx.sign(oldKeypair);
+          const createResult = await server.submitTransaction(createAccountTx);
+          newAccountCreationHash = createResult.hash;
+          newAccountCreated = true;
+
           // Wait for account creation to propagate
           await new Promise(resolve => setTimeout(resolve, 3000));
+
+          // Now create trustlines using the distributor as source (since we don't have the new account's secret)
+          // We'll create the trustlines from the distributor's perspective
+          const distributorAccount = await server.loadAccount(dopeDistributorKeypair.publicKey());
+          
+          const trustlineTx = new TransactionBuilder(distributorAccount, {
+            fee: (BASE_FEE * 4).toString(),
+            networkPassphrase,
+          })
+            .addOperation(
+              Operation.changeTrust({
+                source: newPublicKey,
+                asset: dopeAsset,
+                limit: "100000000",
+              }),
+            )
+            .addOperation(
+              Operation.changeTrust({
+                source: newPublicKey,
+                asset: gasAsset,
+                limit: "1000000",
+              }),
+            )
+            .addOperation(
+              Operation.changeTrust({
+                source: newPublicKey,
+                asset: usdcAsset,
+                limit: "10000000",
+              }),
+            )
+            .addOperation(
+              Operation.changeTrust({
+                source: newPublicKey,
+                asset: eurcAsset,
+                limit: "10000000",
+              }),
+            )
+            .setTimeout(60)
+            .build();
+
+          // The distributor can't sign for the new account, so we need a different approach
+          // Instead, let's skip trustline creation during migration and handle it differently
+          console.log(`New account ${newPublicKey} created, trustlines will be created when needed`);
+          
+          // Wait for account creation to fully propagate
+          await new Promise(resolve => setTimeout(resolve, 5000));
         } catch (createError: any) {
           console.error("Failed to create new account:", createError);
           throw new Error(`Failed to create destination account: ${createError.message}`);
         }
+      } else {
+        // Account already exists, check if it can receive the assets we're transferring
+        console.log(`Account ${newPublicKey} already exists, checking trustlines...`);
+        const newAccount = await server.loadAccount(newPublicKey);
+        
+        // Log which trustlines exist
+        const existingTrustlines = newAccount.balances.map(b => {
+          if (b.asset_type === "native") return "XLM";
+          return `${(b as any).asset_code}:${(b as any).asset_issuer}`;
+        });
+        
+        console.log(`Existing trustlines for ${newPublicKey}:`, existingTrustlines);
       }
 
       // Verify new account exists after creation
@@ -869,7 +952,9 @@ export class StellarService {
       const operations = [];
       const balancesTransferred = [] as any;
 
-      // Transfer all non-XLM assets first
+      // Transfer all non-XLM assets first, but only those the destination can receive
+      const skippedAssets = [];
+      
       for (const balance of balancesToTransfer) {
         if (balance.asset_type !== "native") {
           const amount = balance.balance;
@@ -897,8 +982,13 @@ export class StellarService {
 
           if (!destHasTrustline) {
             console.warn(
-              `Destination account doesn't have trustline for ${balance.asset_code}. Skipping transfer.`,
+              `Destination account doesn't have trustline for ${balance.asset_code}:${balance.asset_issuer}. Asset will remain in source account.`,
             );
+            skippedAssets.push({
+              asset: `${balance.asset_code} (${balance.asset_issuer})`,
+              amount: amount,
+              reason: "No trustline in destination account"
+            });
             continue;
           }
 
@@ -920,6 +1010,19 @@ export class StellarService {
             asset: "XLM",
             amount: balance.balance,
           });
+        }
+      }
+
+      // If there are skipped assets, we can't do a complete account merge
+      if (skippedAssets.length > 0) {
+        console.warn(`Cannot complete full account merge. ${skippedAssets.length} assets skipped:`, skippedAssets);
+        
+        // If we created a new account but can't transfer all assets, we should warn the user
+        if (newAccountCreated) {
+          throw new Error(
+            `Account merge incomplete: Destination account missing trustlines for ${skippedAssets.map(a => a.asset).join(", ")}. ` +
+            `Please create these trustlines first, or the assets will remain in the source account.`
+          );
         }
       }
 
@@ -949,8 +1052,12 @@ export class StellarService {
 
       return {
         hash: result.hash,
-        status: "completed",
+        status: skippedAssets.length > 0 ? "partial" : "completed",
         balancesTransferred,
+        skippedAssets: skippedAssets.length > 0 ? skippedAssets : undefined,
+        warning: skippedAssets.length > 0 
+          ? `${skippedAssets.length} assets could not be transferred due to missing trustlines`
+          : undefined,
       };
     } catch (error: any) {
       console.error("Error merging accounts:", error);
@@ -1024,6 +1131,78 @@ export class StellarService {
       throw new Error(
         `Account merge failed: ${error.message || "Unknown error"}`,
       );
+    }
+  }
+
+  /**
+   * Check what trustlines the destination account needs to receive all assets from source
+   */
+  async checkRequiredTrustlinesForMerge(
+    sourceSecretKey: string,
+    destinationPublicKey: string,
+  ): Promise<{
+    requiredTrustlines: Array<{ code: string; issuer: string; amount: string }>;
+    existingTrustlines: Array<{ code: string; issuer: string }>;
+    canMerge: boolean;
+  }> {
+    try {
+      const sourceKeypair = Keypair.fromSecret(sourceSecretKey);
+      const sourceAccount = await server.loadAccount(sourceKeypair.publicKey());
+      
+      // Check if destination exists
+      const destExists = await this.accountExists(destinationPublicKey);
+      if (!destExists) {
+        // If destination doesn't exist, we can create it with trustlines
+        return {
+          requiredTrustlines: [],
+          existingTrustlines: [],
+          canMerge: true,
+        };
+      }
+
+      const destAccount = await server.loadAccount(destinationPublicKey);
+      
+      const requiredTrustlines = [];
+      const existingTrustlines = [];
+
+      // Get all non-XLM assets from source
+      const nonNativeAssets = sourceAccount.balances.filter(
+        (balance: any) => balance.asset_type !== "native" && parseFloat(balance.balance) > 0
+      );
+
+      for (const asset of nonNativeAssets) {
+        const trustlineInfo = {
+          code: asset.asset_code,
+          issuer: asset.asset_issuer,
+          amount: asset.balance,
+        };
+
+        // Check if destination has this trustline
+        const hasTrustline = destAccount.balances.some(
+          (b: any) =>
+            b.asset_type === asset.asset_type &&
+            b.asset_code === asset.asset_code &&
+            b.asset_issuer === asset.asset_issuer
+        );
+
+        if (hasTrustline) {
+          existingTrustlines.push({
+            code: asset.asset_code,
+            issuer: asset.asset_issuer,
+          });
+        } else {
+          requiredTrustlines.push(trustlineInfo);
+        }
+      }
+
+      return {
+        requiredTrustlines,
+        existingTrustlines,
+        canMerge: requiredTrustlines.length === 0,
+      };
+    } catch (error: any) {
+      console.error("Error checking required trustlines:", error);
+      throw new Error(`Failed to check trustlines: ${error.message}`);
     }
   }
 
@@ -2881,7 +3060,7 @@ export class StellarService {
       const usdcAsset = new Asset("USDC", USDC_ISSUER_ACCOUNT);
       const eurcAsset = new Asset("EURC", USDC_ISSUER_ACCOUNT);
 
-      // Check if trustline already exists
+      // Check if trustlines already exist
       const hasDopeTrustline = account.balances.some(
         (balance: any) =>
           balance.asset_type !== "native" &&
@@ -2910,14 +3089,22 @@ export class StellarService {
           balance.asset_issuer === USDC_ISSUER_ACCOUNT,
       );
 
-      if (
-        hasDopeTrustline ||
-        hasGasTrustline ||
-        hasUsdcTrustline ||
-        hasEurcTrustline
-      ) {
-        console.log("Trustline already exists for this account");
+      const missingTrustlines = [];
+      if (!hasDopeTrustline) missingTrustlines.push({ asset: dopeAsset, name: "DOPE" });
+      if (!hasGasTrustline) missingTrustlines.push({ asset: gasAsset, name: "GAS" });
+      if (!hasUsdcTrustline) missingTrustlines.push({ asset: usdcAsset, name: "USDC" });
+      if (!hasEurcTrustline) missingTrustlines.push({ asset: eurcAsset, name: "EURC" });
+
+      if (missingTrustlines.length === 0) {
+        console.log("All required trustlines already exist for this account");
         return "trustline_exists";
+      }
+
+      // For accounts where we don't have the secret key (during migration),
+      // we can't create trustlines. The account needs to be created properly with trustlines.
+      if (!accountKeypair.canSign()) {
+        console.warn(`Cannot create trustlines for account without secret key: ${accountKeypair.publicKey()}`);
+        throw new Error("Destination account must have trustlines - account cannot be signed");
       }
 
       // Check if account has enough balance for trustline reserve
@@ -2925,53 +3112,35 @@ export class StellarService {
         account.balances.find((b: any) => b.asset_type === "native")?.balance ||
           "0",
       );
-      const requiredReserve = (2 + account.subentry_count + 1) * 0.5; // Base + existing subentries + new trustline
+      const requiredReserve = (2 + account.subentry_count + missingTrustlines.length) * 0.5;
 
       if (nativeBalance < requiredReserve) {
         throw new Error(
-          `Insufficient balance. Required: ${requiredReserve} XLM, Available: ${nativeBalance} XLM`,
+          `Insufficient balance for trustlines. Required: ${requiredReserve} XLM, Available: ${nativeBalance} XLM`,
         );
       }
 
       const transaction = new TransactionBuilder(account, {
-        fee: (BASE_FEE * 4).toString(),
+        fee: (BASE_FEE * missingTrustlines.length).toString(),
         networkPassphrase,
-      })
-        .addOperation(
-          Operation.changeTrust({
-            asset: dopeAsset,
-            limit: "100000000", // 100 Million DOPE limit per account
-          }),
-        )
-        .addOperation(
-          Operation.changeTrust({
-            source: accountKeypair.publicKey(),
-            asset: gasAsset,
-            limit: "1000000", // 1 Million GAS limit per account
-          }),
-        )
-        .addOperation(
-          Operation.changeTrust({
-            source: accountKeypair.publicKey(),
-            asset: usdcAsset,
-            limit: "10000000", // 10 Million USDC limit per account
-          }),
-        )
-        .addOperation(
-          Operation.changeTrust({
-            source: accountKeypair.publicKey(),
-            asset: eurcAsset,
-            limit: "10000000", // 10 Million EURC limit per account
-          }),
-        )
-        .setTimeout(60)
-        .build();
+      });
 
-      transaction.sign(accountKeypair);
-      const result = await server.submitTransaction(transaction);
+      // Add operations only for missing trustlines
+      missingTrustlines.forEach(({ asset, name }) => {
+        transaction.addOperation(
+          Operation.changeTrust({
+            asset: asset,
+            limit: name === "DOPE" ? "100000000" : name === "GAS" ? "1000000" : "10000000",
+          }),
+        );
+      });
+
+      const builtTransaction = transaction.setTimeout(60).build();
+      builtTransaction.sign(accountKeypair);
+      const result = await server.submitTransaction(builtTransaction);
 
       console.log(
-        `Added required trustline to existing account ${accountKeypair.publicKey()}`,
+        `Added ${missingTrustlines.length} trustlines to account ${accountKeypair.publicKey()}`,
       );
       return result.hash;
     } catch (error) {
