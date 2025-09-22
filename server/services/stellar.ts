@@ -3022,7 +3022,7 @@ export class StellarService {
 
       const asset = new Asset(assetCode, assetIssuer);
 
-      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const userKeypair = Keypair.fromSecret(secretKey);
 
       const account = await server.loadAccount(userKeypair.publicKey());
 
@@ -3047,7 +3047,7 @@ export class StellarService {
           .build();
         transaction.sign(userKeypair);
         await server.submitTransaction(transaction);
-        console.log(`Trustline created for ${assetCode} by user ${userId}`);
+        console.log(`Trustline created for ${assetCode}`);
       } else {
         throw new Error(`Trustline for ${assetCode} already exists`);
       }
@@ -3067,8 +3067,8 @@ export class StellarService {
         .operations()
         .forAccount(publicKey)
         .order("desc")
-        .limit(limit).includeFail;
-      ed(true);
+        .limit(limit)
+        .includeFailed(true);
 
       if (cursor) {
         operationsRequest = operationsRequest.cursor(cursor);
@@ -3676,15 +3676,14 @@ export class StellarService {
 
   async getUserAssets(userId: string) {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarSecretKey) {
+      const wallet = await storage.getWallet(userId);
+      if (!wallet?.publicKey) {
         throw new Error("User stellar account not found");
       }
 
-      const userKeypair = Keypair.fromSecret(user?.stellarSecretKey);
-      const account = await server.loadAccount(userKeypair.publicKey());
+      const account = await server.loadAccount(wallet.publicKey);
 
-      console.log("Assets held by", userKeypair.publicKey());
+      console.log("Assets held by", wallet.publicKey);
 
       const filteredAccount = account.balances.filter((balance: any) => {
         // Include native XLM
@@ -3724,14 +3723,13 @@ export class StellarService {
     cursor?: string,
   ): Promise<OperationRecord[]> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarSecretKey) {
+      const wallet = await storage.getWallet(userId);
+      if (!wallet?.publicKey) {
         throw new Error("User stellar account not found");
       }
 
-      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
       const operations = await this.getAccountOperations(
-        userKeypair.publicKey(),
+        wallet.publicKey,
         limit,
         cursor,
       );

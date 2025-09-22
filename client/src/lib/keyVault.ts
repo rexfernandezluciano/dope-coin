@@ -1,0 +1,1189 @@
+import * as bip39 from 'bip39';
+import { Keypair } from '@stellar/stellar-sdk';
+import { derivePath } from 'ed25519-hd-key';
+
+// =====================================================
+// TYPE DEFINITIONS AND INTERFACES
+// =====================================================
+
+export interface WalletData {
+  id: string;
+  name: string;
+  publicKey: string;
+  encryptedPrivateKey: string;
+  iv: string; // Unique IV per wallet
+  derivationPath: string;
+  createdAt: number;
+  lastUsed: number;
+}
+
+export interface EncryptedVault {
+  id: string;
+  name: string;
+  encryptedMnemonic: string;
+  wallets: WalletData[];
+  salt: string;
+  iv: string; // Unique IV for vault mnemonic
+  createdAt: number;
+  lastAccessed: number;
+}
+
+export interface KeyVaultOptions {
+  autoLockMinutes?: number;
+  pinRetries?: number;
+  defaultDerivationPath?: string;
+  minPbkdf2Iterations?: number;
+}
+
+export interface DecryptedWallet {
+  id: string;
+  name: string;
+  publicKey: string;
+  keypair: Keypair;
+  derivationPath: string;
+}
+
+export interface TransactionAuth {
+  hashedPin: string;
+  expiry: number;
+}
+
+export interface VaultStats {
+  totalVaults: number;
+  totalWallets: number;
+  lastBackup?: number;
+}
+
+// =====================================================
+// INDEXEDDB STORAGE WRAPPER
+// =====================================================
+
+class SecureStorage {
+  private dbName = 'keyVault';
+  private version = 2; // Incremented for new schema
+  private db: IDBDatabase | null = null;
+
+  async init(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.dbName, this.version);
+
+      request.onerror = () => reject(new Error('Failed to open IndexedDB'));
+      
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve();
+      };
+
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        
+        // Create vaults store with updated schema
+        if (!db.objectStoreNames.contains('vaults')) {
+          const vaultStore = db.createObjectStore('vaults', { keyPath: 'id' });
+          vaultStore.createIndex('name', 'name', { unique: false });
+          vaultStore.createIndex('lastAccessed', 'lastAccessed', { unique: false });
+        }
+
+        // Create settings store
+        if (!db.objectStoreNames.contains('settings')) {
+          db.createObjectStore('settings', { keyPath: 'key' });
+        }
+
+        // Create pin retry tracking store
+        if (!db.objectStoreNames.contains('pinRetries')) {
+          db.createObjectStore('pinRetries', { keyPath: 'walletId' });
+        }
+      };
+    });
+  }
+
+  async storeVault(vault: EncryptedVault): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['vaults'], 'readwrite');
+      const store = transaction.objectStore('vaults');
+      const request = store.put(vault);
+
+      request.onerror = () => reject(new Error('Failed to store vault'));
+      request.onsuccess = () => resolve();
+    });
+  }
+
+  async getVault(id: string): Promise<EncryptedVault | null> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['vaults'], 'readonly');
+      const store = transaction.objectStore('vaults');
+      const request = store.get(id);
+
+      request.onerror = () => reject(new Error('Failed to retrieve vault'));
+      request.onsuccess = () => resolve(request.result || null);
+    });
+  }
+
+  async getAllVaults(): Promise<EncryptedVault[]> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['vaults'], 'readonly');
+      const store = transaction.objectStore('vaults');
+      const request = store.getAll();
+
+      request.onerror = () => reject(new Error('Failed to retrieve vaults'));
+      request.onsuccess = () => resolve(request.result || []);
+    });
+  }
+
+  async deleteVault(id: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['vaults'], 'readwrite');
+      const store = transaction.objectStore('vaults');
+      const request = store.delete(id);
+
+      request.onerror = () => reject(new Error('Failed to delete vault'));
+      request.onsuccess = () => resolve();
+    });
+  }
+
+  async storeSetting(key: string, value: any): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['settings'], 'readwrite');
+      const store = transaction.objectStore('settings');
+      const request = store.put({ key, value });
+
+      request.onerror = () => reject(new Error('Failed to store setting'));
+      request.onsuccess = () => resolve();
+    });
+  }
+
+  async getSetting(key: string): Promise<any> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['settings'], 'readonly');
+      const store = transaction.objectStore('settings');
+      const request = store.get(key);
+
+      request.onerror = () => reject(new Error('Failed to retrieve setting'));
+      request.onsuccess = () => resolve(request.result?.value || null);
+    });
+  }
+
+  async storePinRetries(walletId: string, attempts: number): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['pinRetries'], 'readwrite');
+      const store = transaction.objectStore('pinRetries');
+      const request = store.put({ walletId, attempts, lastAttempt: Date.now() });
+
+      request.onerror = () => reject(new Error('Failed to store pin retry count'));
+      request.onsuccess = () => resolve();
+    });
+  }
+
+  async getPinRetries(walletId: string): Promise<{ attempts: number; lastAttempt: number } | null> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['pinRetries'], 'readonly');
+      const store = transaction.objectStore('pinRetries');
+      const request = store.get(walletId);
+
+      request.onerror = () => reject(new Error('Failed to retrieve pin retry count'));
+      request.onsuccess = () => resolve(request.result || null);
+    });
+  }
+}
+
+// =====================================================
+// CRYPTOGRAPHIC UTILITIES
+// =====================================================
+
+class CryptoUtils {
+  private static readonly MIN_PBKDF2_ITERATIONS = 300000; // Increased from 100k
+  private static readonly KEY_LENGTH = 256;
+  private static readonly IV_LENGTH = 12;
+  private static readonly SALT_LENGTH = 32;
+  private static readonly PIN_SALT_LENGTH = 16;
+
+  // Device-calibrated PBKDF2 iterations
+  private static cachedIterations: number | null = null;
+
+  static generateSalt(length: number = this.SALT_LENGTH): Uint8Array {
+    return crypto.getRandomValues(new Uint8Array(length));
+  }
+
+  static generateIV(): Uint8Array {
+    return crypto.getRandomValues(new Uint8Array(this.IV_LENGTH));
+  }
+
+  // Calibrate PBKDF2 iterations based on device performance
+  static async calibratePbkdf2Iterations(): Promise<number> {
+    if (this.cachedIterations) {
+      return this.cachedIterations;
+    }
+
+    const testPassword = 'test-password';
+    const testSalt = this.generateSalt();
+    
+    let iterations = this.MIN_PBKDF2_ITERATIONS;
+    
+    try {
+      const startTime = performance.now();
+      await this.deriveKey(testPassword, testSalt, iterations);
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+
+      // Target 500ms for key derivation (good security/UX balance)
+      const targetDuration = 500;
+      if (duration < targetDuration) {
+        // Increase iterations if device is fast
+        iterations = Math.floor(iterations * (targetDuration / duration));
+        iterations = Math.max(iterations, this.MIN_PBKDF2_ITERATIONS);
+      }
+    } catch (error) {
+      // Fall back to minimum if calibration fails
+      iterations = this.MIN_PBKDF2_ITERATIONS;
+    }
+
+    this.cachedIterations = iterations;
+    return iterations;
+  }
+
+  static async deriveKey(
+    password: string, 
+    salt: Uint8Array, 
+    iterations?: number
+  ): Promise<CryptoKey> {
+    const encoder = new TextEncoder();
+    const passwordData = encoder.encode(password);
+
+    const baseKey = await crypto.subtle.importKey(
+      'raw',
+      passwordData,
+      'PBKDF2',
+      false,
+      ['deriveKey']
+    );
+
+    const finalIterations = iterations || await this.calibratePbkdf2Iterations();
+
+    return crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: salt,
+        iterations: finalIterations,
+        hash: 'SHA-256'
+      },
+      baseKey,
+      {
+        name: 'AES-GCM',
+        length: this.KEY_LENGTH
+      },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  // Hash PIN using PBKDF2 for secure verification
+  static async hashPin(pin: string, salt?: Uint8Array): Promise<{ hash: string; salt: string }> {
+    const pinSalt = salt || this.generateSalt(this.PIN_SALT_LENGTH);
+    const encoder = new TextEncoder();
+    
+    const baseKey = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(pin),
+      'PBKDF2',
+      false,
+      ['deriveBits']
+    );
+
+    const derivedBits = await crypto.subtle.deriveBits(
+      {
+        name: 'PBKDF2',
+        salt: pinSalt,
+        iterations: 100000, // Faster iterations for PIN (used more frequently)
+        hash: 'SHA-256'
+      },
+      baseKey,
+      256
+    );
+
+    return {
+      hash: this.arrayBufferToBase64(derivedBits),
+      salt: this.arrayBufferToBase64(pinSalt)
+    };
+  }
+
+  // Constant-time comparison for PIN verification
+  static async verifyPin(pin: string, hashedPin: string, salt: string): Promise<boolean> {
+    try {
+      const saltBuffer = this.base64ToArrayBuffer(salt);
+      const { hash } = await this.hashPin(pin, new Uint8Array(saltBuffer));
+      
+      // Constant-time comparison
+      return this.constantTimeCompare(hash, hashedPin);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // Constant-time string comparison to prevent timing attacks
+  static constantTimeCompare(a: string, b: string): boolean {
+    if (a.length !== b.length) {
+      return false;
+    }
+
+    let result = 0;
+    for (let i = 0; i < a.length; i++) {
+      result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    }
+
+    return result === 0;
+  }
+
+  static async encrypt(data: string, password: string): Promise<{
+    encrypted: string;
+    salt: string;
+    iv: string;
+  }> {
+    try {
+      const salt = this.generateSalt();
+      const iv = this.generateIV(); // Unique IV per encryption
+      const key = await this.deriveKey(password, salt);
+      
+      const encoder = new TextEncoder();
+      const dataBuffer = encoder.encode(data);
+
+      const encrypted = await crypto.subtle.encrypt(
+        {
+          name: 'AES-GCM',
+          iv: iv
+        },
+        key,
+        dataBuffer
+      );
+
+      return {
+        encrypted: this.arrayBufferToBase64(encrypted),
+        salt: this.arrayBufferToBase64(salt),
+        iv: this.arrayBufferToBase64(iv)
+      };
+    } catch (error) {
+      throw new Error(`Encryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  static async decrypt(
+    encryptedData: string,
+    password: string,
+    salt: string,
+    iv: string
+  ): Promise<string> {
+    try {
+      const saltBuffer = this.base64ToArrayBuffer(salt);
+      const ivBuffer = this.base64ToArrayBuffer(iv);
+      const encryptedBuffer = this.base64ToArrayBuffer(encryptedData);
+
+      const key = await this.deriveKey(password, new Uint8Array(saltBuffer));
+
+      const decrypted = await crypto.subtle.decrypt(
+        {
+          name: 'AES-GCM',
+          iv: new Uint8Array(ivBuffer)
+        },
+        key,
+        encryptedBuffer
+      );
+
+      const decoder = new TextDecoder();
+      return decoder.decode(decrypted);
+    } catch (error) {
+      throw new Error(`Decryption failed: ${error instanceof Error ? error.message : 'Invalid password or corrupted data'}`);
+    }
+  }
+
+  private static arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  private static base64ToArrayBuffer(base64: string): ArrayBuffer {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+
+  static secureWipe(data: any): void {
+    if (typeof data === 'string') {
+      // For strings, we can't directly wipe memory in JavaScript
+      // but we can at least clear the reference
+      data = null;
+    } else if (data instanceof Uint8Array) {
+      // For typed arrays, we can overwrite with random data
+      crypto.getRandomValues(data);
+    } else if (data && typeof data === 'object') {
+      // For objects, recursively clear properties
+      for (const key in data) {
+        if (data.hasOwnProperty(key)) {
+          delete data[key];
+        }
+      }
+    }
+  }
+}
+
+// =====================================================
+// BIP39 MNEMONIC AND HD WALLET UTILITIES
+// =====================================================
+
+class MnemonicUtils {
+  static generate(strength: 128 | 256 = 128): string {
+    // 128 bits = 12 words, 256 bits = 24 words
+    const entropy = crypto.getRandomValues(new Uint8Array(strength / 8));
+    // Convert Uint8Array to hex string for browser compatibility
+    const entropyHex = Array.from(entropy)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    return bip39.entropyToMnemonic(entropyHex);
+  }
+
+  static validate(mnemonic: string): boolean {
+    return bip39.validateMnemonic(mnemonic);
+  }
+
+  static normalize(mnemonic: string): string {
+    return mnemonic.toLowerCase().trim().replace(/\s+/g, ' ');
+  }
+
+  static getWordCount(mnemonic: string): number {
+    return this.normalize(mnemonic).split(' ').length;
+  }
+
+  // Proper SLIP-0010 Ed25519 BIP44 derivation for Stellar
+  static deriveKeypair(mnemonic: string, derivationPath: string = "m/44'/148'/0'/0/0"): Keypair {
+    if (!this.validate(mnemonic)) {
+      throw new Error('Invalid mnemonic phrase');
+    }
+
+    try {
+      // Generate seed from mnemonic
+      const seed = bip39.mnemonicToSeedSync(mnemonic);
+      
+      // Use ed25519-hd-key for proper SLIP-0010 derivation
+      const { key } = derivePath(derivationPath, seed.toString('hex'));
+      
+      // Create Stellar keypair from derived key
+      return Keypair.fromRawEd25519Seed(key);
+    } catch (error) {
+      throw new Error(`Key derivation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  // Validate derivation path follows Stellar BIP44 standard
+  static validateDerivationPath(path: string): boolean {
+    // Stellar BIP44 path: m/44'/148'/account'/change/index
+    const stellarBip44Regex = /^m\/44'\/148'\/\d+'\/\d+\/\d+$/;
+    return stellarBip44Regex.test(path);
+  }
+
+  // Generate next account derivation path
+  static getNextAccountPath(currentPath: string): string {
+    const match = currentPath.match(/^(m\/44'\/148'\/)(\d+)('\/\d+\/\d+)$/);
+    if (!match) {
+      throw new Error('Invalid derivation path format');
+    }
+    
+    const [, prefix, accountStr, suffix] = match;
+    const account = parseInt(accountStr) + 1;
+    return `${prefix}${account}${suffix}`;
+  }
+}
+
+// =====================================================
+// IN-MEMORY KEY MANAGEMENT
+// =====================================================
+
+class MemoryManager {
+  private activeWallets: Map<string, DecryptedWallet> = new Map();
+  private activePins: Map<string, TransactionAuth> = new Map();
+  private autoLockTimer: number | null = null;
+  private isLocked: boolean = true;
+  private autoLockMinutes: number;
+  private pinRetryLimits: Map<string, number> = new Map();
+
+  constructor(autoLockMinutes: number = 5) {
+    this.autoLockMinutes = autoLockMinutes;
+    this.setupAutoLock();
+    this.setupVisibilityHandlers();
+  }
+
+  private setupAutoLock(): void {
+    this.resetAutoLockTimer();
+    
+    // Listen for user activity to reset the timer
+    const resetActivity = () => this.resetAutoLockTimer();
+    document.addEventListener('mousedown', resetActivity, { passive: true });
+    document.addEventListener('keydown', resetActivity, { passive: true });
+    document.addEventListener('scroll', resetActivity, { passive: true });
+    document.addEventListener('touchstart', resetActivity, { passive: true });
+  }
+
+  // Enhanced auto-lock with visibility and beforeunload handlers
+  private setupVisibilityHandlers(): void {
+    // Lock immediately when tab becomes hidden
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        this.lock();
+      }
+    });
+
+    // Lock before page unload
+    window.addEventListener('beforeunload', () => {
+      this.lock();
+    });
+
+    // Lock when browser focus is lost
+    window.addEventListener('blur', () => {
+      this.lock();
+    });
+  }
+
+  private resetAutoLockTimer(): void {
+    if (this.autoLockTimer) {
+      clearTimeout(this.autoLockTimer);
+    }
+    
+    if (!this.isLocked) {
+      this.autoLockTimer = window.setTimeout(() => {
+        this.lock();
+      }, this.autoLockMinutes * 60 * 1000);
+    }
+  }
+
+  unlock(): void {
+    this.isLocked = false;
+    this.resetAutoLockTimer();
+  }
+
+  lock(): void {
+    this.isLocked = true;
+    this.clearAll();
+    
+    if (this.autoLockTimer) {
+      clearTimeout(this.autoLockTimer);
+      this.autoLockTimer = null;
+    }
+  }
+
+  isUnlocked(): boolean {
+    return !this.isLocked;
+  }
+
+  addWallet(wallet: DecryptedWallet): void {
+    if (this.isLocked) {
+      throw new Error('KeyVault is locked');
+    }
+    this.activeWallets.set(wallet.id, wallet);
+    this.resetAutoLockTimer();
+  }
+
+  getWallet(id: string): DecryptedWallet | undefined {
+    if (this.isLocked) {
+      throw new Error('KeyVault is locked');
+    }
+    this.resetAutoLockTimer();
+    return this.activeWallets.get(id);
+  }
+
+  removeWallet(id: string): void {
+    const wallet = this.activeWallets.get(id);
+    if (wallet) {
+      // Secure wipe of sensitive data
+      CryptoUtils.secureWipe(wallet.keypair);
+      this.activeWallets.delete(id);
+    }
+    this.activePins.delete(id);
+    this.pinRetryLimits.delete(id);
+  }
+
+  getAllWallets(): DecryptedWallet[] {
+    if (this.isLocked) {
+      throw new Error('KeyVault is locked');
+    }
+    this.resetAutoLockTimer();
+    return Array.from(this.activeWallets.values());
+  }
+
+  // Secure PIN storage with hashing and retry limits
+  async storePin(walletId: string, pin: string, expiryMinutes: number = 5): Promise<void> {
+    const expiry = Date.now() + (expiryMinutes * 60 * 1000);
+    const { hash, salt } = await CryptoUtils.hashPin(pin);
+    
+    this.activePins.set(walletId, { 
+      hashedPin: `${hash}:${salt}`, 
+      expiry 
+    });
+    
+    // Auto-clear expired pin
+    setTimeout(() => {
+      this.clearPin(walletId);
+    }, expiryMinutes * 60 * 1000);
+  }
+
+  async verifyPin(walletId: string, pin: string): Promise<boolean> {
+    const stored = this.activePins.get(walletId);
+    if (!stored || Date.now() > stored.expiry) {
+      this.clearPin(walletId);
+      return false;
+    }
+
+    // Check retry limit
+    const retries = this.pinRetryLimits.get(walletId) || 0;
+    if (retries >= 3) {
+      this.clearPin(walletId);
+      throw new Error('PIN retry limit exceeded. Please unlock vault again.');
+    }
+
+    const [hash, salt] = stored.hashedPin.split(':');
+    const isValid = await CryptoUtils.verifyPin(pin, hash, salt);
+    
+    if (!isValid) {
+      // Increment retry count
+      this.pinRetryLimits.set(walletId, retries + 1);
+      return false;
+    }
+
+    // Reset retry count on successful verification
+    this.pinRetryLimits.delete(walletId);
+    return true;
+  }
+
+  clearPin(walletId: string): void {
+    this.activePins.delete(walletId);
+    this.pinRetryLimits.delete(walletId);
+  }
+
+  clearAll(): void {
+    // Secure wipe all sensitive data
+    this.activeWallets.forEach(wallet => {
+      CryptoUtils.secureWipe(wallet.keypair);
+    });
+    this.activeWallets.clear();
+    this.activePins.clear();
+    this.pinRetryLimits.clear();
+  }
+
+  getStats(): { walletCount: number; isLocked: boolean; autoLockMinutes: number } {
+    return {
+      walletCount: this.activeWallets.size,
+      isLocked: this.isLocked,
+      autoLockMinutes: this.autoLockMinutes
+    };
+  }
+}
+
+// =====================================================
+// MAIN KEYVAULT CLASS
+// =====================================================
+
+export class KeyVault {
+  private storage: SecureStorage;
+  private memory: MemoryManager;
+  private currentVaultId: string | null = null;
+  private options: KeyVaultOptions;
+
+  constructor(options: KeyVaultOptions = {}) {
+    this.storage = new SecureStorage();
+    this.memory = new MemoryManager(options.autoLockMinutes || 5);
+    this.options = {
+      autoLockMinutes: 5,
+      pinRetries: 3,
+      defaultDerivationPath: "m/44'/148'/0'/0/0",
+      minPbkdf2Iterations: 300000,
+      ...options
+    };
+  }
+
+  // =====================================================
+  // INITIALIZATION
+  // =====================================================
+
+  async initialize(): Promise<void> {
+    try {
+      await this.storage.init();
+      // Pre-calibrate PBKDF2 iterations
+      await CryptoUtils.calibratePbkdf2Iterations();
+    } catch (error) {
+      throw new Error(`Failed to initialize KeyVault: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  // =====================================================
+  // VAULT MANAGEMENT
+  // =====================================================
+
+  async createVault(name: string, password: string, mnemonic?: string): Promise<string> {
+    try {
+      // Generate mnemonic if not provided
+      const vaultMnemonic = mnemonic || MnemonicUtils.generate(128);
+      
+      if (!MnemonicUtils.validate(vaultMnemonic)) {
+        throw new Error('Invalid mnemonic phrase');
+      }
+
+      // Create vault ID
+      const vaultId = this.generateId();
+
+      // Encrypt mnemonic with unique IV
+      const encryptionResult = await CryptoUtils.encrypt(vaultMnemonic, password);
+
+      const vault: EncryptedVault = {
+        id: vaultId,
+        name,
+        encryptedMnemonic: encryptionResult.encrypted,
+        wallets: [],
+        salt: encryptionResult.salt,
+        iv: encryptionResult.iv, // Unique IV for vault
+        createdAt: Date.now(),
+        lastAccessed: Date.now()
+      };
+
+      await this.storage.storeVault(vault);
+      
+      // Secure wipe the plain mnemonic
+      CryptoUtils.secureWipe(vaultMnemonic);
+      
+      return vaultId;
+    } catch (error) {
+      throw new Error(`Failed to create vault: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async unlockVault(vaultId: string, password: string): Promise<void> {
+    try {
+      const vault = await this.storage.getVault(vaultId);
+      if (!vault) {
+        throw new Error('Vault not found');
+      }
+
+      // Verify password by attempting to decrypt mnemonic
+      const mnemonic = await CryptoUtils.decrypt(
+        vault.encryptedMnemonic,
+        password,
+        vault.salt,
+        vault.iv
+      );
+
+      if (!MnemonicUtils.validate(mnemonic)) {
+        throw new Error('Vault integrity check failed');
+      }
+
+      // Update last accessed
+      vault.lastAccessed = Date.now();
+      await this.storage.storeVault(vault);
+
+      this.currentVaultId = vaultId;
+      this.memory.unlock();
+
+      // Load wallets into memory
+      for (const walletData of vault.wallets) {
+        await this.loadWalletIntoMemory(walletData, mnemonic, password);
+      }
+
+      // Secure wipe the mnemonic
+      CryptoUtils.secureWipe(mnemonic);
+    } catch (error) {
+      throw new Error(`Failed to unlock vault: ${error instanceof Error ? error.message : 'Invalid password or corrupted vault'}`);
+    }
+  }
+
+  async lockVault(): Promise<void> {
+    this.memory.lock();
+    this.currentVaultId = null;
+  }
+
+  async changeVaultPassword(vaultId: string, currentPassword: string, newPassword: string): Promise<void> {
+    try {
+      const vault = await this.storage.getVault(vaultId);
+      if (!vault) {
+        throw new Error('Vault not found');
+      }
+
+      // Decrypt with current password
+      const mnemonic = await CryptoUtils.decrypt(
+        vault.encryptedMnemonic,
+        currentPassword,
+        vault.salt,
+        vault.iv
+      );
+
+      // Re-encrypt with new password and new IV
+      const encryptionResult = await CryptoUtils.encrypt(mnemonic, newPassword);
+
+      vault.encryptedMnemonic = encryptionResult.encrypted;
+      vault.salt = encryptionResult.salt;
+      vault.iv = encryptionResult.iv;
+
+      // Re-encrypt all wallet private keys with unique IVs
+      for (const walletData of vault.wallets) {
+        const decryptedPrivateKey = await CryptoUtils.decrypt(
+          walletData.encryptedPrivateKey,
+          currentPassword,
+          vault.salt,
+          walletData.iv
+        );
+        
+        const reEncrypted = await CryptoUtils.encrypt(decryptedPrivateKey, newPassword);
+        walletData.encryptedPrivateKey = reEncrypted.encrypted;
+        walletData.iv = reEncrypted.iv; // New IV for wallet
+      }
+
+      await this.storage.storeVault(vault);
+
+      // Secure wipe sensitive data
+      CryptoUtils.secureWipe(mnemonic);
+    } catch (error) {
+      throw new Error(`Failed to change vault password: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async deleteVault(vaultId: string, password: string): Promise<void> {
+    try {
+      const vault = await this.storage.getVault(vaultId);
+      if (!vault) {
+        throw new Error('Vault not found');
+      }
+
+      // Verify password
+      await CryptoUtils.decrypt(
+        vault.encryptedMnemonic,
+        password,
+        vault.salt,
+        vault.iv
+      );
+
+      await this.storage.deleteVault(vaultId);
+
+      if (this.currentVaultId === vaultId) {
+        await this.lockVault();
+      }
+    } catch (error) {
+      throw new Error(`Failed to delete vault: ${error instanceof Error ? error.message : 'Invalid password'}`);
+    }
+  }
+
+  // =====================================================
+  // WALLET MANAGEMENT
+  // =====================================================
+
+  async addWallet(name: string, derivationPath?: string, password?: string): Promise<string> {
+    if (!this.currentVaultId || !this.memory.isUnlocked()) {
+      throw new Error('No vault unlocked');
+    }
+
+    try {
+      const vault = await this.storage.getVault(this.currentVaultId);
+      if (!vault) {
+        throw new Error('Current vault not found');
+      }
+
+      // We need the vault password to decrypt the mnemonic
+      if (!password) {
+        throw new Error('Password required to add new wallet');
+      }
+
+      // Decrypt master mnemonic
+      const mnemonic = await CryptoUtils.decrypt(
+        vault.encryptedMnemonic,
+        password,
+        vault.salt,
+        vault.iv
+      );
+
+      const walletId = this.generateId();
+      let path = derivationPath || this.options.defaultDerivationPath || "m/44'/148'/0'/0/0";
+      
+      // Auto-increment account if using default path and wallets exist
+      if (!derivationPath && vault.wallets.length > 0) {
+        const lastWallet = vault.wallets[vault.wallets.length - 1];
+        if (MnemonicUtils.validateDerivationPath(lastWallet.derivationPath)) {
+          path = MnemonicUtils.getNextAccountPath(lastWallet.derivationPath);
+        }
+      }
+
+      // Validate derivation path
+      if (!MnemonicUtils.validateDerivationPath(path)) {
+        throw new Error('Invalid Stellar BIP44 derivation path');
+      }
+
+      // Derive keypair using proper BIP44 derivation
+      const keypair = MnemonicUtils.deriveKeypair(mnemonic, path);
+
+      // Encrypt private key with unique IV
+      const privateKeyHex = keypair.secret();
+      const encryptionResult = await CryptoUtils.encrypt(privateKeyHex, password);
+
+      const walletData: WalletData = {
+        id: walletId,
+        name,
+        publicKey: keypair.publicKey(),
+        encryptedPrivateKey: encryptionResult.encrypted,
+        iv: encryptionResult.iv, // Unique IV per wallet
+        derivationPath: path,
+        createdAt: Date.now(),
+        lastUsed: Date.now()
+      };
+
+      // Add to vault
+      vault.wallets.push(walletData);
+      await this.storage.storeVault(vault);
+
+      // Add to memory
+      const decryptedWallet: DecryptedWallet = {
+        id: walletId,
+        name,
+        publicKey: keypair.publicKey(),
+        keypair,
+        derivationPath: path
+      };
+
+      this.memory.addWallet(decryptedWallet);
+
+      // Secure wipe sensitive data
+      CryptoUtils.secureWipe(mnemonic);
+      CryptoUtils.secureWipe(privateKeyHex);
+
+      return walletId;
+    } catch (error) {
+      throw new Error(`Failed to add wallet: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async importWallet(name: string, mnemonic: string, derivationPath?: string): Promise<string> {
+    if (!this.memory.isUnlocked()) {
+      throw new Error('No vault unlocked');
+    }
+
+    try {
+      const normalizedMnemonic = MnemonicUtils.normalize(mnemonic);
+      if (!MnemonicUtils.validate(normalizedMnemonic)) {
+        throw new Error('Invalid mnemonic phrase');
+      }
+
+      const path = derivationPath || this.options.defaultDerivationPath || "m/44'/148'/0'/0/0";
+      
+      // Validate derivation path
+      if (!MnemonicUtils.validateDerivationPath(path)) {
+        throw new Error('Invalid Stellar BIP44 derivation path');
+      }
+
+      const keypair = MnemonicUtils.deriveKeypair(normalizedMnemonic, path);
+      
+      const walletId = this.generateId();
+
+      const decryptedWallet: DecryptedWallet = {
+        id: walletId,
+        name,
+        publicKey: keypair.publicKey(),
+        keypair,
+        derivationPath: path
+      };
+
+      this.memory.addWallet(decryptedWallet);
+
+      // Secure wipe the mnemonic
+      CryptoUtils.secureWipe(normalizedMnemonic);
+
+      return walletId;
+    } catch (error) {
+      throw new Error(`Failed to import wallet: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  getWallet(walletId: string): DecryptedWallet | undefined {
+    return this.memory.getWallet(walletId);
+  }
+
+  getAllWallets(): DecryptedWallet[] {
+    return this.memory.getAllWallets();
+  }
+
+  async removeWallet(walletId: string): Promise<void> {
+    if (!this.currentVaultId) {
+      throw new Error('No vault unlocked');
+    }
+
+    try {
+      const vault = await this.storage.getVault(this.currentVaultId);
+      if (!vault) {
+        throw new Error('Current vault not found');
+      }
+
+      vault.wallets = vault.wallets.filter(w => w.id !== walletId);
+      await this.storage.storeVault(vault);
+
+      this.memory.removeWallet(walletId);
+    } catch (error) {
+      throw new Error(`Failed to remove wallet: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  // =====================================================
+  // TRANSACTION AUTHORIZATION
+  // =====================================================
+
+  async authorizeTransaction(walletId: string, pin: string): Promise<boolean> {
+    try {
+      await this.memory.storePin(walletId, pin, 5);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async signTransaction(walletId: string, pin: string, transactionEnvelope: string): Promise<string> {
+    const isValidPin = await this.memory.verifyPin(walletId, pin);
+    if (!isValidPin) {
+      throw new Error('Invalid or expired PIN');
+    }
+
+    const wallet = this.memory.getWallet(walletId);
+    if (!wallet) {
+      throw new Error('Wallet not found or vault locked');
+    }
+
+    try {
+      // The actual transaction signing would be implemented here
+      const signature = wallet.keypair.sign(Buffer.from(transactionEnvelope, 'hex'));
+      
+      // Clear the PIN after use
+      this.memory.clearPin(walletId);
+      
+      return signature.toString('hex');
+    } catch (error) {
+      throw new Error(`Failed to sign transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  // =====================================================
+  // UTILITY METHODS
+  // =====================================================
+
+  async getAllVaults(): Promise<EncryptedVault[]> {
+    return this.storage.getAllVaults();
+  }
+
+  async getVaultStats(): Promise<VaultStats> {
+    const vaults = await this.getAllVaults();
+    const totalWallets = vaults.reduce((sum, vault) => sum + vault.wallets.length, 0);
+    
+    return {
+      totalVaults: vaults.length,
+      totalWallets,
+      lastBackup: await this.storage.getSetting('lastBackup')
+    };
+  }
+
+  generateMnemonic(strength: 128 | 256 = 128): string {
+    return MnemonicUtils.generate(strength);
+  }
+
+  validateMnemonic(mnemonic: string): boolean {
+    return MnemonicUtils.validate(mnemonic);
+  }
+
+  validateDerivationPath(path: string): boolean {
+    return MnemonicUtils.validateDerivationPath(path);
+  }
+
+  isVaultUnlocked(): boolean {
+    return this.memory.isUnlocked() && this.currentVaultId !== null;
+  }
+
+  getCurrentVaultId(): string | null {
+    return this.currentVaultId;
+  }
+
+  getMemoryStats() {
+    return this.memory.getStats();
+  }
+
+  // =====================================================
+  // PRIVATE HELPER METHODS
+  // =====================================================
+
+  private async loadWalletIntoMemory(walletData: WalletData, mnemonic: string, password: string): Promise<void> {
+    try {
+      let keypair: Keypair;
+
+      // Try to load from encrypted private key first (preferred method)
+      if (walletData.encryptedPrivateKey && walletData.iv) {
+        try {
+          const privateKeyHex = await CryptoUtils.decrypt(
+            walletData.encryptedPrivateKey,
+            password,
+            '', // Salt is embedded in the vault level
+            walletData.iv
+          );
+          keypair = Keypair.fromSecret(privateKeyHex);
+        } catch (error) {
+          // Fall back to mnemonic derivation if private key decryption fails
+          keypair = MnemonicUtils.deriveKeypair(mnemonic, walletData.derivationPath);
+        }
+      } else {
+        // Derive from mnemonic
+        keypair = MnemonicUtils.deriveKeypair(mnemonic, walletData.derivationPath);
+      }
+      
+      const decryptedWallet: DecryptedWallet = {
+        id: walletData.id,
+        name: walletData.name,
+        publicKey: walletData.publicKey,
+        keypair,
+        derivationPath: walletData.derivationPath
+      };
+
+      this.memory.addWallet(decryptedWallet);
+    } catch (error) {
+      console.error(`Failed to load wallet ${walletData.id} into memory:`, error);
+    }
+  }
+
+  private generateId(): string {
+    return crypto.getRandomValues(new Uint32Array(4)).join('-');
+  }
+}
+
+// =====================================================
+// EXPORT DEFAULT INSTANCE
+// =====================================================
+
+export const keyVault = new KeyVault();
+
+// Auto-initialize
+keyVault.initialize().catch(console.error);
+
+// Remove dev exposure in production builds
+if (typeof process !== 'undefined' && process.env.NODE_ENV === 'production') {
+  // Ensure no test exposure to global scope in production
+  (globalThis as any).testKeyVault = undefined;
+  delete (globalThis as any).testKeyVault;
+} else {
+  // Only expose in development for testing
+  (globalThis as any).testKeyVault = keyVault;
+}

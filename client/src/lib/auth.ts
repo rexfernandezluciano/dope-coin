@@ -1,5 +1,5 @@
 export class AuthService {
-  private static getAuthHeaders() {
+  private static getAuthHeaders(): Record<string, string> {
     const token = localStorage.getItem("token");
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
