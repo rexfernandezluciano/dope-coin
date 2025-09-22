@@ -858,8 +858,22 @@ export class StellarService {
         baseFee = BASE_FEE.toString();
       }
 
-      const supportedSellAsset = sellAsset.code === "XLM" ? Asset.native() : sellAsset.code === "USDC" ? new Asset("USDC", USDC_ISSUER_ACCOUNT) : sellAsset.code === "EURC" ? new Asset("EURC", USDC_ISSUER_ACCOUNT) : new Asset("DOPE", dopeIssuerKeypair.publicKey());
-      const supportedBuyAsset = buyAsset.code === "XLM" ? Asset.native() : buyAsset.code === "USDC" ? new Asset("USDC", USDC_ISSUER_ACCOUNT) : buyAsset.code === "EURC" ? new Asset("EURC", USDC_ISSUER_ACCOUNT) : new Asset("DOPE", dopeIssuerKeypair.publicKey());
+      const supportedSellAsset =
+        sellAsset.code === "XLM"
+          ? Asset.native()
+          : sellAsset.code === "USDC"
+            ? new Asset("USDC", USDC_ISSUER_ACCOUNT)
+            : sellAsset.code === "EURC"
+              ? new Asset("EURC", USDC_ISSUER_ACCOUNT)
+              : new Asset("DOPE", dopeIssuerKeypair.publicKey());
+      const supportedBuyAsset =
+        buyAsset.code === "XLM"
+          ? Asset.native()
+          : buyAsset.code === "USDC"
+            ? new Asset("USDC", USDC_ISSUER_ACCOUNT)
+            : buyAsset.code === "EURC"
+              ? new Asset("EURC", USDC_ISSUER_ACCOUNT)
+              : new Asset("DOPE", dopeIssuerKeypair.publicKey());
 
       // Use path payments for better execution
       const transaction = new TransactionBuilder(userAccount, {
@@ -1951,12 +1965,9 @@ export class StellarService {
           );
         }
       }
-
       handleStellarError(
         error,
-        Array.from(
-          error.response?.data?.extras?.result_codes?.operations || error.resposne,
-        ).toString() || "Failed to add liquidity",
+         "Failed to add liquidity: " + error.message,
       );
     }
   }
@@ -3728,7 +3739,7 @@ function handleStellarError(
     }
   }
 
-  throw new Error(defaultMessage);
+  throw new Error(error.message || defaultMessage);
 }
 
 export {
