@@ -35,6 +35,7 @@ export const wallets = pgTable("wallets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
   publicKey: varchar("public_key").notNull(),
+  dopeBalance: decimal("dope_balance", { precision: 18, scale: 8 }).default("0"),
   lastUpdated: timestamp("last_updated").default(sql`now()`),
 });
 
@@ -191,8 +192,6 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type MiningSession = typeof miningSessions.$inferSelect;
 export type InsertMiningSession = z.infer<typeof insertMiningSessionSchema>;
-export type Transaction = typeof transactions.$inferSelect;
-export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 export type Wallet = typeof wallets.$inferSelect;
 export type InsertWallet = z.infer<typeof insertWalletSchema>;
 export type NetworkStats = typeof networkStats.$inferSelect;

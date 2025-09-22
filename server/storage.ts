@@ -3,13 +3,10 @@ import {
   miningSessions,
   wallets,
   networkStats,
-  transactions,
   type User,
   type InsertUser,
   type MiningSession,
   type InsertMiningSession,
-  type Transaction,
-  type InsertTransaction,
   type Wallet,
   type InsertWallet,
   type NetworkStats,
@@ -172,89 +169,7 @@ export class DatabaseStorage implements IStorage {
     return session;
   }
 
-  // Transaction methods
-  async createTransaction(
-    insertTransaction: InsertTransaction,
-  ): Promise<Transaction> {
-    const [transaction] = await db
-      .insert(transactions)
-      .values(insertTransaction)
-      .returning();
-    return transaction;
-  }
-
-  async getTransactions(
-    userId: string,
-    page: number = 1,
-    limit: number = 20,
-  ): Promise<Transaction[]> {
-    const offset = (page - 1) * limit;
-    return db
-      .select()
-      .from(transactions)
-      .where(eq(transactions.userId, userId))
-      .orderBy(desc(transactions.createdAt))
-      .limit(limit)
-      .offset(offset);
-  }
-
-  async getTransactionsByType(
-    userId: string,
-    type: string,
-  ): Promise<Transaction[]> {
-    try {
-      return await db
-        .select()
-        .from(transactions)
-        .where(
-          and(eq(transactions.userId, userId), eq(transactions.type, type)),
-        )
-        .orderBy(desc(transactions.createdAt));
-    } catch (error) {
-      console.error(`Error getting transactions by type ${type}:`, error);
-      return [];
-    }
-  }
-
-  async updateTransactionStatus(
-    claimableBalanceId: string,
-    status: string,
-  ): Promise<boolean> {
-    try {
-      // First, let's verify the record exists
-      const existing = await db
-        .select({ id: transactions.id, currentStatus: transactions.status })
-        .from(transactions)
-        .where(sql`metadata->>'claimableBalanceId' = ${claimableBalanceId}`)
-        .limit(1);
-
-      if (existing.length === 0) {
-        console.log(
-          `No transaction found with claimableBalanceId: ${claimableBalanceId}`,
-        );
-        return false;
-      }
-
-      console.log(
-        `Found transaction ${existing[0].id} with current status: ${existing[0].currentStatus}`,
-      );
-
-      // Now update it
-      const result = await db
-        .update(transactions)
-        .set({
-          status: status,
-        })
-        .where(sql`metadata->>'claimableBalanceId' = ${claimableBalanceId}`)
-        .returning({ id: transactions.id, newStatus: transactions.status });
-
-      console.log(`Updated ${result.length} transactions to status: ${status}`);
-      return result.length > 0;
-    } catch (error) {
-      console.error("Error updating transaction status:", error);
-      throw error;
-    }
-  }
+  
 
   // Stats methods
   async getUserStats(userId: string): Promise<{
@@ -271,13 +186,13 @@ export class DatabaseStorage implements IStorage {
         .from(miningSessions)
         .where(eq(miningSessions.userId, userId));
 
-      // Get total earned from transactions
+      // Get total earned from mining sessions
       const [earningsResult] = await db
         .select({
-          totalEarned: sql<string>`COALESCE(SUM(CASE WHEN ${transactions.type} IN ('mining_reward', 'referral_bonus') THEN ${transactions.amount} ELSE 0 END), 0)`,
+          totalEarned: sql<string>`COALESCE(SUM(${miningSessions.totalEarned}), 0)`,
         })
-        .from(transactions)
-        .where(eq(transactions.userId, userId));
+        .from(miningSessions)
+        .where(eq(miningSessions.userId, userId));
 
       // Get referral count
       const totalReferrals = await this.getReferralCount(userId);
@@ -459,14 +374,7 @@ export class DatabaseStorage implements IStorage {
         });
       }
 
-      // Create transaction record
-      await this.createTransaction({
-        userId,
-        type: "referral_bonus",
-        amount,
-        assetType: "DOPE",
-        status: "completed",
-      });
+      // Note: Referral bonus added to wallet balance above
     } catch (error) {
       console.error("Error adding referral bonus:", error);
       throw error;
