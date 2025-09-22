@@ -49,11 +49,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // DOPE Image
-  app.get("/assets/:path", (req, res) => {
+  app.get("/static/:path", (req, res) => {
     const imagePath = req.params.path;
     res
       .header("Content-Type", "image/png")
-      .sendFile(path.join(import.meta.dirname, `../assets/${imagePath}`));
+      .sendFile(path.join(import.meta.dirname, `../static/${imagePath}`));
   });
 
   // Auth routes
