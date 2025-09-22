@@ -139,7 +139,7 @@ function dispatch(action: Action) {
 
 type Toast = Omit<ToasterToast, "id">
 
-function toastFunction({ ...props }: Toast) {
+function toast({ ...props }: Toast) {
   const id = genId()
 
   const update = (props: ToasterToast) =>
@@ -188,4 +188,4 @@ function useToast() {
   }
 }
 
-export { useToast, toastFunction as toast }
+export { useToast, toast }
