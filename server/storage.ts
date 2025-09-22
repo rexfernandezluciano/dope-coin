@@ -16,6 +16,7 @@ import {
 } from "../shared/schema.js";
 import { db } from "./db.js";
 import { eq, and, desc, sum, count, sql, gte } from "drizzle-orm";
+import { stellarService } from "./services/stellar.js";
 
 // Define VaultData interface for vault storage
 interface VaultData {
@@ -296,10 +297,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTotalDopeSupply(): Promise<number> {
-    const result = await db
-      .select({ total: sum(wallets.dopeBalance) })
-      .from(wallets);
-    return parseFloat(result[0]?.total?.toString() || "0");
+    return 0;
   }
 
   async getCompletedMiningSessionsCount(
@@ -387,12 +385,13 @@ export class DatabaseStorage implements IStorage {
       // Update user's wallet balance
       const wallet = await this.getWallet(userId);
       if (wallet) {
-        const currentBalance = parseFloat(wallet.dopeBalance || "0");
+        const currentBalance = parseFloat(
+          stellarService.getDOPEBalance(userId).toString() || "0",
+        );
         const bonusAmount = parseFloat(amount);
         const newBalance = (currentBalance + bonusAmount).toString();
 
         await this.updateWallet(userId, {
-          dopeBalance: newBalance,
           lastUpdated: new Date(),
         });
       }
@@ -419,29 +418,35 @@ export class DatabaseStorage implements IStorage {
 
   // Vault storage methods
   async storeVault(vaultData: VaultData): Promise<void> {
-    await db.insert(vaults).values({
-      id: vaultData.id,
-      userId: vaultData.userId,
-      name: vaultData.name,
-      encryptedData: vaultData.encryptedData,
-      salt: vaultData.salt,
-      iv: vaultData.iv,
-      createdAt: vaultData.createdAt,
-      lastAccessed: vaultData.lastAccessed,
-    }).onConflictDoUpdate({
-      target: vaults.id,
-      set: {
+    await db
+      .insert(vaults)
+      .values({
+        id: vaultData.id,
+        userId: vaultData.userId,
         name: vaultData.name,
         encryptedData: vaultData.encryptedData,
         salt: vaultData.salt,
         iv: vaultData.iv,
+        createdAt: vaultData.createdAt,
         lastAccessed: vaultData.lastAccessed,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: vaults.id,
+        set: {
+          name: vaultData.name,
+          encryptedData: vaultData.encryptedData,
+          salt: vaultData.salt,
+          iv: vaultData.iv,
+          lastAccessed: vaultData.lastAccessed,
+        },
+      });
   }
 
   async getVault(vaultId: string): Promise<VaultData | null> {
-    const [vault] = await db.select().from(vaults).where(eq(vaults.id, vaultId));
+    const [vault] = await db
+      .select()
+      .from(vaults)
+      .where(eq(vaults.id, vaultId));
     if (!vault) return null;
 
     return {
@@ -457,8 +462,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserVaults(userId: string): Promise<VaultData[]> {
-    const vaultsData = await db.select().from(vaults).where(eq(vaults.userId, userId));
-    return vaultsData.map(vault => ({
+    const vaultsData = await db
+      .select()
+      .from(vaults)
+      .where(eq(vaults.userId, userId));
+    return vaultsData.map((vault) => ({
       id: vault.id,
       userId: vault.userId,
       name: vault.name,
