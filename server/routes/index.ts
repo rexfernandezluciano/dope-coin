@@ -97,8 +97,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email: validatedData.email,
         password: hashedPassword,
         fullName: validatedData.fullName,
-        stellarPublicKey: stellarKeypair.publicKey,
-        stellarSecretKey: stellarKeypair.secretKey,
         referralCode,
         referredBy: referrerUser?.id || null,
       };
@@ -106,14 +104,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.createUser(userData);
 
       // Initialize wallet
-      await storage.createWallet({ userId: user.id });
-
-      // Create DOPE trustline for new user
-
-      const keypair = generator.getKeypair();
-      if (!keypair) {
-        await stellarService.createAccountWithDopeTrustline(keypair);
-      }
+      await storage.createWallet({
+        userId: user.id,
+        publicKey: stellarKeypair.publicKey(),
+      });
 
       // Give referral bonus to referrer if applicable
       if (referrerUser) {
@@ -141,6 +135,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           fullName: user.fullName,
           level: user.level,
           publicKey: stellarKeypair.publicKey,
+          secretKey: stellarKeypair.secret(),
           passphrase: stellarKeypair.mnemonic,
           referralCode: user.referralCode,
         },
@@ -231,7 +226,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           level: user.level,
           isVerified: user.isVerified,
           referralCode: user.referralCode,
-          stellarPublicKey: user.stellarPublicKey, // Keep public key, but not secret
+          publicKey: wallet && wallet.publicKey,
           createdAt: user.createdAt,
         },
         wallet,
@@ -261,6 +256,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updatedAt: new Date(),
       });
 
+      const wallet = await storage.getWallet(userId);
+
       // Create safe updated user object without sensitive fields
       const safeUpdatedUser = {
         id: updatedUser.id,
@@ -268,7 +265,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email: updatedUser.email,
         fullName: updatedUser.fullName,
         profilePicture: updatedUser.profilePicture,
-        stellarPublicKey: updatedUser.stellarPublicKey, // Keep public key, but not secret
+        publicKey: (wallet && wallet.publicKey) || "",
         isVerified: updatedUser.isVerified,
         level: updatedUser.level,
         referralCode: updatedUser.referralCode,
@@ -370,7 +367,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const claimbleBalances = await miningService.getClaimbaleBalances(userId);
+      const { secretKey } = req.query;
+
+      const claimbleBalances = await miningService.getClaimbaleBalances(secretKey as string);
 
       if (!claimbleBalances || claimbleBalances.length < 0) {
         return res.status(404).json({ message: "No claimable balances found" });
@@ -383,14 +382,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/protected/mining/claimable", rateLimiter, async (req, res) => {
-    const userId = req.user?.id;
+    const { secretKey } = req.query;
 
-    if (!userId) {
+    if (!secretKey) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
     try {
-      await miningService.claimUnclaimedRewards(userId);
+      await miningService.claimUnclaimedRewards(secretKey as string);
       return res.json({ message: "Rewards claimed successfully" });
     } catch (error) {
       return res.status(500).json({ message: "Internal server error" });
@@ -400,17 +399,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Wallet routes
   app.get("/api/protected/wallet", rateLimiter, async (req, res) => {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
+      const { secretKey } = req.query;
+      if (!secretKey) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
       const [xlmBalance, dopeBalance, usdcBalance, gasBalance] =
         await Promise.all([
-          stellarService.getXLMBalance(userId),
-          stellarService.getDOPEBalance(userId),
-          stellarService.getUSDCBalance(userId),
-          stellarService.getGASBalance(userId),
+          stellarService.getXLMBalance(secretKey),
+          stellarService.getDOPEBalance(secretKey),
+          stellarService.getUSDCBalance(secretKey),
+          stellarService.getGASBalance(secretKey),
         ]);
 
       res.json({
@@ -427,8 +426,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/protected/wallet/send", rateLimiter, async (req, res) => {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
+      const { secretKey } = req.query;
+      if (!secretKey) {
         return res.status(401).json({ message: "Unauthorized" });
       }
       const { toAddress, amount, assetType } = req.body;
@@ -438,7 +437,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const transaction = await stellarService.sendTokens(
-        userId,
+        secretKey,
         toAddress,
         amount,
         assetType,
@@ -461,8 +460,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     rateLimiter,
     async (req, res) => {
       try {
-        const userId = req.user?.id;
-        if (!userId) {
+        const { secretKey } = req.query;
+        if (!secretKey) {
           return res.status(401).json({ message: "Unauthorized" });
         }
 
@@ -471,7 +470,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ message: "Invalid XLM amount" });
         }
 
-        const result = await stellarService.convertXLMToGAS(userId, xlmAmount);
+        const result = await stellarService.convertXLMToGAS(secretKey, xlmAmount);
         res.json(result);
       } catch (error: any) {
         console.error("GAS conversion error:", error);
@@ -485,15 +484,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Transaction history
   app.get("/api/protected/transactions", async (req, res) => {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
+      const { secretKey } = req.query;
+      if (!secretKey) {
         return res.status(401).json({ message: "Unauthorized" });
       }
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
 
       const transactions = await stellarService.getUserTransactionHistory(
-        userId,
+        secretKey,
         limit,
       );
       res.json(transactions);
@@ -508,7 +507,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User statistics endpoint
   app.get("/api/protected/stats", async (req, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.id
       if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -580,8 +579,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Trading routes
   app.post("/api/protected/trade/execute", rateLimiter, async (req, res) => {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
+      const { secretKey } = req.query;
+      if (!secretKey) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
@@ -599,7 +598,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           : new Asset(buyAsset.code!, buyAsset.issuer!);
 
       const result = await stellarService.executeTrade(
-        userId,
+        secretKey,
         stellarSellAsset,
         sellAmount,
         stellarBuyAsset,
@@ -622,8 +621,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/protected/asset/trust", rateLimiter, async (req, res) => {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
+      const { secretKey } = req.query;
+      if (!secretKey) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
@@ -633,7 +632,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid asset details" });
       }
 
-      await stellarService.createTrustline(userId, assetCode, assetIssuer);
+      await stellarService.createTrustline(secretKey, assetCode, assetIssuer);
       return res.json({ message: "Trustline created successfully" });
     } catch (error: any) {
       console.error("Trustline error:", error);
@@ -693,11 +692,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/protected/asset/holders", rateLimiter, async (req, res) => {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
+      const { secretKey } = req.query;
+      if (!secretKey) {
         return res.status(401).json({ message: "Unauthorized" });
       }
-      const assets = await stellarService.getUserAssets(userId);
+      const assets = await stellarService.getUserAssets(secretKey);
       res.json(assets);
     } catch (error: any) {
       res.status(500).json({ message: "Internal server error" });
@@ -745,8 +744,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     rateLimiter,
     async (req, res) => {
       try {
-        const userId = req.user?.id;
-        if (!userId) {
+        const { secretKey } = req.query;
+        if (!secretKey) {
           return res.status(401).json({ message: "Unauthorized" });
         }
 
@@ -763,7 +762,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         await stellarService.placeLimitOrder(
-          userId,
+          secretKey,
           sellAsset?.code === "XLM"
             ? Asset.native()
             : new Asset(sellAsset?.code, sellAsset?.issuer),
@@ -789,13 +788,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/protected/trade/offers", rateLimiter, async (req, res) => {
     try {
-      const userId = req?.user?.id;
+      const { secretKey } = req.query;
 
-      if (!userId) {
+      if (!secretKey) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const orders = await stellarService.getUserOrders(userId);
+      const orders = await stellarService.getUserOrders(secretKey);
       res.json(orders);
     } catch (error: any) {
       res.status(500).json({
@@ -809,9 +808,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     rateLimiter,
     async (req, res) => {
       try {
-        const userId = req?.user?.id;
+        const { secretKey } = req.query;
 
-        if (!userId) {
+        if (!secretKey) {
           return res.status(401).json({ message: "Unauthorized" });
         }
 
@@ -819,7 +818,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { selling, buying } = req.body;
 
         await stellarService.cancelLimitOrder(
-          userId,
+          secretKey,
           id,
           new Asset(selling?.code, selling?.issuer),
           new Asset(buying?.code, buying?.issuer),
@@ -838,8 +837,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Liquidity pool routes
   app.post("/api/protected/liquidity/add", rateLimiter, async (req, res) => {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
+      const { secretKey } = req.query;
+      if (!secretKey) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
@@ -887,8 +886,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/protected/liquidity/remove", rateLimiter, async (req, res) => {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
+      const { secretKey } = req.query;
+      if (!secretKey) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
@@ -896,7 +895,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { poolId, amount, minAmountA, minAmountB } = validatedData;
 
       const result = await stellarService.removeLiquidity(
-        userId,
+        secretKey,
         poolId,
         amount,
         minAmountA,
@@ -919,12 +918,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/protected/liquidity/pools", rateLimiter, async (req, res) => {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
+      const { secretKey } = req.query;
+      if (!secretKey) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const pools = await stellarService.getUserLiquidityPools(userId);
+      const pools = await stellarService.getUserLiquidityPools(secretKey);
       res.json(pools);
     } catch (error: any) {
       console.error("Liquidity pools error:", error);
@@ -1013,7 +1012,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Return user without sensitive data
-      const { password, stellarSecretKey, ...safeUser } = updatedUser;
+      const { password, ...safeUser } = updatedUser;
       res.json({ message: "Profile updated successfully", user: safeUser });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -1050,7 +1049,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Return user without sensitive data
-      const { password, stellarSecretKey, ...safeUser } = updatedUser;
+      const { password, ...safeUser } = updatedUser;
       res.json({ message: "Username updated successfully", user: safeUser });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -1138,11 +1137,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const [user, recentTransactions, networkStats] = (await Promise.all([
-        storage.getUser(userId),
-        storage.getTransactions(userId, 1, 5),
-        storage.getNetworkStats(),
-      ])) as any;
+      const [user, wallet, recentTransactions, networkStats] =
+        (await Promise.all([
+          storage.getUser(userId),
+          storage.getWallet(userId),
+          storage.getTransactions(userId, 1, 5),
+          storage.getNetworkStats(),
+        ])) as any;
 
       const miningStatus = await miningService.getMiningStatus(userId);
 
@@ -1154,7 +1155,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             email: user.email,
             fullName: user.fullName,
             profilePicture: user.profilePicture,
-            stellarPublicKey: user.stellarPublicKey, // Keep public key, but not secret
+            publicKey: user.publicKey,
             isVerified: user.isVerified,
             level: user.level,
             referralCode: user.referralCode,
@@ -1174,7 +1175,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const gasBalance = await stellarService.getGASBalance(userId);
 
       res.json({
-        user: safeUser,
+        user: { ...safeUser, isActivated: await stellarService.accountExists(user.publicKey) && xlmBalance > 2 },
         wallet: {
           xlmBalance: xlmBalance.toString(),
           dopeBalance: dopeBalance.toString(),

@@ -33,7 +33,7 @@ stellarService
   });
 
 export class MiningService {
-  async startMining(userId: string) {
+  async startMining(userId: string, secretKey: string) {
     try {
       // Check if user already has an active mining session
       const existingSession = await storage.getActiveMiningSession(userId);
@@ -50,7 +50,7 @@ export class MiningService {
       }
 
       // Check GAS balance - require 10 GAS to start mining
-      const gasBalance = await stellarService.getGASBalance(userId);
+      const gasBalance = await stellarService.getGASBalance(secretKey);
       const requiredGas = 10;
 
       if (gasBalance < requiredGas) {
@@ -86,7 +86,7 @@ export class MiningService {
     }
   }
 
-  private async deductGasFee(userId: string, gasAmount: number): Promise<void> {
+  private async deductGasFee(secretKey: string, gasAmount: number): Promise<void> {
     try {
       console.log(
         `Starting GAS deduction for user ${userId}, amount: ${gasAmount}`,
@@ -97,8 +97,7 @@ export class MiningService {
         throw new Error("Gas amount must be positive");
       }
 
-      const user = await storage.getUser(userId);
-      if (!user?.stellarSecretKey) {
+      if (!secretKey) {
         throw new Error("User stellar account not found");
       }
 

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, decimal, integer, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, decimal, integer, boolean } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -11,8 +11,6 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   fullName: text("full_name").notNull(),
   profilePicture: text("profile_picture"),
-  stellarPublicKey: text("stellar_public_key"),
-  stellarSecretKey: text("stellar_secret_key"),
   isVerified: boolean("is_verified").default(false),
   level: integer("level").default(1),
   referralCode: text("referral_code").unique(),
@@ -33,25 +31,10 @@ export const miningSessions = pgTable("mining_sessions", {
   createdAt: timestamp("created_at").default(sql`now()`),
 });
 
-export const transactions = pgTable("transactions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  type: text("type").notNull(), // 'mining_reward', 'send', 'receive', 'referral_bonus', 'swap', 'trade', 'add_liquidity', 'remove_liquidity', 'gas_conversion', 'verification_bonus'
-  amount: decimal("amount", { precision: 18, scale: 8 }).notNull(),
-  fromAddress: text("from_address"),
-  toAddress: text("to_address"),
-  assetType: text("asset_type").notNull(),
-  stellarTxId: text("stellar_tx_id"),
-  status: text("status").default("pending"), // 'pending', 'completed', 'failed'
-  metadata: jsonb("metadata"),
-  createdAt: timestamp("created_at").default(sql`now()`),
-});
-
 export const wallets = pgTable("wallets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
-  dopeBalance: decimal("dope_balance", { precision: 18, scale: 8 }).default("0"),
-  xlmBalance: decimal("xlm_balance", { precision: 18, scale: 8 }).default("0"),
+  publicKey: varchar("public_key").notNull(),
   lastUpdated: timestamp("last_updated").default(sql`now()`),
 });
 
@@ -67,7 +50,6 @@ export const networkStats = pgTable("network_stats", {
 // Relations
 export const usersRelations = relations(users, ({ many, one }) => ({
   mininingSessions: many(miningSessions),
-  transactions: many(transactions),
   wallet: one(wallets, {
     fields: [users.id],
     references: [wallets.userId],
@@ -81,13 +63,6 @@ export const usersRelations = relations(users, ({ many, one }) => ({
 export const miningSessionsRelations = relations(miningSessions, ({ one }) => ({
   user: one(users, {
     fields: [miningSessions.userId],
-    references: [users.id],
-  }),
-}));
-
-export const transactionsRelations = relations(transactions, ({ one }) => ({
-  user: one(users, {
-    fields: [transactions.userId],
     references: [users.id],
   }),
 }));
@@ -107,11 +82,6 @@ export const insertUserSchema = createInsertSchema(users).omit({
 });
 
 export const insertMiningSessionSchema = createInsertSchema(miningSessions).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertTransactionSchema = createInsertSchema(transactions).omit({
   id: true,
   createdAt: true,
 });

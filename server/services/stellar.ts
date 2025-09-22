@@ -270,12 +270,12 @@ export class StellarService {
 
   async getXLMBalance(userId: string): Promise<number> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarPublicKey) {
+      const wallet = await storage.getWallet(userId)
+      if (!wallet) {
         throw new Error("User stellar account not found");
       }
 
-      const account = await server.loadAccount(user.stellarPublicKey);
+      const account = await server.loadAccount(wallet.publicKey);
       const xlmBalance = account.balances.find(
         (balance: any) => balance.asset_type === "native",
       );
@@ -289,12 +289,12 @@ export class StellarService {
 
   async getDOPEBalance(userId: string): Promise<number> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarPublicKey) {
+      const wallet = await storage.getWallet(userId)
+      if (!wallet) {
         throw new Error("User stellar account not found");
       }
 
-      const account = await server.loadAccount(user.stellarPublicKey);
+      const account = await server.loadAccount(wallet.publicKey);
       const dopeBalance = account.balances.find(
         (balance: any) =>
           balance.asset_type === "credit_alphanum4" &&
@@ -311,12 +311,12 @@ export class StellarService {
 
   async getUSDCBalance(userId: string): Promise<number> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarPublicKey) {
+      const wallet = await storage.getWallet(userId)
+      if (!wallet) {
         throw new Error("User stellar account not found");
       }
 
-      const account = await server.loadAccount(user.stellarPublicKey);
+      const account = await server.loadAccount(wallet.publicKey);
       const usdcBalance = account.balances.find(
         (balance: any) =>
           balance.asset_type === "credit_alphanum4" &&
@@ -333,12 +333,12 @@ export class StellarService {
 
   async getGASBalance(userId: string): Promise<number> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarPublicKey) {
+      const wallet = await storage.getWallet(userId)
+      if (!wallet) {
         throw new Error("User stellar account not found");
       }
 
-      const account = await server.loadAccount(user.stellarPublicKey);
+      const account = await server.loadAccount(wallet.publicKey);
       const gasBalance = account.balances.find(
         (balance: any) =>
           balance.asset_type === "credit_alphanum4" &&
@@ -355,12 +355,12 @@ export class StellarService {
 
   async getMarketValue(userId: string): Promise<Object> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarPublicKey) {
+      const wallet = await storage.getWallet(userId)
+      if (!wallet) {
         throw new Error("User stellar account not found");
       }
 
-      const account = await server.loadAccount(user.stellarPublicKey);
+      const account = await server.loadAccount(wallet.publicKey);
 
       const asset = new Asset("DOPE", dopeIssuerKeypair.publicKey());
 
@@ -409,14 +409,13 @@ export class StellarService {
     }
   }
 
-  async createUserToken(userId: string): Promise<void> {
+  async createUserToken(secretKey: string): Promise<void> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarSecretKey) {
+      if (!secretKey) {
         throw new Error("User stellar account not found");
       }
 
-      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const userKeypair = Keypair.fromSecret(secretKey);
 
       const account = await server.loadAccount(userKeypair.publicKey());
 
@@ -451,7 +450,7 @@ export class StellarService {
       }
 
       if (operations.length === 0) {
-        console.log(`All trustlines already exist for user ${userId}`);
+        console.log(`All trustlines already exist for user ${userKeypair.publicKey()}`);
         return;
       }
 
@@ -466,7 +465,7 @@ export class StellarService {
       builtTransaction.sign(userKeypair);
 
       await server.submitTransaction(builtTransaction);
-      console.log(`Token trustlines created for user ${userId}`);
+      console.log(`Token trustlines created for user ${userKeypair.publicKey()}`);
     } catch (error: any) {
       console.error("Error creating user token:", error.message);
       if (error.response?.data) {
@@ -488,14 +487,13 @@ export class StellarService {
   /**
    * Convert XLM to GAS tokens (1 XLM = 100 GAS)
    */
-  async convertXLMToGAS(userId: string, xlmAmount: string): Promise<any> {
+  async convertXLMToGAS(secretKey: string, xlmAmount: string): Promise<any> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarSecretKey) {
+      if (!secretKey) {
         throw new Error("User stellar account not found");
       }
 
-      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const userKeypair = Keypair.fromSecret(secretKey);
       const userAccount = await server.loadAccount(userKeypair.publicKey());
 
       // Get current XLM balance
@@ -657,15 +655,14 @@ export class StellarService {
 
   // Helper function to get user's available balance for conversion
   async getUserAvailableBalance(
-    userId: string,
+    secretKey: string,
   ): Promise<{ available: number; total: number; reserves: number }> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarSecretKey) {
+      if (!secretKey) {
         throw new Error("User stellar account not found");
       }
 
-      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const userKeypair = Keypair.fromSecret(secretKey);
       const userAccount = await server.loadAccount(userKeypair.publicKey());
 
       const xlmBalance = userAccount.balances.find(
@@ -690,18 +687,17 @@ export class StellarService {
   }
 
   async sendTokens(
-    userId: string,
+    secretKey: string,
     toAddress: string,
     amount: string,
     assetType: "XLM" | "DOPE" | "GAS" | "USDC" | "EURC",
   ): Promise<any> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarSecretKey) {
+      if (!secretKey) {
         throw new Error("User stellar account not found");
       }
 
-      const sourceKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const sourceKeypair = Keypair.fromSecret(secretKey);
       const account = await server.loadAccount(sourceKeypair.publicKey());
 
       let asset: Asset;
@@ -826,19 +822,18 @@ export class StellarService {
   }
 
   async executeRealTrade(
-    userId: string,
+    secretKey: string,
     sellAsset: Asset,
     sellAmount: string,
     buyAsset: Asset,
     minBuyAmount: string,
   ): Promise<any> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarSecretKey) {
+      if (!secretKey) {
         throw new Error("User stellar account not found");
       }
 
-      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const userKeypair = Keypair.fromSecret(secretKey);
       const userAccount = await server.loadAccount(userKeypair.publicKey());
 
       // Get the current market price
@@ -1004,20 +999,19 @@ export class StellarService {
     ];
   };
 
-  async executeTestnetTrade(
-    userId: string,
+  async createTrade(
+    secretKey: string,
     sellAsset: Asset,
     sellAmount: string,
     buyAsset: Asset,
     minBuyAmount: string,
   ): Promise<any> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarSecretKey) {
+      if (!secretKey) {
         throw new Error("User stellar account not found");
       }
 
-      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const userKeypair = Keypair.fromSecret(secretKey);
       let userAccount = await server.loadAccount(userKeypair.publicKey());
 
       // Normalize assets to use supported versions
@@ -1316,7 +1310,7 @@ export class StellarService {
    * Place a limit order on the DEX
    */
   async placeLimitOrder(
-    userId: string,
+    secretKey: string,
     selling: Asset,
     buying: Asset,
     amount: string,
@@ -1324,12 +1318,11 @@ export class StellarService {
     orderType: string = "sell",
   ): Promise<any> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarSecretKey) {
+      if (!secretKey) {
         throw new Error("User stellar account not found");
       }
 
-      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const userKeypair = Keypair.fromSecret(secretKey);
       const account = await server.loadAccount(userKeypair.publicKey());
 
       // Check balances before creating order
@@ -1352,7 +1345,7 @@ export class StellarService {
 
       try {
         await this.createTrustline(
-          userId,
+          secretKey,
           buying.code,
           buying.code === "USDC"
             ? USDC_ISSUER_ACCOUNT
@@ -1442,18 +1435,17 @@ export class StellarService {
    * Cancel an existing limit order
    */
   async cancelLimitOrder(
-    userId: string,
+    secretKey: string,
     offerId: string,
     selling: Asset,
     buying: Asset,
   ): Promise<any> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarSecretKey) {
+      if (!secretKey) {
         throw new Error("User stellar account not found");
       }
 
-      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const userKeypair = Keypair.fromSecret(secretKey);
       const account = await server.loadAccount(userKeypair.publicKey());
 
       const transaction = new TransactionBuilder(account, {
@@ -1540,16 +1532,17 @@ export class StellarService {
   /**
    * Get user's open orders
    */
-  async getUserOrders(userId: string): Promise<any[]> {
+  async getUserOrders(secretKey: string): Promise<any[]> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarPublicKey) {
+      if (!secretKey) {
         throw new Error("User stellar account not found");
       }
 
+      const accountKeypair = Keypair.fromSecret(secretKey);
+
       const offers = await server
         .offers()
-        .forAccount(user.stellarPublicKey)
+        .forAccount(accountKeypair.publicKey())
         .call();
 
       return offers.records.map((offer: any) => ({
@@ -1576,7 +1569,7 @@ export class StellarService {
    */
 
   async addRealLiquidity(
-    userId: string,
+    secretKey: string,
     assetA: Asset,
     assetB: Asset,
     amountA: string,
@@ -1585,12 +1578,11 @@ export class StellarService {
     maxPrice: string,
   ): Promise<any> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarSecretKey) {
+      if (!secretKey) {
         throw new Error("User stellar account not found");
       }
 
-      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const userKeypair = Keypair.fromSecret(secretKey);
       const account = await server.loadAccount(userKeypair.publicKey());
 
       // Validate amounts
@@ -1800,7 +1792,7 @@ export class StellarService {
    * Create or join a liquidity pool
    */
   async createOrJoinLiquidity(
-    userId: string,
+    secretKey: string,
     assetA: Asset,
     assetB: Asset,
     amountA: string,
@@ -1809,12 +1801,11 @@ export class StellarService {
     maxPrice: string,
   ): Promise<any> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarSecretKey) {
+      if (!secretKey) {
         throw new Error("User stellar account not found");
       }
 
-      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const userKeypair = Keypair.fromSecret(secretKey);
       const account = await server.loadAccount(userKeypair.publicKey());
 
       // Validate amounts
@@ -1965,10 +1956,7 @@ export class StellarService {
           );
         }
       }
-      handleStellarError(
-        error,
-         "Failed to add liquidity: " + error.message,
-      );
+      handleStellarError(error, "Failed to add liquidity: " + error.message);
     }
   }
 
@@ -2065,19 +2053,18 @@ export class StellarService {
    * Remove liquidity from a pool
    */
   async removeLiquidity(
-    userId: string,
+    secretKey: string,
     poolId: string,
     amount: string,
     minAmountA: string,
     minAmountB: string,
   ): Promise<any> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarSecretKey) {
+      if (!secretKey) {
         throw new Error("User stellar account not found");
       }
 
-      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const userKeypair = Keypair.fromSecret(secretKey);
       const account = await server.loadAccount(userKeypair.publicKey());
 
       const transaction = new TransactionBuilder(account, {
@@ -2147,14 +2134,15 @@ export class StellarService {
   /**
    * Get all liquidity pools for user
    */
-  async getUserLiquidityPools(userId: string): Promise<LiquidityPoolData[]> {
+  async getUserLiquidityPools(secretKey: string): Promise<LiquidityPoolData[]> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarPublicKey) {
+      if (!secretKey) {
         throw new Error("User stellar account not found");
       }
 
-      const accountId = user.stellarPublicKey;
+      const accountKeypair = Keypair.fromSecret(secretKey);
+
+      const accountId = accountKeypair.publicKey();
       const pools: LiquidityPoolData[] = [];
 
       // Get account details to access balances
@@ -2237,7 +2225,7 @@ export class StellarService {
 
       // You can use liquidityPoolOps for additional analytics or transaction history
       console.log(
-        `Found ${pools.length} active liquidity pools for user ${userId}`,
+        `Found ${pools.length} active liquidity pools for user ${accountKeypair.publicKey()}`,
       );
       console.log(
         `Found ${liquidityPoolOps.length} liquidity pool operations in recent history`,
@@ -2354,7 +2342,7 @@ export class StellarService {
    */
   async createAccount(
     newAccountPublicKey: string,
-    startingBalance: string = "1.00",
+    startingBalance: string = "2.00",
   ): Promise<string> {
     try {
       // Use distributor account as the funding source
@@ -2397,12 +2385,14 @@ export class StellarService {
   ): Promise<string> {
     try {
       // First check if account already exists
+
+      const account = newAccountKeypair;
       try {
-        await server.loadAccount(newAccountKeypair.publicKey());
-        console.log(`Account ${newAccountKeypair.publicKey()} already exists`);
+        await server.loadAccount(account.publicKey());
+        console.log(`Account ${account.publicKey()} already exists`);
 
         // Account exists, just add trustline if it doesn't exist
-        return await this.addDopeTrustlineToExistingAccount(newAccountKeypair);
+        return await this.addDopeTrustlineToExistingAccount(account);
       } catch (error: any) {
         if (!error.response || error.response.status !== 404) {
           throw error; // Re-throw if it's not a "not found" error
@@ -2414,6 +2404,9 @@ export class StellarService {
         dopeDistributorKeypair.publicKey(),
       );
       const dopeAsset = new Asset("DOPE", dopeIssuerKeypair.publicKey());
+      const gasAsset = new Asset("GAS", dopeIssuerKeypair.publicKey());
+      const usdcAsset = new Asset("USDC", USDC_ISSUER_ACCOUNT);
+      const eurcAsset = new Asset("EURC", USDC_ISSUER_ACCOUNT);
 
       // Calculate minimum balance needed:
       // Base reserve (0.5 XLM) + trustline reserve (0.5 XLM) + buffer
@@ -2431,16 +2424,37 @@ export class StellarService {
         // First: Create the account with sufficient balance
         .addOperation(
           Operation.createAccount({
-            destination: newAccountKeypair.publicKey(),
+            destination: account.publicKey(),
             startingBalance: startingBalance,
           }),
         )
-        // Second: Establish trustline for DOPE asset
+        // Second: Establish trustline for DOPE and GAS with USDC, and EURC asset from Circle.
         .addOperation(
           Operation.changeTrust({
-            source: newAccountKeypair.publicKey(),
+            source: account.publicKey(),
             asset: dopeAsset,
-            limit: "1000000",
+            limit: "100000000", // 100 Million DOPE limit
+          }),
+        )
+        .addOperation(
+          Operation.changeTrust({
+            source: account.publicKey(),
+            asset: gasAsset,
+            limit: "1000000", // 1 Million GAS limit
+          }),
+        )
+        .addOperation(
+          Operation.changeTrust({
+            source: account.publicKey(),
+            asset: usdcAsset,
+            limit: "10000000", // 10 Million USDC limit
+          }),
+        )
+        .addOperation(
+          Operation.changeTrust({
+            source: account.publicKey(),
+            asset: eurcAsset,
+            limit: "10000000", // 10 Million EURC limit
           }),
         )
         .setTimeout(60)
@@ -2485,6 +2499,9 @@ export class StellarService {
     try {
       const account = await server.loadAccount(accountKeypair.publicKey());
       const dopeAsset = new Asset("DOPE", dopeIssuerKeypair.publicKey());
+      const gasAsset = new Asset("GAS", dopeIssuerKeypair.publicKey());
+      const usdcAsset = new Asset("USDC", USDC_ISSUER_ACCOUNT);
+      const eurcAsset = new Asset("EURC", USDC_ISSUER_ACCOUNT);
 
       // Check if trustline already exists
       const hasDopeTrustline = account.balances.some(
@@ -2494,8 +2511,34 @@ export class StellarService {
           balance.asset_issuer === dopeIssuerKeypair.publicKey(),
       );
 
-      if (hasDopeTrustline) {
-        console.log("DOPE trustline already exists");
+      const hasGasTrustline = account.balances.some(
+        (balance: any) =>
+          balance.asset_type !== "native" &&
+          balance.asset_code === "GAS" &&
+          balance.asset_issuer === dopeIssuerKeypair.publicKey(),
+      );
+
+      const hasUsdcTrustline = account.balances.some(
+        (balance: any) =>
+          balance.asset_type !== "native" &&
+          balance.asset_code === "USDC" &&
+          balance.asset_issuer === USDC_ISSUER_ACCOUNT,
+      );
+
+      const hasEurcTrustline = account.balances.some(
+        (balance: any) =>
+          balance.asset_type !== "native" &&
+          balance.asset_code === "EURC" &&
+          balance.asset_issuer === USDC_ISSUER_ACCOUNT,
+      );
+
+      if (
+        hasDopeTrustline ||
+        hasGasTrustline ||
+        hasUsdcTrustline ||
+        hasEurcTrustline
+      ) {
+        console.log("Trustline already exists for this account");
         return "trustline_exists";
       }
 
@@ -2513,13 +2556,34 @@ export class StellarService {
       }
 
       const transaction = new TransactionBuilder(account, {
-        fee: BASE_FEE.toString(),
+        fee: (BASE_FEE * 4).toString(),
         networkPassphrase,
       })
         .addOperation(
           Operation.changeTrust({
             asset: dopeAsset,
-            limit: "1000000",
+            limit: "100000000", // 100 Million DOPE limit per account
+          }),
+        )
+        .addOperation(
+          Operation.changeTrust({
+            source: accountKeypair.publicKey(),
+            asset: gasAsset,
+            limit: "1000000", // 1 Million GAS limit per account
+          }),
+        )
+        .addOperation(
+          Operation.changeTrust({
+            source: accountKeypair.publicKey(),
+            asset: usdcAsset,
+            limit: "10000000", // 10 Million USDC limit per account
+          }),
+        )
+        .addOperation(
+          Operation.changeTrust({
+            source: accountKeypair.publicKey(),
+            asset: eurcAsset,
+            limit: "10000000", // 10 Million EURC limit per account
           }),
         )
         .setTimeout(60)
@@ -2529,7 +2593,7 @@ export class StellarService {
       const result = await server.submitTransaction(transaction);
 
       console.log(
-        `Added DOPE trustline to existing account ${accountKeypair.publicKey()}`,
+        `Added required trustline to existing account ${accountKeypair.publicKey()}`,
       );
       return result.hash;
     } catch (error) {
@@ -2542,28 +2606,28 @@ export class StellarService {
    * Issue DOPE tokens using claimable balance instead of direct payment
    * This allows users to claim tokens even if their account doesn't exist yet
    */
-  async issueDopeTokens(userId: string, amount: string): Promise<void> {
+  async issueDopeTokens(secretKey: string, amount: string): Promise<void> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarPublicKey) {
+      if (!secretKey) {
         throw new Error("User stellar account not found");
       }
 
       const dopeAsset = new Asset("DOPE", dopeIssuerKeypair.publicKey());
 
       // Check if user account exists
-      const accountExists = await this.accountExists(user.stellarPublicKey);
+      const accountKeypair = Keypair.fromSecret(secretKey);
+      const accountExists = await this.accountExists(accountKeypair.publicKey());
 
       let createAccountTxHash: string | null = null;
       // If account doesn't exist, create it with DOPE trustline
       if (!accountExists) {
-        if (!user.stellarSecretKey) {
+        if (!secretKey) {
           throw new Error(
             "User stellar secret key not found for account creation",
           );
         }
 
-        const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+        const userKeypair = Keypair.fromSecret(secretKey);
         createAccountTxHash =
           await this.createAccountWithDopeTrustline(userKeypair);
 
@@ -2571,7 +2635,7 @@ export class StellarService {
         await new Promise((resolve) => setTimeout(resolve, 2000));
       } else {
         // Check if trustline exists, create if needed
-        const account = await server.loadAccount(user.stellarPublicKey);
+        const account = await server.loadAccount(accountKeypair.publicKey());
         const existingTrustline = account.balances.find(
           (balance: any) =>
             balance.asset_type === "credit_alphanum4" &&
@@ -2580,7 +2644,7 @@ export class StellarService {
         );
 
         if (!existingTrustline) {
-          await this.createUserToken(userId);
+          await this.createUserToken(secretKey);
           // Wait for trustline to propagate
           await new Promise((resolve) => setTimeout(resolve, 2000));
         }
@@ -2593,7 +2657,7 @@ export class StellarService {
 
       // Create claimant - user can claim balances anytime.
       const claimant = new Claimant(
-        user.stellarPublicKey,
+        accountKeypair.publicKey(),
         Claimant.predicateUnconditional(),
       );
 
@@ -2621,7 +2685,7 @@ export class StellarService {
         await this.extractClaimableBalanceId(result);
 
       console.log(
-        `Created claimable balance with ${formattedAmount} DOPE tokens for user ${userId}`,
+        `Created claimable balance with ${formattedAmount} DOPE tokens for user ${accountKeypair.publicKey()}`,
       );
       if (claimableBalanceId) {
         console.log(`Claimable Balance ID: ${claimableBalanceId}`);
@@ -2758,14 +2822,13 @@ export class StellarService {
   /**
    * Claim a claimable balance
    */
-  async claimBalance(userId: string, claimableBalanceId: string): Promise<any> {
+  async claimBalance(secretKey: string, claimableBalanceId: string): Promise<any> {
     try {
-      const user = await storage.getUser(userId);
-      if (!user?.stellarSecretKey) {
+      if (!secretKey) {
         throw new Error("User stellar secret key not found");
       }
 
-      const userKeypair = Keypair.fromSecret(user.stellarSecretKey);
+      const userKeypair = Keypair.fromSecret(secretKey);
       const account = await server.loadAccount(userKeypair.publicKey());
 
       const transaction = new TransactionBuilder(account, {
@@ -2784,7 +2847,7 @@ export class StellarService {
       const result = await server.submitTransaction(transaction);
 
       console.log(
-        `User ${userId} claimed claimable balance ${claimableBalanceId}`,
+        `User ${userKeypair.publicKey()} claimed claimable balance ${claimableBalanceId}`,
       );
 
       return {
@@ -2943,7 +3006,7 @@ export class StellarService {
   }
 
   createTrustline = async (
-    userId: string,
+    secretKey: string,
     assetCode: string,
     assetIssuer: string,
   ) => {
@@ -2953,8 +3016,7 @@ export class StellarService {
         throw new Error("Cannot create trustline for native asset (XLM)");
       }
 
-      const user = await storage.getUser(userId);
-      if (!user?.stellarSecretKey) {
+      if (!secretKey) {
         throw new Error("User stellar account not found");
       }
 

@@ -1,7 +1,6 @@
 import {
   users,
   miningSessions,
-  transactions,
   wallets,
   networkStats,
   type User,
@@ -41,19 +40,6 @@ export interface IStorage {
     updates: Partial<MiningSession>,
   ): Promise<MiningSession>;
 
-  // Transaction methods
-  createTransaction(insertTransaction: InsertTransaction): Promise<Transaction>;
-  getTransactions(
-    userId: string,
-    page: number,
-    limit: number,
-  ): Promise<Transaction[]>;
-  getTransactionsByType(userId: string, type: string): Promise<Transaction[]>;
-  updateTransactionStatus(
-    claimableBalanceId: string,
-    status: string,
-  ): Promise<boolean>;
-
   // Stats methods
   getUserStats(userId: string): Promise<{
     totalSessions: number;
@@ -86,8 +72,12 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user || undefined;
+    const [result] = await db
+      .select()
+      .from(users)
+      .leftJoin(wallets, eq(users.id, wallets.userId))
+      .where(eq(users.id, id));
+    return result?.users;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
@@ -252,7 +242,7 @@ export class DatabaseStorage implements IStorage {
       const result = await db
         .update(transactions)
         .set({
-          status: status
+          status: status,
         })
         .where(sql`metadata->>'claimableBalanceId' = ${claimableBalanceId}`)
         .returning({ id: transactions.id, newStatus: transactions.status });
