@@ -101,9 +101,40 @@ export default function SendPage() {
     setShowPinVerification(true);
   };
 
-  const handlePinVerified = (pin: string) => {
-    // Send tokens with PIN included
-    sendTokens.mutate({ ...sendForm, pin });
+  const handlePinVerified = async (pin: string) => {
+    try {
+      // First establish wallet session with the server
+      const wallets = keyVault.getAllWallets();
+      if (wallets.length === 0) {
+        throw new Error("No active wallets found. Please unlock your vault.");
+      }
+
+      const primaryWallet = wallets[0];
+      
+      // Establish server session
+      await fetch("/api/protected/wallet/session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          secretKey: primaryWallet.keypair.secret(),
+          pin: pin
+        })
+      });
+
+      // Send tokens with PIN included
+      sendTokens.mutate({ ...sendForm, pin });
+    } catch (error) {
+      console.error("Failed to establish wallet session:", error);
+      setShowPinVerification(false);
+      toast({
+        title: "Session Error",
+        description: "Failed to establish secure wallet session. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handlePinCancel = () => {

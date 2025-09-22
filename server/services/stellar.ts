@@ -801,7 +801,19 @@ export class StellarService {
         throw new Error("Missing required parameters for account merge");
       }
 
+      // Validate new public key format
+      try {
+        Keypair.fromPublicKey(newPublicKey);
+      } catch (error) {
+        throw new Error("Invalid destination public key format");
+      }
+
       const oldKeypair = Keypair.fromSecret(oldSecretKey);
+      
+      // Prevent merging into the same account
+      if (oldKeypair.publicKey() === newPublicKey) {
+        throw new Error("Cannot merge account into itself");
+      }
       
       // Validate old account exists
       let oldAccount;
@@ -812,6 +824,14 @@ export class StellarService {
           throw new Error("Source account does not exist or is not funded");
         }
         throw error;
+      }
+
+      // Check if old account has sufficient balance for operations
+      const xlmBalance = oldAccount.balances.find((b: any) => b.asset_type === "native");
+      const currentBalance = parseFloat(xlmBalance?.balance || "0");
+      
+      if (currentBalance < 1.0) {
+        throw new Error(`Insufficient XLM balance for merge operations. Current: ${currentBalance} XLM, Required: 1.0 XLM minimum`);
       }
 
       // Check if new account exists, create if needed
@@ -939,7 +959,17 @@ export class StellarService {
       if (newAccountCreated && newAccountCreationHash) {
         try {
           console.log("Attempting to rollback new account creation...");
-          await this.rollbackAccountCreation(newPublicKey, oldKeypair.publicKey());
+          // Since we can't access the new account's secret key, we'll try to merge back
+          // the funds using the old account's remaining balance
+          const newAccount = await server.loadAccount(newPublicKey);
+          const xlmBalance = newAccount.balances.find((b: any) => b.asset_type === "native");
+          
+          if (xlmBalance && parseFloat(xlmBalance.balance) > 1.0) {
+            console.log(`New account has ${xlmBalance.balance} XLM, attempting to return funds`);
+            // This would require the new account's secret key, which we don't have
+            // So we'll just log the issue for manual intervention
+            console.warn(`Manual intervention needed: New account ${newPublicKey} has ${xlmBalance.balance} XLM that needs to be returned`);
+          }
         } catch (rollbackError: any) {
           console.error("Failed to rollback account creation:", rollbackError.message);
           // Continue with original error handling

@@ -24,7 +24,7 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
   const [walletName, setWalletName] = useState("");
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
-  
+
   const [isLocked, setIsLocked] = useState(true);
 
   // Create new wallet states
@@ -121,8 +121,13 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
   };
 
   const handleImportWallet = async () => {
-    if (!importMnemonic.trim() || !importPassword) {
-      setError("Please enter both mnemonic phrase and password");
+    if (!importMnemonic || !importPassword || !pin) {
+      setError("Please fill in all fields including PIN");
+      return;
+    }
+
+    if (pin.length < 4) {
+      setError("PIN must be at least 4 digits");
       return;
     }
 
@@ -130,21 +135,24 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
     setError("");
 
     try {
-      // Validate mnemonic
-      if (!keyVault.validateMnemonic(importMnemonic.trim())) {
-        throw new Error("Invalid mnemonic phrase");
-      }
-
       // Create vault with imported mnemonic
       const vaultId = await keyVault.createVault("Imported Wallet", importPassword, importMnemonic.trim());
 
       // Unlock vault
       await keyVault.unlockVault(vaultId, importPassword);
 
-      // Add primary wallet
+      // Add primary wallet to new vault
       await keyVault.addWallet("Primary Wallet", "m/44'/148'/0'/0/0", importPassword);
 
-      setSuccess("Wallet imported successfully!");
+      // Set up PIN for the imported wallet
+      const wallets = keyVault.getAllWallets();
+      if (wallets.length > 0) {
+        const primaryWallet = wallets[0];
+        await keyVault.authorizeTransaction(primaryWallet.id, pin);
+        localStorage.setItem(`walletPin_${user?.id}`, pin);
+      }
+
+      setSuccess("Wallet imported successfully with PIN protection!");
       setTimeout(() => onComplete(vaultId), 1500);
 
     } catch (error) {
@@ -339,6 +347,20 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
                 onChange={(e) => setImportPassword(e.target.value)}
                 placeholder="Enter your wallet password"
               />
+            </div>
+            <div>
+              <Label htmlFor="importPin">Set PIN (4-6 digits)</Label>
+              <Input
+                id="importPin"
+                type="password"
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="Enter a PIN for transactions"
+                maxLength={6}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                This PIN will be used to authorize transactions
+              </p>
             </div>
             {error && <p className="text-red-500 text-sm">{error}</p>}
             {success && <p className="text-green-500 text-sm">{success}</p>}

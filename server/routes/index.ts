@@ -227,6 +227,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Missing required parameters" });
       }
 
+      // Validate secret key format
+      try {
+        Keypair.fromSecret(secretKey);
+      } catch (error) {
+        return res.status(400).json({ message: "Invalid secret key format" });
+      }
+
+      // Validate PIN format
+      if (!/^\d{4,6}$/.test(pin)) {
+        return res.status(400).json({ message: "PIN must be 4-6 digits" });
+      }
+
       // Generate session password
       const sessionPassword = walletService.generateSessionPassword(userId, pin);
 
