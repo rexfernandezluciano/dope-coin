@@ -1,5 +1,5 @@
 import { Keypair } from "@stellar/stellar-sdk";
-import crypto, { createCipher, createDecipher } from "crypto";
+import crypto from "crypto";
 import { storage } from "../storage.js";
 
 interface EncryptedWalletData {
@@ -11,7 +11,7 @@ interface EncryptedWalletData {
 }
 
 class ServerWalletService {
-  private readonly algorithm = "aes-256-gcm";
+  private readonly algorithm = "aes-256-cbc";
   private readonly keyLength = 32;
   private readonly ivLength = 16;
   private readonly saltLength = 32;
@@ -39,17 +39,15 @@ class ServerWalletService {
       "sha256",
     );
 
-    const cipher = createCipher(this.algorithm, key, iv);
+    const cipher = crypto.createCipher(this.algorithm, key);
     let encrypted = cipher.update(secretKey, "utf8", "hex");
     encrypted += cipher.final("hex");
-
-    const tag = cipher.getAuthTag();
 
     return {
       encrypted,
       iv: iv.toString("hex"),
       salt: salt.toString("hex"),
-      tag: tag.toString("hex"),
+      tag: "", // Not needed for CBC mode
     };
   }
 
@@ -69,12 +67,10 @@ class ServerWalletService {
       "sha256",
     );
 
-    const decipher = createDecipher(
+    const decipher = crypto.createDecipher(
       this.algorithm,
-      key,
-      Buffer.from(iv, "hex"),
+      key
     );
-    decipher.setAuthTag(Buffer.from(tag, "hex"));
 
     let decrypted = decipher.update(encryptedData, "hex", "utf8");
     decrypted += decipher.final("utf8");
