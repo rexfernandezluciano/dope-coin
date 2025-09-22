@@ -792,6 +792,8 @@ export class StellarService {
     hash: string;
     status: string;
     balancesTransferred: Array<{ asset: string; amount: string }>;
+    skippedAssets: Array<{ asset: string; amount: string; reason: string }> | null;
+    warning: string;
   }> {
     let newAccountCreated = false;
     let newAccountCreationHash: string | null = null;
@@ -1054,10 +1056,10 @@ export class StellarService {
         hash: result.hash,
         status: skippedAssets.length > 0 ? "partial" : "completed",
         balancesTransferred,
-        skippedAssets: skippedAssets.length > 0 ? skippedAssets : undefined,
+        skippedAssets: skippedAssets && skippedAssets.length >= 0 ? skippedAssets : null,
         warning: skippedAssets.length > 0 
           ? `${skippedAssets.length} assets could not be transferred due to missing trustlines`
-          : undefined,
+          : "",
       };
     } catch (error: any) {
       console.error("Error merging accounts:", error);
@@ -1168,7 +1170,7 @@ export class StellarService {
       // Get all non-XLM assets from source
       const nonNativeAssets = sourceAccount.balances.filter(
         (balance: any) => balance.asset_type !== "native" && parseFloat(balance.balance) > 0
-      );
+      ) as any;
 
       for (const asset of nonNativeAssets) {
         const trustlineInfo = {
@@ -1256,7 +1258,7 @@ export class StellarService {
       const offers = await server
         .offers()
         .forAccount(keypair.publicKey())
-        .call();
+        .call() as any;
 
       for (const offer of offers.records) {
         // Convert Horizon API offer assets to Stellar SDK Asset objects
@@ -1285,7 +1287,7 @@ export class StellarService {
       const zeroBalanceTrustlines = account.balances.filter(
         (balance: any) =>
           balance.asset_type !== "native" && parseFloat(balance.balance) === 0,
-      );
+      ) as any;
 
       for (const trustline of zeroBalanceTrustlines) {
         const asset = new Asset(trustline.asset_code, trustline.asset_issuer);
