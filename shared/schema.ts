@@ -47,6 +47,17 @@ export const networkStats = pgTable("network_stats", {
   updatedAt: timestamp("updated_at").default(sql`now()`),
 });
 
+export const vaults = pgTable("vaults", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  encryptedData: text("encrypted_data").notNull(), // Stores the entire encrypted vault
+  salt: text("salt").notNull(),
+  iv: text("iv").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastAccessed: timestamp("last_accessed").defaultNow().notNull(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many, one }) => ({
   mininingSessions: many(miningSessions),
@@ -74,6 +85,13 @@ export const walletsRelations = relations(wallets, ({ one }) => ({
   }),
 }));
 
+export const vaultsRelations = relations(vaults, ({ one }) => ({
+  user: one(users, {
+    fields: [vaults.userId],
+    references: [users.id],
+  }),
+}));
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -88,6 +106,12 @@ export const insertMiningSessionSchema = createInsertSchema(miningSessions).omit
 
 export const insertWalletSchema = createInsertSchema(wallets).omit({
   id: true,
+});
+
+export const insertVaultSchema = createInsertSchema(vaults).omit({
+  id: true,
+  createdAt: true,
+  lastAccessed: true,
 });
 
 // Auth schemas
@@ -194,6 +218,8 @@ export type InsertMiningSession = z.infer<typeof insertMiningSessionSchema>;
 export type Wallet = typeof wallets.$inferSelect;
 export type InsertWallet = z.infer<typeof insertWalletSchema>;
 export type NetworkStats = typeof networkStats.$inferSelect;
+export type Vault = typeof vaults.$inferSelect;
+export type InsertVault = z.infer<typeof insertVaultSchema>;
 export type LoginRequest = z.infer<typeof loginSchema>;
 export type RegisterRequest = z.infer<typeof registerSchema>;
 export type ExecuteTradeRequest = z.infer<typeof executeTradeSchema>;

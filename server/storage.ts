@@ -3,6 +3,7 @@ import {
   miningSessions,
   wallets,
   networkStats,
+  vaults, // Import vaults table
   type User,
   type InsertUser,
   type MiningSession,
@@ -10,9 +11,23 @@ import {
   type Wallet,
   type InsertWallet,
   type NetworkStats,
+  type Vault, // Import Vault type
+  type InsertVault, // Import InsertVault type
 } from "../shared/schema.js";
 import { db } from "./db.js";
 import { eq, and, desc, sum, count, sql, gte } from "drizzle-orm";
+
+// Define VaultData interface for vault storage
+interface VaultData {
+  id: string;
+  userId: string;
+  name: string;
+  encryptedData: string;
+  salt: string;
+  iv: string;
+  createdAt: Date;
+  lastAccessed: Date;
+}
 
 export interface IStorage {
   // User methods
@@ -66,6 +81,12 @@ export interface IStorage {
   // Referral methods
   addReferralBonus(userId: string, amount: string): Promise<void>;
   getActiveReferrals(userId: string): Promise<User[]>;
+
+  // Vault methods
+  storeVault(vaultData: VaultData): Promise<void>;
+  getVault(vaultId: string): Promise<VaultData | null>;
+  getUserVaults(userId: string): Promise<VaultData[]>;
+  deleteVault(vaultId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -394,6 +415,63 @@ export class DatabaseStorage implements IStorage {
       console.error("Error getting active referrals:", error);
       return [];
     }
+  }
+
+  // Vault storage methods
+  async storeVault(vaultData: VaultData): Promise<void> {
+    await db.insert(vaults).values({
+      id: vaultData.id,
+      userId: vaultData.userId,
+      name: vaultData.name,
+      encryptedData: vaultData.encryptedData,
+      salt: vaultData.salt,
+      iv: vaultData.iv,
+      createdAt: vaultData.createdAt,
+      lastAccessed: vaultData.lastAccessed,
+    }).onConflictDoUpdate({
+      target: vaults.id,
+      set: {
+        name: vaultData.name,
+        encryptedData: vaultData.encryptedData,
+        salt: vaultData.salt,
+        iv: vaultData.iv,
+        lastAccessed: vaultData.lastAccessed,
+      },
+    });
+  }
+
+  async getVault(vaultId: string): Promise<VaultData | null> {
+    const [vault] = await db.select().from(vaults).where(eq(vaults.id, vaultId));
+    if (!vault) return null;
+
+    return {
+      id: vault.id,
+      userId: vault.userId,
+      name: vault.name,
+      encryptedData: vault.encryptedData,
+      salt: vault.salt,
+      iv: vault.iv,
+      createdAt: vault.createdAt,
+      lastAccessed: vault.lastAccessed,
+    };
+  }
+
+  async getUserVaults(userId: string): Promise<VaultData[]> {
+    const vaultsData = await db.select().from(vaults).where(eq(vaults.userId, userId));
+    return vaultsData.map(vault => ({
+      id: vault.id,
+      userId: vault.userId,
+      name: vault.name,
+      encryptedData: vault.encryptedData,
+      salt: vault.salt,
+      iv: vault.iv,
+      createdAt: vault.createdAt,
+      lastAccessed: vault.lastAccessed,
+    }));
+  }
+
+  async deleteVault(vaultId: string): Promise<void> {
+    await db.delete(vaults).where(eq(vaults.id, vaultId));
   }
 }
 

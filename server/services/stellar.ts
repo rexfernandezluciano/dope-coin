@@ -799,22 +799,41 @@ export class StellarService {
       }
 
       const oldKeypair = Keypair.fromSecret(oldSecretKey);
-      const oldAccount = await server.loadAccount(oldKeypair.publicKey());
+      
+      // Validate old account exists
+      let oldAccount;
+      try {
+        oldAccount = await server.loadAccount(oldKeypair.publicKey());
+      } catch (error: any) {
+        if (error.response?.status === 404) {
+          throw new Error("Source account does not exist or is not funded");
+        }
+        throw error;
+      }
 
-      // Check if new account exists
+      // Check if new account exists, create if needed
       const newAccountExists = await this.accountExists(newPublicKey);
       if (!newAccountExists) {
-        const result = await this.createAccount(
-          oldKeypair,
-          newPublicKey,
-          "2.0",
-        );
-        if (!result) {
-          throw new Error("Failed to create new account for merge");
+        try {
+          await this.createAccount(oldKeypair, newPublicKey, "2.0");
+          // Wait for account creation to propagate
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        } catch (createError: any) {
+          console.error("Failed to create new account:", createError);
+          throw new Error(`Failed to create destination account: ${createError.message}`);
         }
       }
 
-      const newAccount = await server.loadAccount(newPublicKey);
+      // Verify new account exists after creation
+      let newAccount;
+      try {
+        newAccount = await server.loadAccount(newPublicKey);
+      } catch (error: any) {
+        if (error.response?.status === 404) {
+          throw new Error("Destination account creation failed - account not found");
+        }
+        throw error;
+      }
 
       // Get all balances from old account
       const balancesToTransfer = oldAccount.balances.filter(

@@ -229,10 +229,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Generate session password
       const sessionPassword = walletService.generateSessionPassword(userId, pin);
-      
+
       // Store encrypted secret key in session
       await walletService.storeUserSecretKey(userId, secretKey, sessionPassword);
-      
+
       res.json({ message: "Wallet session established successfully" });
     } catch (error: any) {
       console.error("Wallet session error:", error);
@@ -448,7 +448,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Wallet routes
+  // Vault management routes
+  app.post("/api/protected/vault/sync", authMiddleware, async (req, res) => {
+    try {
+      const { vault } = req.body;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      if (!vault || !vault.id || !vault.name || !vault.encryptedData || !vault.salt || !vault.iv || !vault.createdAt) {
+        return res.status(400).json({ message: "Invalid vault data" });
+      }
+
+      await storage.storeVault({
+        id: vault.id,
+        userId,
+        name: vault.name,
+        encryptedData: vault.encryptedData,
+        salt: vault.salt,
+        iv: vault.iv,
+        createdAt: new Date(vault.createdAt),
+        lastAccessed: new Date(vault.lastAccessed || Date.now()),
+      });
+
+      res.json({ success: true, message: "Vault synced successfully" });
+    } catch (error: any) {
+      console.error("Error syncing vault:", error);
+      res.status(500).json({ error: "Failed to sync vault", details: error.message });
+    }
+  });
+
+  app.get("/api/protected/vault/list", authMiddleware, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      const vaults = await storage.getUserVaults(userId);
+      res.json({ vaults });
+    } catch (error: any) {
+      console.error("Error fetching vaults:", error);
+      res.status(500).json({ error: "Failed to fetch vaults", details: error.message });
+    }
+  });
+
+  // Wallet management routes
   app.get("/api/protected/wallet", rateLimiter, async (req, res) => {
     try {
       const userId = req.user?.id;
@@ -589,7 +635,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate the old secret key belongs to the user
       const oldKeypair = Keypair.fromSecret(oldSecretKey);
       const currentWallet = await storage.getWallet(userId);
-      
+
       if (!currentWallet || currentWallet.publicKey !== oldKeypair.publicKey()) {
         return res.status(400).json({ message: "Invalid old wallet credentials" });
       }
@@ -628,7 +674,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate the secret key belongs to the user
       const keypair = Keypair.fromSecret(secretKey);
       const currentWallet = await storage.getWallet(userId);
-      
+
       if (!currentWallet || currentWallet.publicKey !== keypair.publicKey()) {
         return res.status(400).json({ message: "Invalid wallet credentials" });
       }

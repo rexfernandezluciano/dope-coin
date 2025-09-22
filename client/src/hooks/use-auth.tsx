@@ -10,14 +10,14 @@ const initializeWallet = async (secretPhrase: string, password: string): Promise
   try {
     // Create vault with the secret phrase
     const vaultId = await keyVault.createVault("Main Wallet", password, secretPhrase);
-    
+
     // Unlock the vault
     await keyVault.unlockVault(vaultId, password);
-    
+
     // Add primary wallet
     const walletId = await keyVault.addWallet("Primary Wallet", "m/44'/148'/0'/0/0", password);
     const wallet = keyVault.getWallet(walletId);
-    
+
     if (!wallet) {
       throw new Error("Failed to create wallet");
     }
@@ -166,33 +166,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.passphrase && data.secretKey && data.user.publicKey) {
         try {
           await keyVault.initialize();
-          
+
           // Create vault with mnemonic and user's password
           const vaultId = await keyVault.createVault(
-            "Main Wallet", 
-            registerData.password, 
+            "Main Wallet",
+            registerData.password,
             data.passphrase
           );
-          
+
           // Unlock the vault and add the primary wallet
           await keyVault.unlockVault(vaultId, registerData.password);
           const walletId = await keyVault.addWallet(
-            "Primary Wallet", 
-            "m/44'/148'/0'/0/0", 
+            "Primary Wallet",
+            "m/44'/148'/0'/0/0",
             registerData.password
           );
-          
+
           // Note: PIN will be set up by user later in wallet setup
           // Do not store a default PIN for security reasons
-          
+
           // Store vault and wallet information
           localStorage.setItem(`vaultId_${userData.id}`, vaultId);
           localStorage.setItem(`walletId_${userData.id}`, walletId);
           localStorage.setItem(`secureWallet_${userData.id}`, "true");
-          
+
           console.log("KeyVault successfully set up during registration");
           setHasSecureWallet(true);
-          
+
           // Broadcast wallet unlocked event for immediate session only
           window.dispatchEvent(new CustomEvent("wallet:unlocked"));
         } catch (error) {
@@ -222,18 +222,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     try {
       const walletAddress = await initializeWallet(secretPhrase, password);
-      
+
       // Store vault info securely
       const vaultId = localStorage.getItem(`vaultId_${user.id}`);
       if (vaultId) {
         localStorage.setItem(`secureWallet_${user.id}`, "true");
       }
-      
+
       // Update user state
       const updatedUser = { ...user, walletAddress };
       setUser(updatedUser);
       localStorage.setItem("user", JSON.stringify(updatedUser));
-      
+
       console.log("Secure wallet successfully initialized.");
       return vaultId;
     } catch (error) {
@@ -316,25 +316,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!isAuthenticated) {
       throw new Error("User must be logged in to process payments.");
     }
-    
+
     try {
       // Get active wallet
       const wallets = keyVault.getAllWallets();
       if (wallets.length === 0) {
         throw new Error("No active wallets found. Please unlock your vault.");
       }
-      
+
       const primaryWallet = wallets[0];
       const isPinValid = await verifyPin(primaryWallet.id, pin);
-      
+
       if (!isPinValid) {
         throw new Error("Invalid PIN.");
       }
-      
+
       // Process payment with validated PIN
       console.log(`Processing payment of ${amount} with verified PIN.`);
       // Payment processing logic would go here
-      
+
     } catch (error) {
       console.error("Payment processing failed:", error);
       throw error;
@@ -344,18 +344,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Function to check if user needs wallet migration
   const checkWalletMigrationStatus = async (): Promise<boolean> => {
     if (!user) return false;
-    
+
     try {
       // Check if user has old wallet but no secure wallet setup
       const hasOldWallet = user.walletAddress && user.walletAddress.length > 0;
       const hasSecureWalletSetup = localStorage.getItem(`secureWallet_${user.id}`) === "true";
       const hasVaultId = localStorage.getItem(`vaultId_${user.id}`) !== null;
-      
+
       // User needs migration if they have an old wallet but no secure wallet OR vault
       const needsMigration = hasOldWallet && (!hasSecureWalletSetup || !hasVaultId);
-      
+
       setHasSecureWallet(hasSecureWalletSetup && hasVaultId);
-      
+
       return needsMigration || false;
     } catch (error) {
       console.error("Error checking wallet migration status:", error);
@@ -368,16 +368,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user || !user.walletAddress) {
       throw new Error("User not logged in or wallet not initialized.");
     }
-    
+
     try {
       // Get the active wallet from KeyVault
       const wallets = keyVault.getAllWallets();
       if (wallets.length === 0) {
         throw new Error("No active wallets found. Please unlock your vault.");
       }
-      
+
       const primaryWallet = wallets[0]; // Use primary wallet
-      
+
       console.log("Transaction data prepared for signing");
       return { walletId: primaryWallet.id, transactionData };
     } catch (error) {
