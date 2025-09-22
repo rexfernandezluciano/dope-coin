@@ -301,7 +301,7 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
             </div>
             {error && <p className="text-red-500 text-sm">{error}</p>}
             <Button
-              onClick={generateMnemonic}
+              onClick={handleCreateWallet}
               className="w-full"
               disabled={!walletName || !password || !confirmPassword || !pin || !confirmPin}
             >

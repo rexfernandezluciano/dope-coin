@@ -103,12 +103,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         referredBy: referrerUser?.id || null,
       };
 
+      const publicKey = stellarKeypair.publicKey;
+      const secretKey = stellarKeypair.secretKey;
+      const mnemonic = stellarKeypair.mnemonic;
+
+      if (!publicKey || !secretKey || !mnemonic) {
+        throw new Error("Failed to generate keypair");
+      }
+
       const user = await storage.createUser(userData);
 
       // Initialize wallet
       await storage.createWallet({
         userId: user.id,
-        publicKey: stellarKeypair.publicKey(),
+        publicKey: publicKey,
       });
 
       // Give referral bonus to referrer if applicable
@@ -136,9 +144,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           email: user.email,
           fullName: user.fullName,
           level: user.level,
-          publicKey: stellarKeypair.publicKey,
-          secretKey: stellarKeypair.secretKey,
-          passphrase: stellarKeypair.mnemonic,
+          publicKey: publicKey,
+          secretKey: secretKey,
+          passphrase: mnemonic,
           referralCode: user.referralCode,
         },
       });
@@ -150,7 +158,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error(
         "Registration error:",
-        error?.response?.data?.extras.result_codes || error,
+        error?.response?.data?.extras?.result_codes || error,
       );
       res
         .status(500)
@@ -579,14 +587,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!currentWallet || currentWallet.publicKey !== oldKeypair.publicKey()) {
         return res.status(400).json({ message: "Invalid old wallet credentials" });
-      }
-
-      // Check if new account exists
-      const newAccountExists = await stellarService.accountExists(newPublicKey);
-      if (!newAccountExists) {
-        return res.status(400).json({ 
-          message: "New account does not exist. Please create the new account first." 
-        });
       }
 
       // Prepare old account for merge
@@ -1284,7 +1284,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const gasBalance = await stellarService.getGASBalance(userId);
 
       res.json({
-        user: { ...safeUser, isActivated: await stellarService.accountExists(user.publicKey) && xlmBalance > 2 },
+        user: { ...safeUser, isActivated: await stellarService.accountExists(wallet.publicKey) && xlmBalance >= 2 },
         wallet: {
           xlmBalance: xlmBalance.toString(),
           dopeBalance: dopeBalance.toString(),

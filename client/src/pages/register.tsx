@@ -430,12 +430,12 @@ export default function Register() {
             </div>
             <div className="space-y-3 my-3">
               <h3 className="font-bold text-1lg">Your wallet address:</h3>
-              <div className="bg-gray-100 p-3 rounded-lg font-light text-center">
+              <div className="bg-gray-100 p-3 rounded-lg font-light break-words">
                 {response?.user?.publicKey || "GZAHSM..."}
               </div>
               <h3 className="font-bold text-1lg">Your seed passphrase:</h3>
               <div className="bg-gray-100 p-3 rounded-lg font-light text-center">
-                {response?.user?.mnemonic || "Seed Passphrase"}
+                {response?.user?.passphrase || "Seed Passphrase"}
               </div>
               <div className="text-muted-foreground text-sm">
                 Ensure you save your seed passphrase in a safe place. You will
@@ -461,7 +461,7 @@ export default function Register() {
                     network: "Stellar",
                     timestamp: new Date().toISOString(),
                     publicKey: response?.user?.publicKey || "Wallet Address",
-                    passphrase: response?.user?.mnemonic || "Seed Passphrase",
+                    passphrase: response?.user?.passphrase || "Seed Passphrase",
                   };
                   const blob = new Blob([JSON.stringify(obj, null, 2)], {
                     type: "application/json",

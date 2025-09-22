@@ -270,7 +270,7 @@ export class StellarService {
 
   async getXLMBalance(userId: string): Promise<number> {
     try {
-      const wallet = await storage.getWallet(userId)
+      const wallet = await storage.getWallet(userId);
       if (!wallet) {
         throw new Error("User stellar account not found");
       }
@@ -289,7 +289,7 @@ export class StellarService {
 
   async getDOPEBalance(userId: string): Promise<number> {
     try {
-      const wallet = await storage.getWallet(userId)
+      const wallet = await storage.getWallet(userId);
       if (!wallet) {
         throw new Error("User stellar account not found");
       }
@@ -311,7 +311,7 @@ export class StellarService {
 
   async getUSDCBalance(userId: string): Promise<number> {
     try {
-      const wallet = await storage.getWallet(userId)
+      const wallet = await storage.getWallet(userId);
       if (!wallet) {
         throw new Error("User stellar account not found");
       }
@@ -333,7 +333,7 @@ export class StellarService {
 
   async getGASBalance(userId: string): Promise<number> {
     try {
-      const wallet = await storage.getWallet(userId)
+      const wallet = await storage.getWallet(userId);
       if (!wallet) {
         throw new Error("User stellar account not found");
       }
@@ -355,7 +355,7 @@ export class StellarService {
 
   async getMarketValue(userId: string): Promise<Object> {
     try {
-      const wallet = await storage.getWallet(userId)
+      const wallet = await storage.getWallet(userId);
       if (!wallet) {
         throw new Error("User stellar account not found");
       }
@@ -450,7 +450,9 @@ export class StellarService {
       }
 
       if (operations.length === 0) {
-        console.log(`All trustlines already exist for user ${userKeypair.publicKey()}`);
+        console.log(
+          `All trustlines already exist for user ${userKeypair.publicKey()}`,
+        );
         return;
       }
 
@@ -465,7 +467,9 @@ export class StellarService {
       builtTransaction.sign(userKeypair);
 
       await server.submitTransaction(builtTransaction);
-      console.log(`Token trustlines created for user ${userKeypair.publicKey()}`);
+      console.log(
+        `Token trustlines created for user ${userKeypair.publicKey()}`,
+      );
     } catch (error: any) {
       console.error("Error creating user token:", error.message);
       if (error.response?.data) {
@@ -719,6 +723,20 @@ export class StellarService {
         throw new Error("Invalid send parameters");
       }
 
+      if (!this.accountExists(toAddress)) {
+        const result = await this.createAccount(
+          sourceKeypair,
+          toAddress,
+          amount,
+        );
+        return {
+          hash: result,
+          status: "completed",
+          amount,
+          assetType,
+        };
+      }
+
       const transaction = new TransactionBuilder(account, {
         fee: BASE_FEE.toString(),
         networkPassphrase,
@@ -767,7 +785,10 @@ export class StellarService {
    * Merge old account into new account for wallet migration
    * This transfers all balances and merges the accounts
    */
-  async mergeAccounts(oldSecretKey: string, newPublicKey: string): Promise<{
+  async mergeAccounts(
+    oldSecretKey: string,
+    newPublicKey: string,
+  ): Promise<{
     hash: string;
     status: string;
     balancesTransferred: Array<{ asset: string; amount: string }>;
@@ -783,38 +804,49 @@ export class StellarService {
       // Check if new account exists
       const newAccountExists = await this.accountExists(newPublicKey);
       if (!newAccountExists) {
-        throw new Error("Destination account does not exist. Create the new account first.");
+        const result = await this.createAccount(
+          oldKeypair,
+          newPublicKey,
+          "2.0",
+        );
+        if (!result) {
+          throw new Error("Failed to create new account for merge");
+        }
       }
 
       const newAccount = await server.loadAccount(newPublicKey);
 
       // Get all balances from old account
       const balancesToTransfer = oldAccount.balances.filter(
-        (balance: any) => parseFloat(balance.balance) > 0
+        (balance: any) => parseFloat(balance.balance) > 0,
       );
 
       const operations = [];
-      const balancesTransferred = [];
+      const balancesTransferred = [] as any;
 
       // Transfer all non-XLM assets first
-      for (const balance of balancesToTransfer) {
+      balancesToTransfer.forEach((balance: any) => {
         if (balance.asset_type !== "native") {
           const amount = balance.balance;
-          const asset = balance.asset_type === "credit_alphanum4" 
-            ? new Asset(balance.asset_code, balance.asset_issuer)
-            : new Asset(balance.asset_code, balance.asset_issuer);
+          const asset =
+            balance.asset_type === "credit_alphanum4"
+              ? new Asset(balance.asset_code, balance.asset_issuer)
+              : balance.asset_code === "XLM"
+                ? Asset.native()
+                : new Asset(balance.asset_code, balance.asset_issuer);
 
           // Check if destination has trustline for this asset
           const destHasTrustline = newAccount.balances.some(
-            (b: any) => 
+            (b: any) =>
               b.asset_type === balance.asset_type &&
               b.asset_code === balance.asset_code &&
-              b.asset_issuer === balance.asset_issuer
+              b.asset_issuer === balance.asset_issuer,
           );
 
           if (!destHasTrustline) {
-            console.warn(`Destination account doesn't have trustline for ${balance.asset_code}. Skipping transfer.`);
-            continue;
+            console.warn(
+              `Destination account doesn't have trustline for ${balance.asset_code}. Skipping transfer.`,
+            );
           }
 
           operations.push(
@@ -822,27 +854,27 @@ export class StellarService {
               destination: newPublicKey,
               asset: asset,
               amount: amount,
-            })
+            }),
           );
 
           balancesTransferred.push({
             asset: `${balance.asset_code} (${balance.asset_issuer})`,
-            amount: amount
+            amount: amount,
           });
         } else {
           // Handle XLM - will be transferred via account merge
           balancesTransferred.push({
             asset: "XLM",
-            amount: balance.balance
+            amount: balance.balance,
           });
         }
-      }
+      });
 
       // Add account merge operation (transfers remaining XLM and merges accounts)
       operations.push(
         Operation.accountMerge({
           destination: newPublicKey,
-        })
+        }),
       );
 
       // Build and submit transaction
@@ -858,33 +890,34 @@ export class StellarService {
 
       const result = await server.submitTransaction(builtTransaction);
 
-      console.log(`Account merge completed. Old account ${oldKeypair.publicKey()} merged into ${newPublicKey}`);
+      console.log(
+        `Account merge completed. Old account ${oldKeypair.publicKey()} merged into ${newPublicKey}`,
+      );
 
       return {
         hash: result.hash,
         status: "completed",
-        balancesTransferred
+        balancesTransferred,
       };
-
     } catch (error: any) {
       console.error("Error merging accounts:", error);
 
       // Enhanced error handling
       if (error.response?.data?.extras?.result_codes) {
         const resultCodes = error.response.data.extras.result_codes;
-        
+
         if (resultCodes.transaction === "tx_insufficient_balance") {
           throw new Error("Insufficient balance to pay transaction fees");
         }
-        
+
         if (resultCodes.operations?.includes("op_no_destination")) {
           throw new Error("Destination account does not exist");
         }
-        
+
         if (resultCodes.operations?.includes("op_no_trust")) {
           throw new Error("Destination account missing required trustlines");
         }
-        
+
         if (resultCodes.operations?.includes("op_account_merge_malformed")) {
           throw new Error("Invalid account merge operation");
         }
@@ -893,16 +926,26 @@ export class StellarService {
           throw new Error("Source account does not exist");
         }
 
-        if (resultCodes.operations?.includes("op_account_merge_immutable_set")) {
-          throw new Error("Account has AUTH_IMMUTABLE flag set and cannot be merged");
+        if (
+          resultCodes.operations?.includes("op_account_merge_immutable_set")
+        ) {
+          throw new Error(
+            "Account has AUTH_IMMUTABLE flag set and cannot be merged",
+          );
         }
 
-        if (resultCodes.operations?.includes("op_account_merge_has_sub_entries")) {
-          throw new Error("Account has active offers or trustlines that must be closed first");
+        if (
+          resultCodes.operations?.includes("op_account_merge_has_sub_entries")
+        ) {
+          throw new Error(
+            "Account has active offers or trustlines that must be closed first",
+          );
         }
       }
 
-      throw new Error(`Account merge failed: ${error.message || "Unknown error"}`);
+      throw new Error(
+        `Account merge failed: ${error.message || "Unknown error"}`,
+      );
     }
   }
 
@@ -924,13 +967,15 @@ export class StellarService {
 
       for (const offer of offers.records) {
         // Convert Horizon API offer assets to Stellar SDK Asset objects
-        const sellingAsset = offer.selling.asset_type === "native" 
-          ? Asset.native()
-          : new Asset(offer.selling.asset_code, offer.selling.asset_issuer);
-          
-        const buyingAsset = offer.buying.asset_type === "native"
-          ? Asset.native()
-          : new Asset(offer.buying.asset_code, offer.buying.asset_issuer);
+        const sellingAsset =
+          offer.selling.asset_type === "native"
+            ? Asset.native()
+            : new Asset(offer?.selling?.asset_code, offer.selling.asset_issuer);
+
+        const buyingAsset =
+          offer.buying.asset_type === "native"
+            ? Asset.native()
+            : new Asset(offer.buying.asset_code, offer.buying.asset_issuer);
 
         operations.push(
           Operation.manageSellOffer({
@@ -939,15 +984,14 @@ export class StellarService {
             amount: "0", // 0 amount cancels the offer
             price: "1",
             offerId: offer.id,
-          })
+          }),
         );
       }
 
       // Close unused trustlines (those with 0 balance)
       const zeroBalanceTrustlines = account.balances.filter(
-        (balance: any) => 
-          balance.asset_type !== "native" && 
-          parseFloat(balance.balance) === 0
+        (balance: any) =>
+          balance.asset_type !== "native" && parseFloat(balance.balance) === 0,
       );
 
       for (const trustline of zeroBalanceTrustlines) {
@@ -956,7 +1000,7 @@ export class StellarService {
           Operation.changeTrust({
             asset: asset,
             limit: "0", // 0 limit removes the trustline
-          })
+          }),
         );
       }
 
@@ -972,12 +1016,15 @@ export class StellarService {
         builtTransaction.sign(keypair);
 
         await server.submitTransaction(builtTransaction);
-        console.log(`Prepared account ${keypair.publicKey()} for merge by closing ${operations.length} sub-entries`);
+        console.log(
+          `Prepared account ${keypair.publicKey()} for merge by closing ${operations.length} sub-entries`,
+        );
       }
-
     } catch (error: any) {
       console.error("Error preparing account for merge:", error);
-      throw new Error(`Failed to prepare account: ${error.message || "Unknown error"}`);
+      throw new Error(
+        `Failed to prepare account: ${error.message || "Unknown error"}`,
+      );
     }
   }
 
@@ -2559,14 +2606,13 @@ export class StellarService {
    * Create a new Stellar account with starting balance
    */
   async createAccount(
+    sourceKeypair: Keypair,
     newAccountPublicKey: string,
     startingBalance: string = "2.00",
   ): Promise<string> {
     try {
       // Use distributor account as the funding source
-      const sourceAccount = await server.loadAccount(
-        dopeDistributorKeypair.publicKey(),
-      );
+      const sourceAccount = await server.loadAccount(sourceKeypair.publicKey());
 
       const transaction = new TransactionBuilder(sourceAccount, {
         fee: BASE_FEE.toString(),
@@ -2581,7 +2627,7 @@ export class StellarService {
         .setTimeout(30)
         .build();
 
-      transaction.sign(dopeDistributorKeypair);
+      transaction.sign(sourceKeypair);
       const result = await server.submitTransaction(transaction);
 
       console.log(
@@ -2834,7 +2880,9 @@ export class StellarService {
 
       // Check if user account exists
       const accountKeypair = Keypair.fromSecret(secretKey);
-      const accountExists = await this.accountExists(accountKeypair.publicKey());
+      const accountExists = await this.accountExists(
+        accountKeypair.publicKey(),
+      );
 
       let createAccountTxHash: string | null = null;
       // If account doesn't exist, create it with DOPE trustline
@@ -3040,7 +3088,10 @@ export class StellarService {
   /**
    * Claim a claimable balance
    */
-  async claimBalance(secretKey: string, claimableBalanceId: string): Promise<any> {
+  async claimBalance(
+    secretKey: string,
+    claimableBalanceId: string,
+  ): Promise<any> {
     try {
       if (!secretKey) {
         throw new Error("User stellar secret key not found");

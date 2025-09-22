@@ -3,7 +3,7 @@ import bip39 from "bip39";
 import crypto from "crypto";
 
 class KeypairGenerator {
-    private keypair: Keypair | any;
+    private keypair: Keypair | null;
     private mnemonic: string | null;
 
     constructor() {
@@ -98,11 +98,11 @@ class KeypairGenerator {
         }
 
         return {
-            publicKey: this.keypair.publicKey(),
-            secretKey: this.keypair.secret(),
+            publicKey: this.keypair?.publicKey(),
+            secretKey: this.keypair?.secret(),
             mnemonic: this.mnemonic,
             mnemonicWordCount: this.mnemonic.split(" ").length,
-            accountId: this.keypair.publicKey(), // Same as public key for Stellar
+            accountId: this.keypair?.publicKey(), // Same as public key for Stellar
         };
     }
 

@@ -26,7 +26,7 @@ export default function ReceivePage() {
     refetchInterval: 30000,
   }) as any;
 
-  const stellarAddress = profileData?.user?.stellarPublicKey || "";
+  const stellarAddress = profileData?.user?.publicKey || "";
 
   const copyToClipboard = async (text: string, label: string) => {
     try {

@@ -34,7 +34,7 @@ import { Label } from "../components/ui/label.js";
 
 export default function WalletPage() {
   const { user, checkWalletMigrationStatus, hasSecureWallet } = useAuth();
-  const { isInitialized, isLocked, unlockWallet, createWallet } = useWallet();
+  const { isInitialized, isLocked, unlockWallet } = useWallet();
   const [showWalletSetup, setShowWalletSetup] = useState(false);
   const [showUnlockDialog, setShowUnlockDialog] = useState(false);
   const [showMigrationDialog, setShowMigrationDialog] = useState(false);
@@ -119,12 +119,6 @@ export default function WalletPage() {
     localStorage.setItem(`vaultId_${user?.id}`, vaultId);
     localStorage.setItem(`secureWallet_${user?.id}`, "true");
     setShowWalletSetup(false);
-  };
-
-  const handleMigrationComplete = () => {
-    localStorage.setItem(`secureWallet_${user?.id}`, "true");
-    setShowMigrationDialog(false);
-    setNeedsMigration(false);
   };
 
   const actionButtons = [

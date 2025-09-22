@@ -12,7 +12,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
 
-  const { isLoading } = useQuery({
+  const { data: dashboardData, isLoading } = useQuery({
     queryKey: ["/api/protected/dashboard"],
     refetchInterval: 30000,
   }) as any;
@@ -43,25 +43,39 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" data-testid="dashboard-page">
+    <div
+      className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+      data-testid="dashboard-page"
+    >
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
         {/* Left Column: Main Mining Interface */}
         <div className="lg:col-span-2 space-y-6">
-
-          <div className="bg-yellow-200 p-3 rounded-lg shadow-sm border-lg">
+          <div className="bg-yellow-200 p-3 rounded-lg shadow-sm border">
             <p className="text-sm text-muted-foreground">
-              <strong>Notice:</strong> DOPE Chain is currently in beta. Mining rewards are not yet available.
+              <strong>Warning:</strong> DOPE Chain is currently in beta. Mining
+              rewards are not yet available.
             </p>
           </div>
-          
+
+          {dashboardData?.user?.isActivated === false && (
+            <div className="bg-red-200 p-3 rounded-lg shadow-sm border">
+              <p className="text-sm text-muted-foreground">
+                <strong>Notice:</strong> To use your account, you need to fund
+                it at least 1 XLM.
+              </p>
+            </div>
+          )}
+
           {/* Welcome Section */}
           <Card data-testid="welcome-card">
             <CardContent className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h1 className="text-2xl font-bold text-foreground" data-testid="welcome-message">
-                    Welcome back, {user?.fullName?.split(' ')[0] || 'User'}!
+                  <h1
+                    className="text-2xl font-bold text-foreground"
+                    data-testid="welcome-message"
+                  >
+                    Welcome back, {user?.fullName?.split(" ")[0] || "User"}!
                   </h1>
                   <p className="text-muted-foreground mt-1">
                     Continue mining $DOPE Coin on the Stellar network.
@@ -77,7 +91,6 @@ export default function Dashboard() {
 
         {/* Right Column: Sidebar */}
         <div className="space-y-6">
-
           {/* User Profile Card */}
           <ProfileCard />
 
@@ -88,9 +101,9 @@ export default function Dashboard() {
           <Card data-testid="quick-actions">
             <CardContent className="p-6">
               <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
-              
+
               <div className="grid grid-cols-2 gap-3">
-                <Button 
+                <Button
                   variant="outline"
                   onClick={() => navigate("/trading")}
                   className="p-4 h-auto flex flex-col items-center hover:bg-muted hover:text-primary transition-colors group"
@@ -99,7 +112,7 @@ export default function Dashboard() {
                   <BarChart3 className="w-6 h-6 text-primary mb-2 group-hover:scale-110 transition-transform" />
                   <span className="text-sm font-medium">Trading</span>
                 </Button>
-                
+
                 <Button
                   variant="outline"
                   onClick={() => navigate("/transactions")}
@@ -109,8 +122,8 @@ export default function Dashboard() {
                   <History className="w-6 h-6 text-accent mb-2 group-hover:scale-110 transition-transform" />
                   <span className="text-sm font-medium">History</span>
                 </Button>
-                
-                <Button 
+
+                <Button
                   variant="outline"
                   onClick={() => navigate("/referrals")}
                   className="p-4 h-auto flex flex-col items-center hover:bg-muted hover:text-primary transition-colors group"
@@ -119,7 +132,7 @@ export default function Dashboard() {
                   <Gift className="w-6 h-6 text-primary mb-2 group-hover:scale-110 transition-transform" />
                   <span className="text-sm font-medium">Earn</span>
                 </Button>
-                
+
                 <Button
                   variant="outline"
                   onClick={() => navigate("/help/default/home")}
