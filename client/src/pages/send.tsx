@@ -312,8 +312,8 @@ export default function SendPage() {
 
         {/* PIN Verification Modal */}
         {showPinVerification && user && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-background p-6 rounded-lg max-w-md w-full mx-4">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center top z-50">
+            <div className="bg-white rounded-0 max-w-md w-full h-full md:rounded-lg md:h-auto">
               <PinVerification
                 walletId={localStorage.getItem(`walletId_${user.id}`) || ""}
                 onVerified={handlePinVerified}

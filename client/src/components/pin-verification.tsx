@@ -51,7 +51,7 @@ export function PinVerification({
   };
 
   return (
-    <Card className="w-full max-w-md mx-auto">
+    <Card className="w-full border-0 max-w-md shadow-none rounded-0 mx-auto">
       <CardHeader className="text-center">
         <div className="w-12 h-12 mx-auto mb-4 bg-primary/10 rounded-full flex items-center justify-center">
           <Lock className="w-6 h-6 text-primary" />
@@ -59,7 +59,7 @@ export function PinVerification({
         <CardTitle>{title}</CardTitle>
         <p className="text-sm text-muted-foreground">{description}</p>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-4">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="relative">
             <Input
