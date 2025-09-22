@@ -141,7 +141,7 @@ class NetworkHandler {
 
 // Initialize platform accounts on startup
 async function initializePlatformAccounts() {
-  if (STELLAR_NETWORK === "pinetwork") {
+  if (STELLAR_NETWORK === "testnet") {
     try {
       // Fund issuer account
       await NetworkHandler.fundTestnetAccount(dopeIssuerKeypair.publicKey());
@@ -211,8 +211,14 @@ async function initializePlatformAccounts() {
   // Configure issuer account
   try {
     await configureIssuer();
+    return await new Promise((resolve) =>
+      resolve("Issuer configured successfully"),
+    );
   } catch {
     console.log("Issuer already configured");
+    return await new Promise((resolve, reject) =>
+      reject("Issuer already configured"),
+    );
   }
 }
 
@@ -220,7 +226,7 @@ async function configureIssuer() {
   const acc = await server.loadAccount(dopeIssuerKeypair.publicKey());
 
   // Check if homeDomain is already set
-  if (acc.home_domain === "mine.dopp.eu.org") {
+  if (acc.home_domain === "dopechain.qzz.io") {
     console.log("Issuer already configured with correct homeDomain.");
     return;
   }
@@ -229,7 +235,7 @@ async function configureIssuer() {
     fee: BASE_FEE.toString(),
     networkPassphrase,
   })
-    .addOperation(Operation.setOptions({ homeDomain: "mine.dopp.eu.org" }))
+    .addOperation(Operation.setOptions({ homeDomain: "dopechain.qzz.io" }))
     .setTimeout(60)
     .build();
 
@@ -687,7 +693,7 @@ export class StellarService {
     userId: string,
     toAddress: string,
     amount: string,
-    assetType: "XLM" | "DOPE" | "GAS" | "USDC",
+    assetType: "XLM" | "DOPE" | "GAS" | "USDC" | "EURC",
   ): Promise<any> {
     try {
       const user = await storage.getUser(userId);
@@ -852,6 +858,9 @@ export class StellarService {
         baseFee = BASE_FEE.toString();
       }
 
+      const supportedSellAsset = sellAsset.code === "XLM" ? Asset.native() : sellAsset.code === "USDC" ? new Asset("USDC", USDC_ISSUER_ACCOUNT) : sellAsset.code === "EURC" ? new Asset("EURC", USDC_ISSUER_ACCOUNT) : new Asset("DOPE", dopeIssuerKeypair.publicKey());
+      const supportedBuyAsset = buyAsset.code === "XLM" ? Asset.native() : buyAsset.code === "USDC" ? new Asset("USDC", USDC_ISSUER_ACCOUNT) : buyAsset.code === "EURC" ? new Asset("EURC", USDC_ISSUER_ACCOUNT) : new Asset("DOPE", dopeIssuerKeypair.publicKey());
+
       // Use path payments for better execution
       const transaction = new TransactionBuilder(userAccount, {
         fee: baseFee,
@@ -859,10 +868,10 @@ export class StellarService {
       })
         .addOperation(
           Operation.pathPaymentStrictSend({
-            sendAsset: sellAsset,
+            sendAsset: supportedSellAsset,
             sendAmount: sellAmount,
             destination: userKeypair.publicKey(),
-            destAsset: buyAsset,
+            destAsset: supportedBuyAsset,
             destMin: minBuyAmount,
             path: [], // Let Stellar find the best path
           }),
@@ -1328,7 +1337,15 @@ export class StellarService {
       }
 
       try {
-        await this.createTrustline(userId, buying.code, buying.issuer);
+        await this.createTrustline(
+          userId,
+          buying.code,
+          buying.code === "USDC"
+            ? USDC_ISSUER_ACCOUNT
+            : buying.code === "EURC"
+              ? USDC_ISSUER_ACCOUNT
+              : dopeIssuerKeypair.publicKey(),
+        );
       } catch (error: any) {
         console.error("Error creating trustline:", error.message);
       }
@@ -1938,7 +1955,7 @@ export class StellarService {
       handleStellarError(
         error,
         Array.from(
-          error.response?.data?.extras.result_codes.operations,
+          error.response?.data?.extras?.result_codes?.operations || error.resposne,
         ).toString() || "Failed to add liquidity",
       );
     }
@@ -2977,9 +2994,8 @@ export class StellarService {
         .operations()
         .forAccount(publicKey)
         .order("desc")
-        .limit(limit)
-        .includeFail
-        ed(true);
+        .limit(limit).includeFail;
+      ed(true);
 
       if (cursor) {
         operationsRequest = operationsRequest.cursor(cursor);

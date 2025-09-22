@@ -150,9 +150,9 @@ export default function WalletPage() {
                 <div className="space-y-3">
                   {isAssetsLoading  ? <div>
                     <div className="h-8 bg-muted rounded animate-pulse mb-4" />
-                  </div> : assets && assets?.map((asset: any) => {
+                  </div> : assets && assets?.map((asset: any, index: number) => {
                     return (
-                      <div key={asset?.asset_code || asset.asset_type === "native" && "XLM"}>
+                      <div key={index}>
                         <div className="flex justify-between items-center w-full py-4">
                           <div>
                             <div className="text-xl font-bold text-primary">
