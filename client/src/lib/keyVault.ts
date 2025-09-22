@@ -908,7 +908,7 @@ export class KeyVault {
       };
 
       await this.storage.storeVault(vault);
-      
+
       // Sync to server
       await this.syncVaultToServer(vault);
 
@@ -963,7 +963,7 @@ export class KeyVault {
       CryptoUtils.secureWipe(mnemonic);
     } catch (error) {
       console.error("Vault unlock error:", error);
-      
+
       // Provide more specific error messages
       if (error instanceof Error) {
         if (error.message.includes("Decryption failed")) {
@@ -1027,7 +1027,7 @@ export class KeyVault {
             );
             walletData.encryptedPrivateKey = reEncrypted.encrypted;
             walletData.iv = reEncrypted.iv; // New IV for wallet
-            
+
             // Secure wipe the decrypted key
             CryptoUtils.secureWipe(decryptedPrivateKey);
           } catch (error) {
@@ -1346,6 +1346,46 @@ export class KeyVault {
     return this.memory.getStats();
   }
 
+  // Expose storage for debugging
+  get storage() {
+    return this.storage;
+  }
+
+  // Make syncVaultToServer method public
+  async syncVaultToServer(vault: EncryptedVault): Promise<void> {
+    if (!this.serverSyncEnabled) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch('/api/protected/vault/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          vault: {
+            id: vault.id,
+            name: vault.name,
+            encryptedData: JSON.stringify(vault),
+            salt: vault.salt,
+            iv: vault.iv,
+            createdAt: new Date(vault.createdAt),
+            lastAccessed: new Date(vault.lastAccessed),
+          }
+        })
+      });
+
+      if (!response.ok) {
+        console.warn('Failed to sync vault to server:', response.statusText);
+      }
+    } catch (error) {
+      console.warn('Vault server sync failed:', error);
+    }
+  }
+
   // =====================================================
   // PRIVATE HELPER METHODS
   // =====================================================
@@ -1362,13 +1402,13 @@ export class KeyVault {
       if (walletData.encryptedPrivateKey && walletData.iv) {
         try {
           console.log(`Loading wallet ${walletData.name} from encrypted private key...`);
-          
+
           // Get the current vault to access its salt
           const currentVault = await this.storage.getVault(this.currentVaultId!);
           if (!currentVault) {
             throw new Error('Current vault not found');
           }
-          
+
           const privateKeyHex = await CryptoUtils.decrypt(
             walletData.encryptedPrivateKey,
             password,
@@ -1424,39 +1464,40 @@ export class KeyVault {
   }
 
   // Server sync methods
-  private async syncVaultToServer(vault: EncryptedVault): Promise<void> {
-    if (!this.serverSyncEnabled) return;
+  // Moved outside to be public
+  // private async syncVaultToServer(vault: EncryptedVault): Promise<void> {
+  //   if (!this.serverSyncEnabled) return;
 
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
+  //   try {
+  //     const token = localStorage.getItem('token');
+  //     if (!token) return;
 
-      const response = await fetch('/api/protected/vault/sync', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          vault: {
-            id: vault.id,
-            name: vault.name,
-            encryptedData: JSON.stringify(vault),
-            salt: vault.salt,
-            iv: vault.iv,
-            createdAt: new Date(vault.createdAt),
-            lastAccessed: new Date(vault.lastAccessed),
-          }
-        })
-      });
+  //     const response = await fetch('/api/protected/vault/sync', {
+  //       method: 'POST',
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //         'Authorization': `Bearer ${token}`
+  //       },
+  //       body: JSON.stringify({
+  //         vault: {
+  //           id: vault.id,
+  //           name: vault.name,
+  //           encryptedData: JSON.stringify(vault),
+  //           salt: vault.salt,
+  //           iv: vault.iv,
+  //           createdAt: new Date(vault.createdAt),
+  //           lastAccessed: new Date(vault.lastAccessed),
+  //         }
+  //       })
+  //     });
 
-      if (!response.ok) {
-        console.warn('Failed to sync vault to server:', response.statusText);
-      }
-    } catch (error) {
-      console.warn('Vault server sync failed:', error);
-    }
-  }
+  //     if (!response.ok) {
+  //       console.warn('Failed to sync vault to server:', response.statusText);
+  //     }
+  //   } catch (error) {
+  //     console.warn('Vault server sync failed:', error);
+  //   }
+  // }
 
   async loadUserVaultsFromServer(): Promise<void> {
     if (!this.serverSyncEnabled) return;
@@ -1474,7 +1515,7 @@ export class KeyVault {
       if (!response.ok) return;
 
       const { vaults } = await response.json();
-      
+
       for (const serverVault of vaults) {
         const vaultData = JSON.parse(serverVault.encryptedData);
         await this.storage.storeVault(vaultData);

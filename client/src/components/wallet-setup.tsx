@@ -175,12 +175,15 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
       // Add primary wallet to new vault (this saves to vault storage)
       const walletId = await keyVault.addWallet("Primary Wallet", "m/44'/148'/0'/0/0", importPassword);
 
-      // Verify wallet was created
+      // Verify wallet was created and saved
+      const vault = await keyVault.storage.getVault(vaultId);
+      console.log('Vault after wallet creation:', vault?.wallets?.length || 0, 'wallets');
+      
       const wallets = keyVault.getAllWallets();
       console.log('Imported wallets in memory:', wallets.length);
       
-      if (wallets.length === 0) {
-        throw new Error('Imported wallet was not properly created in vault');
+      if (wallets.length === 0 || !vault?.wallets?.length) {
+        throw new Error('Imported wallet was not properly created or saved to vault');
       }
 
       // Set up PIN and session
@@ -190,28 +193,33 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
       // Store references
       localStorage.setItem(`vaultId_${user?.id}`, vaultId);
       localStorage.setItem(`walletPin_${user?.id}`, pin);
+      localStorage.setItem(`secureWallet_${user?.id}`, "true");
 
-      // Try to establish backend session
-      try {
-        const secretKey = primaryWallet.keypair.secret();
-        const response = await fetch('/api/protected/wallet/session', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          },
-          body: JSON.stringify({
-            secretKey,
-            pin
-          })
-        });
+      console.log('Establishing backend session with imported wallet...');
+      // Establish backend session
+      const secretKey = primaryWallet.keypair.secret();
+      const response = await fetch('/api/protected/wallet/session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          secretKey,
+          pin
+        })
+      });
 
-        if (!response.ok) {
-          console.warn('Failed to establish backend session, but wallet imported locally');
-        }
-      } catch (sessionError) {
-        console.warn('Backend session setup failed:', sessionError);
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.warn('Backend session warning:', errorData.message);
+        // Don't fail the import if backend session fails
+      } else {
+        console.log('Backend session established successfully');
       }
+
+      // Force sync vault to server
+      await keyVault.syncVaultToServer(vault);
 
       setSuccess("Wallet imported successfully with PIN protection!");
       setTimeout(() => onComplete(vaultId), 1500);
@@ -219,6 +227,13 @@ export function WalletSetup({ onComplete }: WalletSetupProps) {
     } catch (error) {
       console.error("Import wallet error:", error);
       setError(error instanceof Error ? error.message : "Failed to import wallet");
+      
+      // Clean up on failure
+      try {
+        await keyVault.lockVault();
+      } catch (cleanupError) {
+        console.error('Cleanup error:', cleanupError);
+      }
     } finally {
       setIsCreating(false);
     }
