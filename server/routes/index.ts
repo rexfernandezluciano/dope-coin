@@ -25,6 +25,15 @@ import z from "zod";
 import { rateLimit } from "express-rate-limit";
 import { KeypairGenerator } from "../utils/keypair-generator.js";
 
+// Middleware to ensure wallet session is established
+const requireWalletAuth = (req: any, res: any, next: any) => {
+  if (req.walletSession && req.walletSession.secretKey) {
+    next();
+  } else {
+    res.status(401).json({ error: "Wallet session required" });
+  }
+};
+
 var rateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // max 100 requests per windowMs
@@ -252,6 +261,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sessionPassword,
       );
 
+      // Set wallet session in req object for subsequent middleware
+      req.walletSession = { secretKey };
+
       res.json({ message: "Wallet session established successfully" });
     } catch (error: any) {
       console.error("Wallet session error:", error);
@@ -268,6 +280,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user?.id;
       if (userId) {
         walletService.clearUserSession(userId);
+        // Clear wallet session from req object
+        if (req.walletSession) {
+          delete req.walletSession;
+        }
       }
       res.json({ message: "Wallet session cleared" });
     } catch (error) {
@@ -592,32 +608,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
-  app.post(
-    "/api/protected/wallet/convert-gas",
-    rateLimiter,
-    walletAuthMiddleware,
-    async (req, res) => {
-      try {
-        const secretKey = (req as any).secretKey;
+  // Trust a new asset
+  app.post("/api/protected/wallet/trust-asset", requireWalletAuth, async (req, res) => {
+    try {
+      const { assetCode, assetIssuer } = req.body;
 
-        const { xlmAmount } = req.body;
-        if (!xlmAmount || parseFloat(xlmAmount) <= 0) {
-          return res.status(400).json({ message: "Invalid XLM amount" });
-        }
-
-        const result = await stellarService.convertXLMToGAS(
-          secretKey,
-          xlmAmount,
-        );
-        res.json(result);
-      } catch (error: any) {
-        console.error("GAS conversion error:", error);
-        res
-          .status(500)
-          .json({ message: error.message || "Internal server error" });
+      if (!assetCode || !assetIssuer) {
+        return res.status(400).json({ error: "Asset code and issuer are required" });
       }
-    },
-  );
+
+      const secretKey = req.walletSession?.secretKey;
+      if (!secretKey) {
+        return res.status(401).json({ error: "Wallet session required" });
+      }
+
+      await stellarService.createTrustline(secretKey, assetCode, assetIssuer);
+
+      res.json({
+        success: true,
+        message: `Trustline created for ${assetCode}`
+      });
+    } catch (error: any) {
+      console.error("Trust asset error:", error);
+      res.status(500).json({
+        error: error.message || "Failed to create trustline"
+      });
+    }
+  });
+
+  // Convert XLM to GAS
+  app.post("/api/protected/wallet/convert-gas", rateLimiter, walletAuthMiddleware, async (req, res) => {
+    try {
+      const secretKey = (req as any).secretKey;
+
+      const { xlmAmount } = req.body;
+      if (!xlmAmount || parseFloat(xlmAmount) <= 0) {
+        return res.status(400).json({ message: "Invalid XLM amount" });
+      }
+
+      const result = await stellarService.convertXLMToGAS(
+        secretKey,
+        xlmAmount,
+      );
+      res.json(result);
+    } catch (error: any) {
+      console.error("GAS conversion error:", error);
+      res
+        .status(500)
+        .json({ message: error.message || "Internal server error" });
+    }
+  });
 
   // Transaction history
   app.get("/api/protected/transactions", async (req, res) => {
@@ -1359,6 +1399,373 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Verify email error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Game routes
+  app.get("/api/protected/games/stats", async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Get or create game stats
+      let gameStats = await storage.getGameStats(userId);
+      if (!gameStats) {
+        gameStats = {
+          userId,
+          totalEarned: 0,
+          gamesPlayed: 0,
+          bestScore: 0,
+          totalDogeClicks: 0,
+          totalPepeClicks: 0,
+          dailyStreak: 0,
+          lastClaimDate: null,
+          rank: 0
+        };
+        await storage.setGameStats(userId, gameStats);
+      }
+
+      // Check if user can claim daily reward
+      const now = new Date();
+      const lastClaim = gameStats.lastClaimDate ? new Date(gameStats.lastClaimDate) : null;
+      const canClaimDaily = !lastClaim ||
+        (now.getTime() - lastClaim.getTime()) >= 24 * 60 * 60 * 1000;
+
+      // Calculate rank
+      const allStats = await storage.getAllGameStats();
+      const sortedStats = allStats.sort((a, b) => b.totalEarned - a.totalEarned);
+      const userRank = sortedStats.findIndex(s => s.userId === userId) + 1;
+
+      res.json({
+        ...gameStats,
+        canClaimDaily,
+        rank: userRank || 999
+      });
+    } catch (error) {
+      console.error("Get game stats error:", error);
+      res.status(500).json({ error: "Failed to get game stats" });
+    }
+  });
+
+  app.get("/api/protected/games/leaderboard", async (req, res) => {
+    try {
+      const allStats = await storage.getAllGameStats();
+      const leaderboard = allStats
+        .sort((a, b) => b.totalEarned - a.totalEarned)
+        .slice(0, 50)
+        .map((stats, index) => ({
+          id: stats.userId,
+          username: `Player${stats.userId.slice(0, 8)}`,
+          totalScore: stats.bestScore,
+          totalEarned: stats.totalEarned,
+          rank: index + 1
+        }));
+
+      res.json(leaderboard);
+    } catch (error) {
+      console.error("Get leaderboard error:", error);
+      res.status(500).json({ error: "Failed to get leaderboard" });
+    }
+  });
+
+  app.post("/api/protected/games/submit-score", async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const { gameType, score, dogeClicks, pepeClicks } = req.body;
+
+      if (!gameType || score < 0) {
+        return res.status(400).json({ error: "Invalid score data" });
+      }
+
+      // Calculate reward based on score
+      const baseReward = Math.floor(score / 10); // 1 DOPE per 10 points
+      const dogeBonus = dogeClicks * 0.5; // Bonus for DOGE clicks
+      const pepeBonus = pepeClicks * 0.3; // Bonus for PEPE clicks
+      const totalReward = baseReward + dogeBonus + pepeBonus;
+
+      // Update game stats
+      let gameStats = await storage.getGameStats(userId);
+      if (!gameStats) {
+        gameStats = {
+          userId,
+          totalEarned: 0,
+          gamesPlayed: 0,
+          bestScore: 0,
+          totalDogeClicks: 0,
+          totalPepeClicks: 0,
+          dailyStreak: 0,
+          lastClaimDate: null,
+          rank: 0
+        };
+      }
+
+      gameStats.totalEarned += totalReward;
+      gameStats.gamesPlayed += 1;
+      gameStats.bestScore = Math.max(gameStats.bestScore, score);
+      gameStats.totalDogeClicks += dogeClicks || 0;
+      gameStats.totalPepeClicks += pepeClicks || 0;
+
+      await storage.setGameStats(userId, gameStats);
+
+      // Issue DOPE tokens to user
+      if (totalReward > 0) {
+        const wallet = await storage.getWallet(userId);
+        if (wallet) {
+          try {
+            await stellarService.issueDopeTokens(wallet.secretKey, totalReward.toFixed(4));
+          } catch (error) {
+            console.error("Failed to issue DOPE tokens:", error);
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        reward: totalReward.toFixed(4),
+        newStats: gameStats
+      });
+    } catch (error) {
+      console.error("Submit score error:", error);
+      res.status(500).json({ error: "Failed to submit score" });
+    }
+  });
+
+  app.post("/api/protected/games/daily-reward", async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      let gameStats = await storage.getGameStats(userId);
+      if (!gameStats) {
+        return res.status(404).json({ error: "Game stats not found" });
+      }
+
+      const now = new Date();
+      const lastClaim = gameStats.lastClaimDate ? new Date(gameStats.lastClaimDate) : null;
+
+      // Check if 24 hours have passed
+      if (lastClaim && (now.getTime() - lastClaim.getTime()) < 24 * 60 * 60 * 1000) {
+        return res.status(400).json({ error: "Daily reward already claimed" });
+      }
+
+      // Calculate streak
+      let newStreak = 1;
+      if (lastClaim) {
+        const timeDiff = now.getTime() - lastClaim.getTime();
+        const daysDiff = Math.floor(timeDiff / (24 * 60 * 60 * 1000));
+
+        if (daysDiff === 1) {
+          newStreak = gameStats.dailyStreak + 1;
+        } else if (daysDiff > 1) {
+          newStreak = 1; // Reset streak
+        }
+      }
+
+      // Calculate reward based on streak
+      const baseReward = 10;
+      const streakBonus = Math.min(newStreak * 2, 50); // Max 50 bonus
+      const totalReward = baseReward + streakBonus;
+
+      // Update stats
+      gameStats.dailyStreak = newStreak;
+      gameStats.lastClaimDate = now.toISOString();
+      gameStats.totalEarned += totalReward;
+
+      await storage.setGameStats(userId, gameStats);
+
+      // Issue DOPE tokens
+      const wallet = await storage.getWallet(userId);
+      if (wallet) {
+        try {
+          await stellarService.issueDopeTokens(wallet.secretKey, totalReward.toFixed(4));
+        } catch (error) {
+          console.error("Failed to issue daily reward DOPE tokens:", error);
+        }
+      }
+
+      res.json({
+        success: true,
+        reward: totalReward,
+        streak: newStreak
+      });
+    } catch (error) {
+      console.error("Daily reward error:", error);
+      res.status(500).json({ error: "Failed to claim daily reward" });
+    }
+  });
+
+  // Withdrawal routes
+  app.get("/api/protected/withdrawal/methods", async (req, res) => {
+    try {
+      const methods = [
+        { id: "bank", name: "Bank Transfer", fee: "2.5%", time: "3-5 business days" },
+        { id: "paypal", name: "PayPal", fee: "3.0%", time: "1-2 business days" },
+        { id: "venmo", name: "Venmo", fee: "2.0%", time: "1-2 business days" },
+        { id: "cashapp", name: "Cash App", fee: "2.0%", time: "1-2 business days" },
+        { id: "crypto", name: "Cryptocurrency", fee: "1.0%", time: "10-30 minutes" },
+      ];
+      res.json(methods);
+    } catch (error) {
+      console.error("Get withdrawal methods error:", error);
+      res.status(500).json({ error: "Failed to get withdrawal methods" });
+    }
+  });
+
+  app.post("/api/protected/withdrawal/submit", requireWalletAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const { amount, method, accountDetails } = req.body;
+
+      if (!amount || !method || parseFloat(amount) < 10) {
+        return res.status(400).json({ error: "Invalid withdrawal amount" });
+      }
+
+      const secretKey = req.walletSession?.secretKey;
+      if (!secretKey) {
+        return res.status(401).json({ error: "Wallet session required" });
+      }
+
+      // Check user's DOPE balance
+      const dopeBalance = await stellarService.getDOPEBalance(userId);
+      if (dopeBalance < parseFloat(amount)) {
+        return res.status(400).json({ error: "Insufficient DOPE balance" });
+      }
+
+      // Calculate processing fee
+      const fees = {
+        bank: 0.025,
+        paypal: 0.03,
+        venmo: 0.02,
+        cashapp: 0.02,
+        crypto: 0.01,
+      };
+
+      const fee = fees[method as keyof typeof fees] || 0.025;
+      const feeAmount = parseFloat(amount) * fee;
+      const netAmount = parseFloat(amount) - feeAmount;
+
+      // Create withdrawal record
+      const withdrawalId = `wd_${Date.now()}_${userId.slice(0, 8)}`;
+      const withdrawal = {
+        id: withdrawalId,
+        userId,
+        amount: parseFloat(amount),
+        netAmount,
+        feeAmount,
+        method,
+        accountDetails,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+        processedAt: null,
+      };
+
+      // Store withdrawal request
+      await storage.setWithdrawalRequest(withdrawalId, withdrawal);
+
+      // For crypto withdrawals, process immediately
+      if (method === "crypto" && accountDetails.cryptoAddress) {
+        try {
+          // Convert DOPE to USDC and send to user's address
+          const usdcAmount = (netAmount * 0.25).toFixed(6); // Assuming 1 DOPE = 0.25 USDC
+
+          // Send USDC to user's address
+          await stellarService.sendTokens(
+            secretKey,
+            accountDetails.cryptoAddress,
+            usdcAmount,
+            "USDC"
+          );
+
+          // Burn the DOPE tokens from user's wallet
+          await stellarService.sendTokens(
+            secretKey,
+            stellarService.dopeDistributorKeypair.publicKey(),
+            amount,
+            "DOPE"
+          );
+
+          withdrawal.status = "completed";
+          withdrawal.processedAt = new Date().toISOString();
+          await storage.setWithdrawalRequest(withdrawalId, withdrawal);
+
+          return res.json({
+            success: true,
+            withdrawalId,
+            amount: netAmount,
+            processingTime: "Completed",
+            txHash: "completed_instantly"
+          });
+        } catch (error) {
+          console.error("Crypto withdrawal error:", error);
+          withdrawal.status = "failed";
+          await storage.setWithdrawalRequest(withdrawalId, withdrawal);
+          return res.status(500).json({ error: "Failed to process crypto withdrawal" });
+        }
+      }
+
+      // For other methods, mark as pending for manual processing
+      const processingTimes = {
+        bank: "3-5 business days",
+        paypal: "1-2 business days",
+        venmo: "1-2 business days",
+        cashapp: "1-2 business days",
+      };
+
+      // Reserve the DOPE tokens (send to a holding address)
+      try {
+        await stellarService.sendTokens(
+          secretKey,
+          stellarService.dopeDistributorKeypair.publicKey(),
+          amount,
+          "DOPE"
+        );
+      } catch (error) {
+        console.error("Failed to reserve DOPE tokens:", error);
+        return res.status(500).json({ error: "Failed to process withdrawal" });
+      }
+
+      res.json({
+        success: true,
+        withdrawalId,
+        amount: netAmount,
+        processingTime: processingTimes[method as keyof typeof processingTimes] || "1-3 business days"
+      });
+
+    } catch (error) {
+      console.error("Withdrawal submission error:", error);
+      res.status(500).json({ error: "Failed to submit withdrawal" });
+    }
+  });
+
+  // Mining routes
+  app.get("/api/protected/mining/status", async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      const status = await miningService.getMiningStatus(userId);
+      res.json(status);
+    } catch (error: any) {
+      console.error("Mining status error:", error.message);
       res.status(500).json({ message: "Internal server error" });
     }
   });

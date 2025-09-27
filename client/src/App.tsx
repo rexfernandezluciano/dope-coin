@@ -20,6 +20,8 @@ import ReceivePage from "./pages/receive.js";
 import TradingPage from "./pages/trading.js";
 import LimitOrderCreator from "./pages/limit-order.js";
 import HelpPage from "./pages/help.js"
+import EarnPage from "./pages/earn.js";
+import WithdrawPage from "./pages/withdraw.js";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -216,7 +218,6 @@ function Router() {
             </ProtectedRoute>
           )}
         />
-
         <Route
           path="/orders/create"
           component={() => (
@@ -246,6 +247,8 @@ function Router() {
             </ProtectedRoute>
           )}
         />
+        <Route path="/earn" component={EarnPage} />
+        <Route path="/withdraw" component={WithdrawPage} />
 
         <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />

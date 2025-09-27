@@ -69,6 +69,7 @@ export interface IStorage {
 	getRecentMiningSessionsByUser(userId: string, limit: number): Promise<MiningSession[]>;
 	getReferralCount(userId: string): Promise<number>;
 	getActiveMiningSessionsCount(): Promise<number>;
+	getLastMiningReward(userId: string): Promise<Date | null>;
 
 	// Referral methods
 	addReferralBonus(userId: string, amount: string): Promise<void>;
@@ -79,9 +80,26 @@ export interface IStorage {
 	getVault(vaultId: string): Promise<VaultData | null>;
 	getUserVaults(userId: string): Promise<VaultData[]>;
 	deleteVault(vaultId: string): Promise<void>;
+
+	// Game stats methods
+	getGameStats(userId: string): Promise<any>;
+	setGameStats(userId: string, stats: any): Promise<void>;
+	getAllGameStats(): Promise<any[]>;
+
+	// Withdrawal methods
+	setWithdrawalRequest(withdrawalId: string, withdrawal: any): Promise<void>;
+	getWithdrawalRequest(withdrawalId: string): Promise<any>;
+	getUserWithdrawals(userId: string): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
+	// Assuming a cache instance is available for game stats and withdrawals
+	private cache: Map<string, any>;
+
+	constructor() {
+		this.cache = new Map();
+	}
+
 	async getUser(id: string): Promise<User | undefined> {
 		const [result] = await db.select().from(users).leftJoin(wallets, eq(users.id, wallets.userId)).where(eq(users.id, id));
 		return result?.users;
@@ -270,6 +288,37 @@ export class DatabaseStorage implements IStorage {
 		}
 	}
 
+	async getLastMiningReward(userId: string): Promise<Date | null> {
+		const result = await db
+			.select({ lastReward: users.lastMiningReward })
+			.from(users)
+			.where(eq(users.id, userId))
+			.limit(1);
+
+		return result[0]?.lastReward || null;
+	}
+
+	async getGameStats(userId: string): Promise<any> {
+		const key = `game_stats:${userId}`;
+		const data = this.cache.get(key);
+		return data || null;
+	}
+
+	async setGameStats(userId: string, stats: any): Promise<void> {
+		const key = `game_stats:${userId}`;
+		this.cache.set(key, stats);
+	}
+
+	async getAllGameStats(): Promise<any[]> {
+		const allStats = [];
+		for (const [key, value] of this.cache.entries()) {
+			if (key.startsWith('game_stats:')) {
+				allStats.push(value);
+			}
+		}
+		return allStats;
+	}
+
 	async getUserByReferralCode(referralCode: string): Promise<User | undefined> {
 		try {
 			const [user] = await db.select().from(users).where(eq(users.referralCode, referralCode));
@@ -309,6 +358,26 @@ export class DatabaseStorage implements IStorage {
 			console.error("Error getting active referrals:", error);
 			return [];
 		}
+	}
+
+	async setWithdrawalRequest(withdrawalId: string, withdrawal: any): Promise<void> {
+		const key = `withdrawal:${withdrawalId}`;
+		this.cache.set(key, withdrawal);
+	}
+
+	async getWithdrawalRequest(withdrawalId: string): Promise<any> {
+		const key = `withdrawal:${withdrawalId}`;
+		return this.cache.get(key) || null;
+	}
+
+	async getUserWithdrawals(userId: string): Promise<any[]> {
+		const userWithdrawals = [];
+		for (const [key, value] of this.cache.entries()) {
+			if (key.startsWith('withdrawal:') && value.userId === userId) {
+				userWithdrawals.push(value);
+			}
+		}
+		return userWithdrawals.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 	}
 
 	// Vault storage methods

@@ -46,6 +46,7 @@ import {
 import { Input } from "../components/ui/input.js";
 import { Label } from "../components/ui/label.js";
 import { useToast } from "../hooks/use-toast.js";
+import { TrustAssetModal } from "../components/trust-asset-modal.js";
 
 export default function WalletPage() {
   const { user, checkWalletMigrationStatus, hasSecureWallet } = useAuth();
@@ -340,8 +341,9 @@ export default function WalletPage() {
             <TabsContent value="assets" className="space-y-6">
               {/* Assets */}
               <Card>
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>My Assets</CardTitle>
+                  <TrustAssetModal />
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">

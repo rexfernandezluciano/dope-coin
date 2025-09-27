@@ -125,7 +125,7 @@ export default function Dashboard() {
 
                 <Button
                   variant="outline"
-                  onClick={() => navigate("/referrals")}
+                  onClick={() => navigate("/earn")}
                   className="p-4 h-auto flex flex-col items-center hover:bg-muted hover:text-primary transition-colors group"
                   data-testid="action-invite"
                 >
