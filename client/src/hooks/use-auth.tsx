@@ -163,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsAuthenticated(true);
 
       // Automatically set up KeyVault with the returned stellar keypair
-      if (data.passphrase && data.secretKey && data.user.publicKey) {
+      if (data.user.passphrase && data.user.secretKey && data.user.publicKey) {
         try {
           await keyVault.initialize();
 
@@ -171,7 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const vaultId = await keyVault.createVault(
             "Main Wallet",
             registerData.password,
-            data.passphrase
+            data.user.passphrase
           );
 
           // Unlock the vault and add the primary wallet
