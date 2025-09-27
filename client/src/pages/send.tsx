@@ -1,12 +1,6 @@
-
 import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card.js";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.js";
 import { Button } from "../components/ui/button.js";
 import { Input } from "../components/ui/input.js";
 import { Label } from "../components/ui/label.js";
@@ -19,11 +13,12 @@ import {
 } from "../components/ui/select.js";
 import { useToast } from "../hooks/use-toast.js";
 import { AuthService } from "../lib/auth.js";
-import { Send, ArrowLeft, Copy, Wallet, Unlock } from "lucide-react";
+import { Send, ArrowLeft, Wallet, AlertCircle } from "lucide-react";
+import { keyVault } from "../lib/keyVault.js";
+import { Alert, AlertDescription } from "../components/ui/alert.js";
 import { useLocation } from "wouter";
 import { PinVerification } from "../components/pin-verification.js";
 import { useAuth } from "../hooks/use-auth.js";
-import { keyVault } from "../lib/keyVault.js";
 
 export default function SendPage() {
   const { toast } = useToast();
@@ -40,11 +35,6 @@ export default function SendPage() {
 
   const { data: walletData, isLoading } = useQuery({
     queryKey: ["/api/protected/wallet"],
-    refetchInterval: 30000,
-  }) as any;
-
-  const { data: userAssets } = useQuery({
-    queryKey: ["/api/protected/asset/holders"],
     refetchInterval: 30000,
   }) as any;
 
@@ -92,7 +82,7 @@ export default function SendPage() {
 
   const handleSendSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!walletUnlocked) {
       toast({
         title: "Wallet Locked",
@@ -111,7 +101,7 @@ export default function SendPage() {
       return;
     }
 
-    const selectedAsset = userAssets?.find((asset: any) => 
+    const selectedAsset = walletData?.balances?.find((asset: any) => 
       asset.asset_code === sendForm.assetType || 
       (sendForm.assetType === "XLM" && asset.asset_type === "native")
     );
@@ -138,7 +128,7 @@ export default function SendPage() {
       }
 
       const primaryWallet = wallets[0];
-      
+
       await fetch("/api/protected/wallet/session", {
         method: "POST",
         headers: {
@@ -168,11 +158,11 @@ export default function SendPage() {
   };
 
   const setMaxAmount = () => {
-    const selectedAsset = userAssets?.find((asset: any) => 
+    const selectedAsset = walletData?.balances?.find((asset: any) => 
       asset.asset_code === sendForm.assetType || 
       (sendForm.assetType === "XLM" && asset.asset_type === "native")
     );
-    
+
     const maxBalance = selectedAsset?.balance || "0";
     setSendForm((prev) => ({
       ...prev,
@@ -238,7 +228,7 @@ export default function SendPage() {
                   </span>
                 </div>
                 <Button size="sm" onClick={unlockWallet} className="bg-orange-500 hover:bg-orange-600">
-                  <Unlock className="w-4 h-4 mr-2" />
+                  <Wallet className="w-4 h-4 mr-2" />
                   Unlock Wallet
                 </Button>
               </div>
@@ -272,7 +262,7 @@ export default function SendPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {userAssets?.map((asset: any) => (
+                    {walletData?.balances?.map((asset: any) => (
                       <SelectItem 
                         key={asset.asset_type === "native" ? "XLM" : asset.asset_code} 
                         value={asset.asset_type === "native" ? "XLM" : asset.asset_code}
@@ -356,7 +346,7 @@ export default function SendPage() {
                   >
                     Max:{" "}
                     {(() => {
-                      const selectedAsset = userAssets?.find((asset: any) => 
+                      const selectedAsset = walletData?.balances?.find((asset: any) => 
                         asset.asset_code === sendForm.assetType || 
                         (sendForm.assetType === "XLM" && asset.asset_type === "native")
                       );

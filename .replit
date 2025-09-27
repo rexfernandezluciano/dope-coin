@@ -18,7 +18,7 @@ integrations = ["javascript_database:1.0.0", "javascript_sendgrid:1.0.0"]
 expertMode = true
 
 [workflows]
-runButton = "Project"
+runButton = "Development Server"
 
 [[workflows.workflow]]
 name = "Project"
@@ -40,6 +40,15 @@ outputType = "webview"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[[workflows.workflow]]
+name = "Development Server"
+author = 48064748
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx tsx server/index.ts"
 
 [[ports]]
 localPort = 5000

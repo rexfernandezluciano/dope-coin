@@ -148,12 +148,19 @@ export default function EarnPage() {
   // Check if wallet session is active
   useEffect(() => {
     const checkWalletSession = () => {
-      const wallets = keyVault.getAllWallets();
-      setWalletSessionActive(wallets.length > 0 && keyVault.isVaultUnlocked());
+      try {
+        const wallets = keyVault.getAllWallets();
+        const hasWallets = wallets && wallets.length > 0;
+        const isUnlocked = keyVault.isVaultUnlocked();
+        setWalletSessionActive(hasWallets && isUnlocked);
+      } catch (error) {
+        console.error("Error checking wallet session:", error);
+        setWalletSessionActive(false);
+      }
     };
 
     checkWalletSession();
-    const interval = setInterval(checkWalletSession, 5000);
+    const interval = setInterval(checkWalletSession, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -367,15 +374,23 @@ export default function EarnPage() {
 
   const unlockWallet = async () => {
     try {
-      // This would trigger wallet unlock flow
-      toast({
-        title: "Wallet Unlock",
-        description: "Please unlock your wallet in the main app to start earning.",
-      });
+      const wallets = keyVault.getAllWallets();
+      if (!wallets || wallets.length === 0) {
+        toast({
+          title: "No Wallet Found",
+          description: "Please create a wallet first in the Wallet section.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Navigate to wallet page to unlock
+      window.location.href = "/wallet";
     } catch (error) {
+      console.error("Error unlocking wallet:", error);
       toast({
         title: "Error",
-        description: "Failed to unlock wallet",
+        description: "Failed to access wallet. Please try again.",
         variant: "destructive",
       });
     }
@@ -391,10 +406,13 @@ export default function EarnPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => window.history.back()}
-                className="md:hidden"
+                onClick={() => {
+                  window.location.href = "/dashboard";
+                }}
+                className="flex items-center space-x-2"
               >
                 <ArrowLeft className="w-4 h-4" />
+                <span className="hidden md:inline">Back</span>
               </Button>
               <div className="flex items-center space-x-2">
                 <Gamepad2 className="w-6 h-6 text-primary" />
@@ -405,7 +423,17 @@ export default function EarnPage() {
               <Badge variant="secondary" className="hidden md:flex">
                 Balance: {parseFloat(walletData?.dopeBalance || "0").toFixed(4)} DOPE
               </Badge>
-              {!walletSessionActive && (
+              {walletSessionActive ? (
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={() => window.location.href = "/wallet"}
+                  className="hidden md:flex"
+                >
+                  <Wallet className="w-4 h-4 mr-2" />
+                  Wallet
+                </Button>
+              ) : (
                 <Button size="sm" onClick={unlockWallet} className="bg-orange-500 hover:bg-orange-600">
                   <Wallet className="w-4 h-4 mr-2" />
                   Unlock Wallet
@@ -426,22 +454,22 @@ export default function EarnPage() {
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
         {/* Games Tabs */}
         <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 md:grid-cols-4 mb-6">
-            <TabsTrigger value="hamster" className="flex flex-col items-center space-y-1 py-3">
-              <MousePointer2 className="w-4 h-4" />
-              <span className="text-xs">Hamster</span>
+          <TabsList className="grid w-full grid-cols-4 mb-6 bg-white dark:bg-gray-800 shadow-sm">
+            <TabsTrigger value="hamster" className="flex flex-col items-center space-y-1 py-2 md:py-3 data-[state=active]:bg-yellow-100 data-[state=active]:text-yellow-700">
+              <MousePointer2 className="w-3 h-3 md:w-4 md:h-4" />
+              <span className="text-xs font-medium">Hamster</span>
             </TabsTrigger>
-            <TabsTrigger value="spin" className="flex flex-col items-center space-y-1 py-3">
-              <RotateCcw className="w-4 h-4" />
-              <span className="text-xs">Spin</span>
+            <TabsTrigger value="spin" className="flex flex-col items-center space-y-1 py-2 md:py-3 data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700">
+              <RotateCcw className="w-3 h-3 md:w-4 md:h-4" />
+              <span className="text-xs font-medium">Spin</span>
             </TabsTrigger>
-            <TabsTrigger value="tap" className="flex flex-col items-center space-y-1 py-3">
-              <Target className="w-4 h-4" />
-              <span className="text-xs">Tap Game</span>
+            <TabsTrigger value="tap" className="flex flex-col items-center space-y-1 py-2 md:py-3 data-[state=active]:bg-green-100 data-[state=active]:text-green-700">
+              <Target className="w-3 h-3 md:w-4 md:h-4" />
+              <span className="text-xs font-medium">Tap</span>
             </TabsTrigger>
-            <TabsTrigger value="stats" className="flex flex-col items-center space-y-1 py-3">
-              <TrendingUp className="w-4 h-4" />
-              <span className="text-xs">Stats</span>
+            <TabsTrigger value="stats" className="flex flex-col items-center space-y-1 py-2 md:py-3 data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700">
+              <TrendingUp className="w-3 h-3 md:w-4 md:h-4" />
+              <span className="text-xs font-medium">Stats</span>
             </TabsTrigger>
           </TabsList>
 

@@ -1,9 +1,9 @@
-
 import { useAuth } from "../hooks/use-auth.js";
 import { Card, CardContent } from "../components/ui/card.js";
 import { Button } from "../components/ui/button.js";
 import { Shield, Edit, User } from "lucide-react";
 import { Link } from "wouter";
+import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 
 export function ProfileCard() {
   const { user } = useAuth();
@@ -21,23 +21,12 @@ export function ProfileCard() {
       <CardContent className="p-6">
         <div className="flex items-center space-x-4 mb-4">
           <div className="relative">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-primary/70 p-0.5">
-              <div className="w-full h-full rounded-full bg-white dark:bg-gray-800 flex items-center justify-center">
-                {user.profilePicture ? (
-                  <img 
-                    src={user.profilePicture} 
-                    alt={user.fullName}
-                    className="w-full h-full rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="flex items-center justify-center w-full h-full">
-                    <span className="text-lg font-bold text-primary" data-testid="user-initials">
-                      {initials}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
+            <Avatar className="w-16 h-16">
+              <AvatarImage src={user.profilePicture} alt={user.fullName} />
+              <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-white text-lg font-bold">
+                {user?.username?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || "U"}
+              </AvatarFallback>
+            </Avatar>
             {user.isVerified && (
               <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
                 <Shield className="w-3 h-3 text-white" />
@@ -59,7 +48,7 @@ export function ProfileCard() {
             </div>
           </div>
         </div>
-        
+
         <div className="space-y-3 pt-4 border-t border-border">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Member since</span>
@@ -78,7 +67,7 @@ export function ProfileCard() {
             </span>
           </div>
         </div>
-        
+
         <Link href="/profile">
           <Button 
             variant="outline" 
