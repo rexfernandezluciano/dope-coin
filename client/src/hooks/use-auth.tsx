@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
 import { apiRequest } from "../lib/queryClient.js";
 
 // --- Wallet Integration & Security Enhancements ---
@@ -342,26 +342,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Function to check if user needs wallet migration
-  const checkWalletMigrationStatus = async (): Promise<boolean> => {
+  const checkWalletMigrationStatus = useCallback(async (): Promise<boolean> => {
     if (!user) return false;
 
     try {
-      // Check if user has old wallet but no secure wallet setup
+      // Load vaults from server first
+      await keyVault.loadUserVaultsFromServer();
+      const vaults = await keyVault.getAllVaults();
+
+      // If user has vaults, they don't need migration
+      if (vaults.length > 0) {
+        localStorage.setItem(`secureWallet_${user.id}`, "true");
+        setHasSecureWallet(true);
+        return false;
+      }
+
+      // Check if user has an old wallet that needs migration
       const hasOldWallet = user.walletAddress && user.walletAddress.length > 0;
-      const hasSecureWalletSetup = localStorage.getItem(`secureWallet_${user.id}`) === "true";
-      const hasVaultId = localStorage.getItem(`vaultId_${user.id}`) !== null;
-
-      // User needs migration if they have an old wallet but no secure wallet OR vault
-      const needsMigration = hasOldWallet && (!hasSecureWalletSetup || !hasVaultId);
-
-      setHasSecureWallet(hasSecureWalletSetup && hasVaultId);
-
-      return needsMigration || false;
+      return hasOldWallet;
     } catch (error) {
-      console.error("Error checking wallet migration status:", error);
+      console.error("Error checking migration status:", error);
       return false;
     }
-  };
+  }, [user]);
 
   // Function to sign transactions securely using KeyVault
   const signUserTransaction = async (transactionData: any) => {

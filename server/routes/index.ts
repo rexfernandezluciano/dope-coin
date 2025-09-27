@@ -1458,16 +1458,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/protected/games/leaderboard", async (req, res) => {
     try {
       const allStats = await storage.getAllGameStats();
-      const leaderboard = allStats
-        .sort((a, b) => b.totalEarned - a.totalEarned)
-        .slice(0, 50)
-        .map((stats, index) => ({
-          id: stats.userId,
-          username: `Player${stats.userId.slice(0, 8)}`,
-          totalScore: stats.bestScore,
-          totalEarned: stats.totalEarned,
-          rank: index + 1
-        }));
+      const leaderboard = [];
+      
+      for (const stats of allStats.sort((a, b) => b.totalEarned - a.totalEarned).slice(0, 50)) {
+        try {
+          const user = await storage.getUser(stats.userId);
+          leaderboard.push({
+            id: stats.userId,
+            username: user?.username || `Player${stats.userId.slice(0, 8)}`,
+            totalScore: stats.bestScore,
+            totalEarned: stats.totalEarned,
+            rank: leaderboard.length + 1
+          });
+        } catch (userError) {
+          // Skip if user not found
+          console.warn(`User ${stats.userId} not found for leaderboard`);
+        }
+      }
 
       res.json(leaderboard);
     } catch (error) {
@@ -1476,11 +1483,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/protected/games/submit-score", async (req, res) => {
+  app.post("/api/protected/games/submit-score", walletAuthMiddleware, async (req, res) => {
     try {
       const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
+      const secretKey = (req as any).secretKey;
+      
+      if (!userId || !secretKey) {
+        return res.status(401).json({ error: "Unauthorized or wallet session required" });
       }
 
       const { gameType, score, dogeClicks, pepeClicks } = req.body;
@@ -1489,11 +1498,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid score data" });
       }
 
-      // Calculate reward based on score
-      const baseReward = Math.floor(score / 10); // 1 DOPE per 10 points
-      const dogeBonus = dogeClicks * 0.5; // Bonus for DOGE clicks
-      const pepeBonus = pepeClicks * 0.3; // Bonus for PEPE clicks
-      const totalReward = baseReward + dogeBonus + pepeBonus;
+      // Different reward calculations based on game type
+      let totalReward = 0;
+      
+      switch (gameType) {
+        case "tap-to-earn":
+          const baseReward = Math.floor(score / 20); // 1 DOPE per 20 points
+          const dogeBonus = (dogeClicks || 0) * 0.3; // Bonus for DOGE clicks
+          const pepeBonus = (pepeClicks || 0) * 0.2; // Bonus for PEPE clicks
+          totalReward = baseReward + dogeBonus + pepeBonus;
+          break;
+          
+        case "spin-wheel":
+          totalReward = score * 0.1; // Spin rewards are already calculated
+          break;
+          
+        case "hamster-tap":
+          totalReward = score * 0.001; // Small reward for hamster taps
+          break;
+          
+        default:
+          totalReward = Math.floor(score / 100); // Default calculation
+      }
+
+      // Minimum reward cap
+      totalReward = Math.max(0.0001, Math.min(totalReward, 50)); // Max 50 DOPE per game
 
       // Update game stats
       let gameStats = await storage.getGameStats(userId);
@@ -1519,15 +1548,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.setGameStats(userId, gameStats);
 
-      // Issue DOPE tokens to user
+      // Issue DOPE tokens to user using wallet session
       if (totalReward > 0) {
-        const wallet = await storage.getWallet(userId);
-        if (wallet) {
-          try {
-            await stellarService.issueDopeTokens(wallet.secretKey, totalReward.toFixed(4));
-          } catch (error) {
-            console.error("Failed to issue DOPE tokens:", error);
-          }
+        try {
+          await stellarService.issueDopeTokens(secretKey, totalReward.toFixed(4));
+        } catch (error) {
+          console.error("Failed to issue DOPE tokens:", error);
+          // Don't fail the request if token issuance fails
         }
       }
 
@@ -1542,16 +1569,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/protected/games/daily-reward", async (req, res) => {
+  app.post("/api/protected/games/daily-reward", walletAuthMiddleware, async (req, res) => {
     try {
       const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
+      const secretKey = (req as any).secretKey;
+      
+      if (!userId || !secretKey) {
+        return res.status(401).json({ error: "Unauthorized or wallet session required" });
       }
 
       let gameStats = await storage.getGameStats(userId);
       if (!gameStats) {
-        return res.status(404).json({ error: "Game stats not found" });
+        gameStats = {
+          userId,
+          totalEarned: 0,
+          gamesPlayed: 0,
+          bestScore: 0,
+          totalDogeClicks: 0,
+          totalPepeClicks: 0,
+          dailyStreak: 0,
+          lastClaimDate: null,
+          rank: 0
+        };
       }
 
       const now = new Date();
@@ -1576,8 +1615,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Calculate reward based on streak
-      const baseReward = 10;
-      const streakBonus = Math.min(newStreak * 2, 50); // Max 50 bonus
+      const baseReward = 5;
+      const streakBonus = Math.min(newStreak * 1, 25); // Max 25 bonus
       const totalReward = baseReward + streakBonus;
 
       // Update stats
@@ -1587,14 +1626,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.setGameStats(userId, gameStats);
 
-      // Issue DOPE tokens
-      const wallet = await storage.getWallet(userId);
-      if (wallet) {
-        try {
-          await stellarService.issueDopeTokens(wallet.secretKey, totalReward.toFixed(4));
-        } catch (error) {
-          console.error("Failed to issue daily reward DOPE tokens:", error);
-        }
+      // Issue DOPE tokens using wallet session
+      try {
+        await stellarService.issueDopeTokens(secretKey, totalReward.toFixed(4));
+      } catch (error) {
+        console.error("Failed to issue daily reward DOPE tokens:", error);
+        return res.status(500).json({ error: "Failed to issue reward tokens" });
       }
 
       res.json({
