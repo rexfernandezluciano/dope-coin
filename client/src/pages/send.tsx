@@ -13,7 +13,7 @@ import {
 } from "../components/ui/select.js";
 import { useToast } from "../hooks/use-toast.js";
 import { AuthService } from "../lib/auth.js";
-import { Send, ArrowLeft, Wallet, AlertCircle } from "lucide-react";
+import { Send, ArrowLeft, Wallet, AlertCircle, Copy } from "lucide-react";
 import { keyVault } from "../lib/keyVault.js";
 import { Alert, AlertDescription } from "../components/ui/alert.js";
 import { useLocation } from "wouter";

@@ -1,4 +1,5 @@
 
+
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.js";
@@ -10,6 +11,7 @@ import { useToast } from "../hooks/use-toast.js";
 import { AuthService } from "../lib/auth.js";
 import { useAuth } from "../hooks/use-auth.js";
 import { keyVault } from "../lib/keyVault.js";
+import { WalletUnlockDialog } from "../components/wallet-unlock-dialog.js";
 import { 
   Gamepad2, 
   Trophy, 
@@ -26,8 +28,10 @@ import {
   ArrowLeft,
   RotateCcw,
   Wallet,
-  Home,
-  TrendingUp
+  TrendingUp,
+  Play,
+  Pause,
+  Loader2
 } from "lucide-react";
 
 export default function EarnPage() {
@@ -64,8 +68,10 @@ export default function EarnPage() {
   const [tapAnimation, setTapAnimation] = useState(false);
   const [floatingCoins, setFloatingCoins] = useState<Array<{id: number, x: number, y: number}>>([]);
 
-  // Wallet session state
+  // Wallet states
   const [walletSessionActive, setWalletSessionActive] = useState(false);
+  const [showUnlockDialog, setShowUnlockDialog] = useState(false);
+  const [checkingWallet, setCheckingWallet] = useState(false);
 
   const { data: gameStats, refetch: refetchGameStats } = useQuery({
     queryKey: ["/api/protected/games/stats"],
@@ -145,9 +151,10 @@ export default function EarnPage() {
     },
   });
 
-  // Check if wallet session is active
+  // Check wallet status (reduced frequency)
   useEffect(() => {
-    const checkWalletSession = () => {
+    const checkWalletStatus = () => {
+      setCheckingWallet(true);
       try {
         const wallets = keyVault.getAllWallets();
         const hasWallets = wallets && wallets.length > 0;
@@ -156,11 +163,14 @@ export default function EarnPage() {
       } catch (error) {
         console.error("Error checking wallet session:", error);
         setWalletSessionActive(false);
+      } finally {
+        setCheckingWallet(false);
       }
     };
 
-    checkWalletSession();
-    const interval = setInterval(checkWalletSession, 2000);
+    checkWalletStatus();
+    // Reduced frequency to every 10 seconds instead of 2
+    const interval = setInterval(checkWalletStatus, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -239,11 +249,7 @@ export default function EarnPage() {
     }
 
     if (!walletSessionActive) {
-      toast({
-        title: "Wallet Required",
-        description: "Please unlock your wallet to start earning rewards.",
-        variant: "destructive",
-      });
+      setShowUnlockDialog(true);
       return;
     }
 
@@ -298,11 +304,7 @@ export default function EarnPage() {
     }
 
     if (!walletSessionActive) {
-      toast({
-        title: "Wallet Required",
-        description: "Please unlock your wallet to earn rewards.",
-        variant: "destructive",
-      });
+      setShowUnlockDialog(true);
       return;
     }
 
@@ -315,7 +317,7 @@ export default function EarnPage() {
     }
 
     setTimeout(() => {
-      const rewards = [1, 1, 5, 5, 10, 10, 20]; // Balanced rewards: 1, 5, 10, 20
+      const rewards = [1, 1, 5, 5, 10, 10, 20];
       const reward = rewards[Math.floor(Math.random() * rewards.length)];
       setLastSpinReward(reward);
       setIsSpinning(false);
@@ -331,6 +333,11 @@ export default function EarnPage() {
 
   const handleHamsterTap = (event: React.MouseEvent) => {
     if (hamsterEnergy < coinsPerTap) return;
+
+    if (!walletSessionActive) {
+      setShowUnlockDialog(true);
+      return;
+    }
 
     setHamsterEnergy(prev => prev - coinsPerTap);
     setTotalCoins(prev => prev + coinsPerTap);
@@ -372,28 +379,12 @@ export default function EarnPage() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const unlockWallet = async () => {
-    try {
-      const wallets = keyVault.getAllWallets();
-      if (!wallets || wallets.length === 0) {
-        toast({
-          title: "No Wallet Found",
-          description: "Please create a wallet first in the Wallet section.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Navigate to wallet page to unlock
-      window.location.href = "/wallet";
-    } catch (error) {
-      console.error("Error unlocking wallet:", error);
-      toast({
-        title: "Error",
-        description: "Failed to access wallet. Please try again.",
-        variant: "destructive",
-      });
-    }
+  const handleUnlockSuccess = () => {
+    setWalletSessionActive(true);
+    toast({
+      title: "Wallet Unlocked",
+      description: "You can now start earning DOPE rewards!",
+    });
   };
 
   return (
@@ -434,8 +425,17 @@ export default function EarnPage() {
                   Wallet
                 </Button>
               ) : (
-                <Button size="sm" onClick={unlockWallet} className="bg-orange-500 hover:bg-orange-600">
-                  <Wallet className="w-4 h-4 mr-2" />
+                <Button 
+                  size="sm" 
+                  onClick={() => setShowUnlockDialog(true)}
+                  className="bg-orange-500 hover:bg-orange-600"
+                  disabled={checkingWallet}
+                >
+                  {checkingWallet ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Wallet className="w-4 h-4 mr-2" />
+                  )}
                   Unlock Wallet
                 </Button>
               )}
@@ -454,28 +454,28 @@ export default function EarnPage() {
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
         {/* Games Tabs */}
         <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-6 bg-white dark:bg-gray-800 shadow-sm">
-            <TabsTrigger value="hamster" className="flex flex-col items-center space-y-1 py-2 md:py-3 data-[state=active]:bg-yellow-100 data-[state=active]:text-yellow-700">
-              <MousePointer2 className="w-3 h-3 md:w-4 md:h-4" />
+          <TabsList className="grid w-full grid-cols-4 mb-6 bg-white dark:bg-gray-800 shadow-sm h-auto">
+            <TabsTrigger value="hamster" className="flex flex-col items-center space-y-1 py-3 px-2 data-[state=active]:bg-yellow-100 data-[state=active]:text-yellow-700 dark:data-[state=active]:bg-yellow-900/30 dark:data-[state=active]:text-yellow-400">
+              <MousePointer2 className="w-4 h-4" />
               <span className="text-xs font-medium">Hamster</span>
             </TabsTrigger>
-            <TabsTrigger value="spin" className="flex flex-col items-center space-y-1 py-2 md:py-3 data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700">
-              <RotateCcw className="w-3 h-3 md:w-4 md:h-4" />
+            <TabsTrigger value="spin" className="flex flex-col items-center space-y-1 py-3 px-2 data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700 dark:data-[state=active]:bg-purple-900/30 dark:data-[state=active]:text-purple-400">
+              <RotateCcw className="w-4 h-4" />
               <span className="text-xs font-medium">Spin</span>
             </TabsTrigger>
-            <TabsTrigger value="tap" className="flex flex-col items-center space-y-1 py-2 md:py-3 data-[state=active]:bg-green-100 data-[state=active]:text-green-700">
-              <Target className="w-3 h-3 md:w-4 md:h-4" />
+            <TabsTrigger value="tap" className="flex flex-col items-center space-y-1 py-3 px-2 data-[state=active]:bg-green-100 data-[state=active]:text-green-700 dark:data-[state=active]:bg-green-900/30 dark:data-[state=active]:text-green-400">
+              <Target className="w-4 h-4" />
               <span className="text-xs font-medium">Tap</span>
             </TabsTrigger>
-            <TabsTrigger value="stats" className="flex flex-col items-center space-y-1 py-2 md:py-3 data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700">
-              <TrendingUp className="w-3 h-3 md:w-4 md:h-4" />
+            <TabsTrigger value="stats" className="flex flex-col items-center space-y-1 py-3 px-2 data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700 dark:data-[state=active]:bg-blue-900/30 dark:data-[state=active]:text-blue-400">
+              <TrendingUp className="w-4 h-4" />
               <span className="text-xs font-medium">Stats</span>
             </TabsTrigger>
           </TabsList>
 
           {/* Hamster Kombat Game */}
           <TabsContent value="hamster" className="space-y-6">
-            <Card className="bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 border-yellow-200">
+            <Card className="bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 border-yellow-200 dark:border-yellow-800">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
@@ -489,18 +489,18 @@ export default function EarnPage() {
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Stats Grid */}
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-3">
-                    <div className="text-sm font-medium text-gray-600 dark:text-gray-400">Profit/Hour</div>
-                    <div className="text-lg font-bold text-green-600">+{profitPerHour.toFixed(0)}</div>
+                <div className="grid grid-cols-3 gap-2 md:gap-4 text-center">
+                  <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 md:p-3">
+                    <div className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Profit/Hour</div>
+                    <div className="text-sm md:text-lg font-bold text-green-600">+{profitPerHour.toFixed(0)}</div>
                   </div>
-                  <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-3">
-                    <div className="text-sm font-medium text-gray-600 dark:text-gray-400">Per Tap</div>
-                    <div className="text-lg font-bold text-blue-600">+{coinsPerTap}</div>
+                  <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 md:p-3">
+                    <div className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Per Tap</div>
+                    <div className="text-sm md:text-lg font-bold text-blue-600">+{coinsPerTap}</div>
                   </div>
-                  <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-3">
-                    <div className="text-sm font-medium text-gray-600 dark:text-gray-400">Energy</div>
-                    <div className="text-lg font-bold text-yellow-600">{hamsterEnergy}/{1000 + (hamsterLevel * 100)}</div>
+                  <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 md:p-3">
+                    <div className="text-xs md:text-sm font-medium text-gray-600 dark:text-gray-400">Energy</div>
+                    <div className="text-sm md:text-lg font-bold text-yellow-600">{hamsterEnergy}/{1000 + (hamsterLevel * 100)}</div>
                   </div>
                 </div>
 
@@ -509,10 +509,10 @@ export default function EarnPage() {
                   <button
                     onClick={handleHamsterTap}
                     disabled={hamsterEnergy < coinsPerTap}
-                    className={`relative w-40 h-40 md:w-48 md:h-48 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 border-4 border-yellow-300 shadow-xl transform transition-all duration-150 active:scale-95 ${tapAnimation ? 'scale-110' : ''} ${hamsterEnergy < coinsPerTap ? 'opacity-50' : ''}`}
+                    className={`relative w-32 h-32 md:w-48 md:h-48 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 border-4 border-yellow-300 shadow-xl transform transition-all duration-150 active:scale-95 ${tapAnimation ? 'scale-110' : ''} ${hamsterEnergy < coinsPerTap ? 'opacity-50' : ''}`}
                   >
-                    <div className="text-4xl md:text-6xl">🐹</div>
-                    <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-white font-bold text-sm">
+                    <MousePointer2 className="w-8 h-8 md:w-12 md:h-12 mx-auto text-white" />
+                    <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-white font-bold text-xs md:text-sm">
                       TAP ME!
                     </div>
                   </button>
@@ -521,7 +521,7 @@ export default function EarnPage() {
                   {floatingCoins.map(coin => (
                     <div
                       key={coin.id}
-                      className="absolute pointer-events-none text-2xl font-bold text-yellow-500 animate-bounce"
+                      className="absolute pointer-events-none text-lg md:text-2xl font-bold text-yellow-500 animate-bounce"
                       style={{
                         left: coin.x,
                         top: coin.y,
@@ -549,7 +549,7 @@ export default function EarnPage() {
 
           {/* Spin Wheel Game */}
           <TabsContent value="spin" className="space-y-6">
-            <Card className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border-purple-200">
+            <Card className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border-purple-200 dark:border-purple-800">
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
                   <RotateCcw className="w-5 h-5 text-purple-600" />
@@ -566,17 +566,17 @@ export default function EarnPage() {
                     <div className="w-full h-full relative bg-gradient-conic from-red-500 via-yellow-500 via-green-500 via-blue-500 to-red-500">
                       <div className="absolute inset-4 rounded-full bg-white dark:bg-gray-800 flex items-center justify-center shadow-inner">
                         <div className="text-center">
-                          <RotateCcw className="w-8 h-8 mx-auto mb-2 text-purple-600" />
-                          <div className="text-sm font-bold">SPIN</div>
+                          <RotateCcw className="w-6 h-6 md:w-8 md:h-8 mx-auto mb-2 text-purple-600" />
+                          <div className="text-xs md:text-sm font-bold">SPIN</div>
                         </div>
                       </div>
                     </div>
                   </div>
-                  <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-2 w-0 h-0 border-l-4 border-r-4 border-b-8 border-transparent border-b-black"></div>
+                  <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-2 w-0 h-0 border-l-4 border-r-4 border-b-8 border-transparent border-b-black dark:border-b-white"></div>
                 </div>
                 
                 <div className="space-y-4">
-                  <div className="grid grid-cols-4 gap-2 text-xs">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
                     <div className="bg-red-100 dark:bg-red-900/30 p-2 rounded">1 DOPE</div>
                     <div className="bg-yellow-100 dark:bg-yellow-900/30 p-2 rounded">5 DOPE</div>
                     <div className="bg-green-100 dark:bg-green-900/30 p-2 rounded">10 DOPE</div>
@@ -596,7 +596,7 @@ export default function EarnPage() {
                   
                   <Button
                     onClick={spinWheel}
-                    disabled={spinEnergy < 1 || isSpinning || !walletSessionActive}
+                    disabled={spinEnergy < 1 || isSpinning}
                     className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
                   >
                     {isSpinning ? "Spinning..." : `Spin (${spinEnergy}/3 energy)`}
@@ -608,15 +608,15 @@ export default function EarnPage() {
 
           {/* Tap Game */}
           <TabsContent value="tap" className="space-y-6">
-            <Card className="bg-gradient-to-br from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 border-green-200">
+            <Card className="bg-gradient-to-br from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 border-green-200 dark:border-green-800">
               <CardHeader>
-                <CardTitle className="flex items-center justify-between">
+                <CardTitle className="flex flex-col md:flex-row md:items-center justify-between gap-2">
                   <div className="flex items-center space-x-2">
                     <Target className="w-5 h-5 text-green-600" />
-                    <span>DOGE & PEPE Tap Challenge</span>
+                    <span className="text-sm md:text-base">DOGE & PEPE Tap Challenge</span>
                   </div>
                   {gameActive && (
-                    <Badge variant="default" className="flex items-center space-x-1 bg-red-500">
+                    <Badge variant="default" className="flex items-center space-x-1 bg-red-500 w-fit">
                       <Timer className="w-3 h-3" />
                       <span>{formatTime(timeLeft)}</span>
                     </Badge>
@@ -625,51 +625,51 @@ export default function EarnPage() {
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Energy Display */}
-                <div className="flex items-center justify-between bg-white/50 dark:bg-gray-800/50 p-3 rounded-lg">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between bg-white/50 dark:bg-gray-800/50 p-3 rounded-lg gap-2">
                   <div className="flex items-center space-x-2">
                     <Zap className="w-5 h-5 text-yellow-500" />
                     <span className="font-medium">Energy: {energy}/100</span>
                   </div>
-                  <Progress value={energy} className="flex-1 mx-4 h-3" />
+                  <Progress value={energy} className="flex-1 md:mx-4 h-3" />
                 </div>
 
                 {!gameActive ? (
                   <div className="text-center space-y-6">
                     <div className="space-y-4">
-                      <p className="text-muted-foreground">
+                      <p className="text-muted-foreground text-sm md:text-base">
                         Tap DOGE and PEPE characters to earn points!
                       </p>
-                      <div className="grid grid-cols-3 gap-4 text-sm">
-                        <div className="bg-green-100 dark:bg-green-900/30 p-3 rounded-lg">
-                          <div className="w-6 h-6 bg-green-500 rounded-full mx-auto mb-2"></div>
+                      <div className="grid grid-cols-3 gap-2 md:gap-4 text-xs md:text-sm">
+                        <div className="bg-green-100 dark:bg-green-900/30 p-2 md:p-3 rounded-lg">
+                          <div className="w-4 h-4 md:w-6 md:h-6 bg-green-500 rounded-full mx-auto mb-2"></div>
                           <span>DOGE = 5 points</span>
                         </div>
-                        <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded-lg">
-                          <div className="w-6 h-6 bg-blue-500 rounded-full mx-auto mb-2"></div>
+                        <div className="bg-blue-100 dark:bg-blue-900/30 p-2 md:p-3 rounded-lg">
+                          <div className="w-4 h-4 md:w-6 md:h-6 bg-blue-500 rounded-full mx-auto mb-2"></div>
                           <span>PEPE = 3 points</span>
                         </div>
-                        <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg">
-                          <div className="w-6 h-6 bg-gray-500 rounded-full mx-auto mb-2"></div>
+                        <div className="bg-gray-100 dark:bg-gray-700 p-2 md:p-3 rounded-lg">
+                          <div className="w-4 h-4 md:w-6 md:h-6 bg-gray-500 rounded-full mx-auto mb-2"></div>
                           <span>Regular = 1 point</span>
                         </div>
                       </div>
                     </div>
                     <Button 
                       onClick={startGame} 
-                      disabled={energy < 20 || !walletSessionActive}
+                      disabled={energy < 20}
                       className="w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
                     >
-                      {energy < 20 ? "Not Enough Energy" : !walletSessionActive ? "Unlock Wallet to Play" : "Start Game (20 Energy)"}
+                      {energy < 20 ? "Not Enough Energy" : "Start Game (20 Energy)"}
                     </Button>
                   </div>
                 ) : (
                   <div className="space-y-6">
                     {/* Score Display */}
                     <div className="text-center bg-white/50 dark:bg-gray-800/50 p-4 rounded-lg">
-                      <div className="text-3xl font-bold text-primary mb-2">
+                      <div className="text-2xl md:text-3xl font-bold text-primary mb-2">
                         {currentScore} Points
                       </div>
-                      <div className="grid grid-cols-3 gap-2 text-sm">
+                      <div className="grid grid-cols-3 gap-2 text-xs md:text-sm">
                         <span>Taps: {tapCount}</span>
                         <span className="text-green-500">DOGE: {dogeClicks}</span>
                         <span className="text-blue-500">PEPE: {pepeClicks}</span>
@@ -677,29 +677,29 @@ export default function EarnPage() {
                     </div>
 
                     {/* Game Area */}
-                    <div className="grid grid-cols-3 gap-4 h-48 md:h-64">
+                    <div className="grid grid-cols-3 gap-2 md:gap-4 h-40 md:h-64">
                       <button
                         onClick={() => handleTap("doge")}
-                        className="bg-gradient-to-br from-green-400 to-green-600 hover:from-green-500 hover:to-green-700 text-white rounded-xl text-2xl md:text-4xl font-bold transition-all duration-150 active:scale-95 shadow-lg hover:shadow-xl flex flex-col items-center justify-center"
+                        className="bg-gradient-to-br from-green-400 to-green-600 hover:from-green-500 hover:to-green-700 text-white rounded-xl text-lg md:text-2xl font-bold transition-all duration-150 active:scale-95 shadow-lg hover:shadow-xl flex flex-col items-center justify-center"
                       >
-                        <div className="text-4xl mb-2">🐕</div>
-                        <div className="text-sm font-normal">DOGE</div>
+                        <div className="w-6 h-6 md:w-8 md:h-8 bg-green-300 rounded-full mb-2"></div>
+                        <div className="text-xs md:text-sm font-normal">DOGE</div>
                       </button>
 
                       <button
                         onClick={() => handleTap("normal")}
-                        className="bg-gradient-to-br from-gray-400 to-gray-600 hover:from-gray-500 hover:to-gray-700 text-white rounded-xl text-2xl md:text-4xl font-bold transition-all duration-150 active:scale-95 shadow-lg hover:shadow-xl flex flex-col items-center justify-center"
+                        className="bg-gradient-to-br from-gray-400 to-gray-600 hover:from-gray-500 hover:to-gray-700 text-white rounded-xl text-lg md:text-2xl font-bold transition-all duration-150 active:scale-95 shadow-lg hover:shadow-xl flex flex-col items-center justify-center"
                       >
-                        <Coins className="w-8 h-8 mb-2" />
-                        <div className="text-sm font-normal">TAP</div>
+                        <Coins className="w-6 h-6 md:w-8 md:h-8 mb-2" />
+                        <div className="text-xs md:text-sm font-normal">TAP</div>
                       </button>
 
                       <button
                         onClick={() => handleTap("pepe")}
-                        className="bg-gradient-to-br from-blue-400 to-blue-600 hover:from-blue-500 hover:to-blue-700 text-white rounded-xl text-2xl md:text-4xl font-bold transition-all duration-150 active:scale-95 shadow-lg hover:shadow-xl flex flex-col items-center justify-center"
+                        className="bg-gradient-to-br from-blue-400 to-blue-600 hover:from-blue-500 hover:to-blue-700 text-white rounded-xl text-lg md:text-2xl font-bold transition-all duration-150 active:scale-95 shadow-lg hover:shadow-xl flex flex-col items-center justify-center"
                       >
-                        <div className="text-4xl mb-2">🐸</div>
-                        <div className="text-sm font-normal">PEPE</div>
+                        <div className="w-6 h-6 md:w-8 md:h-8 bg-blue-300 rounded-full mb-2"></div>
+                        <div className="text-xs md:text-sm font-normal">PEPE</div>
                       </button>
                     </div>
 
@@ -788,7 +788,7 @@ export default function EarnPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
+                  <div className="space-y-3 max-h-80 overflow-y-auto">
                     {leaderboard?.slice(0, 10).map((player: any, index: number) => (
                       <div
                         key={player.id}
@@ -799,7 +799,7 @@ export default function EarnPage() {
                         }`}
                       >
                         <div className="flex items-center space-x-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                          <div className={`w-6 h-6 md:w-8 md:h-8 rounded-full flex items-center justify-center text-xs md:text-sm font-bold ${
                             index === 0 ? "bg-yellow-500 text-white" :
                             index === 1 ? "bg-gray-400 text-white" :
                             index === 2 ? "bg-amber-600 text-white" :
@@ -808,7 +808,7 @@ export default function EarnPage() {
                             {index + 1}
                           </div>
                           <div>
-                            <div className="font-medium">
+                            <div className="font-medium text-sm md:text-base">
                               {player.username}
                               {player.id === userProfile?.user?.id && (
                                 <Badge variant="outline" className="ml-2 text-xs">You</Badge>
@@ -817,7 +817,7 @@ export default function EarnPage() {
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="text-sm font-medium">
+                          <div className="text-xs md:text-sm font-medium">
                             {parseFloat(player.totalEarned || "0").toFixed(2)} DOPE
                           </div>
                           <div className="text-xs text-muted-foreground">
@@ -840,6 +840,13 @@ export default function EarnPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Wallet Unlock Dialog */}
+      <WalletUnlockDialog
+        open={showUnlockDialog}
+        onOpenChange={setShowUnlockDialog}
+        onUnlocked={handleUnlockSuccess}
+      />
 
       {/* CSS for floating animation */}
       <style>{`
