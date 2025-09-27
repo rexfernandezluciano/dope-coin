@@ -763,7 +763,7 @@ export class StellarService {
     } catch (error: any) {
       console.error(
         "Error sending tokens:",
-        error.response.data.extras.result_codes || error,
+        error.response?.data?.extras?.result_codes || error,
       );
       handleStellarError(error, "Failed to send tokens");
     }
@@ -4351,9 +4351,22 @@ function handleStellarError(
     if (resultCodes.operations?.includes("op_line_full")) {
       throw new Error("Asset balance limit exceeded");
     }
+
+    if (resultCodes.operations?.includes("op_no_destination")) {
+      throw new Error("Destination account does not exist");
+    }
+
+    if (resultCodes.operations?.includes("op_malformed")) {
+      throw new Error("Invalid transaction parameters");
+    }
   }
 
-  throw new Error(error.message || defaultMessage);
+  // Handle network errors or other issues
+  if (error.message) {
+    throw new Error(error.message);
+  }
+
+  throw new Error(defaultMessage);
 }
 
 export {
