@@ -1,3 +1,4 @@
+
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient.js";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -28,9 +29,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center space-y-4">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
           <p className="text-muted-foreground">Loading...</p>
         </div>
       </div>
@@ -44,231 +45,231 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function PublicRoute({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (user) {
-    return <Dashboard />;
-  }
-
-  return <>{children}</>;
-}
-
-function Router() {
-  return (
-    <div className="min-h-screen bg-background">
-      <Switch>
-        <Route
-          path="/"
-          component={() => (
-            <ProtectedRoute>
-              <div className="flex flex-col min-h-screen">
-                <Header />
-                <main className="flex-1 main-content">
-                  <Dashboard />
-                </main>
-                <MobileNav />
-              </div>
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/dashboard"
-          component={() => (
-            <ProtectedRoute>
-              <div className="flex flex-col min-h-screen">
-                <Header />
-                <main className="flex-1 main-content">
-                  <Dashboard />
-                </main>
-                <MobileNav />
-              </div>
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/profile"
-          component={() => (
-            <ProtectedRoute>
-              <div className="flex flex-col min-h-screen">
-                <Header />
-                <main className="flex-1 main-content">
-                  <Profile />
-                </main>
-                <MobileNav />
-              </div>
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/wallet"
-          component={() => (
-            <ProtectedRoute>
-              <div className="flex flex-col min-h-screen">
-                <Header />
-                <main className="flex-1 main-content">
-                  <Wallet />
-                </main>
-                <MobileNav />
-              </div>
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/transactions"
-          component={() => (
-            <ProtectedRoute>
-              <div className="flex flex-col min-h-screen">
-                <Header />
-                <main className="flex-1 main-content">
-                  <Transactions />
-                </main>
-                <MobileNav />
-              </div>
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/mining"
-          component={() => (
-            <ProtectedRoute>
-              <div className="flex flex-col min-h-screen">
-                <Header />
-                <main className="flex-1 main-content">
-                  <Mining />
-                </main>
-                <MobileNav />
-              </div>
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/referrals"
-          component={() => (
-            <ProtectedRoute>
-              <div className="flex flex-col min-h-screen">
-                <Header />
-                <main className="flex-1 main-content">
-                  <ReferralsPage />
-                </main>
-                <MobileNav />
-              </div>
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/send"
-          component={() => (
-            <ProtectedRoute>
-              <div className="flex flex-col min-h-screen">
-                <Header />
-                <main className="flex-1 main-content">
-                  <SendPage />
-                </main>
-                <MobileNav />
-              </div>
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/receive"
-          component={() => (
-            <ProtectedRoute>
-              <div className="flex flex-col min-h-screen">
-                <Header />
-                <main className="flex-1 main-content">
-                  <ReceivePage />
-                </main>
-                <MobileNav />
-              </div>
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/trading"
-          component={() => (
-            <ProtectedRoute>
-              <div className="flex flex-col min-h-screen">
-                <Header />
-                <main className="flex-1 main-content">
-                  <TradingPage />
-                </main>
-                <MobileNav />
-              </div>
-            </ProtectedRoute>
-          )}
-        />
-        <Route
-          path="/orders/create"
-          component={() => (
-            <ProtectedRoute>
-              <div className="flex flex-col min-h-screen">
-                <Header />
-                <main className="flex-1 main-content">
-                  <LimitOrderCreator />
-                </main>
-                <MobileNav />
-              </div>
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/help/:category/:page"
-          component={() => (
-            <ProtectedRoute>
-              <div className="flex flex-col min-h-screen">
-                <Header />
-                <main className="flex-1 main-content">
-                  <HelpPage />
-                </main>
-                <MobileNav />
-              </div>
-            </ProtectedRoute>
-          )}
-        />
-        <Route path="/earn" component={EarnPage} />
-        <Route path="/withdraw" component={WithdrawPage} />
-
-        <Route path="/login" component={Login} />
-        <Route path="/register" component={Register} />
-        <Route component={NotFound} />
-      </Switch>
-    </div>
-  );
-}
-
-function App() {
+export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <AuthProvider>
+      <AuthProvider>
+        <TooltipProvider>
+          <div className="min-h-screen bg-background text-foreground">
+            <Switch>
+              <Route
+                path="/"
+                component={() => (
+                  <ProtectedRoute>
+                    <div className="flex flex-col min-h-screen">
+                      <Header />
+                      <main className="flex-1 main-content">
+                        <Dashboard />
+                      </main>
+                      <MobileNav />
+                    </div>
+                  </ProtectedRoute>
+                )}
+              />
+
+              <Route
+                path="/dashboard"
+                component={() => (
+                  <ProtectedRoute>
+                    <div className="flex flex-col min-h-screen">
+                      <Header />
+                      <main className="flex-1 main-content">
+                        <Dashboard />
+                      </main>
+                      <MobileNav />
+                    </div>
+                  </ProtectedRoute>
+                )}
+              />
+
+              <Route
+                path="/profile"
+                component={() => (
+                  <ProtectedRoute>
+                    <div className="flex flex-col min-h-screen">
+                      <Header />
+                      <main className="flex-1 main-content">
+                        <Profile />
+                      </main>
+                      <MobileNav />
+                    </div>
+                  </ProtectedRoute>
+                )}
+              />
+
+              <Route
+                path="/wallet"
+                component={() => (
+                  <ProtectedRoute>
+                    <div className="flex flex-col min-h-screen">
+                      <Header />
+                      <main className="flex-1 main-content">
+                        <Wallet />
+                      </main>
+                      <MobileNav />
+                    </div>
+                  </ProtectedRoute>
+                )}
+              />
+
+              <Route
+                path="/transactions"
+                component={() => (
+                  <ProtectedRoute>
+                    <div className="flex flex-col min-h-screen">
+                      <Header />
+                      <main className="flex-1 main-content">
+                        <Transactions />
+                      </main>
+                      <MobileNav />
+                    </div>
+                  </ProtectedRoute>
+                )}
+              />
+
+              <Route
+                path="/mining"
+                component={() => (
+                  <ProtectedRoute>
+                    <div className="flex flex-col min-h-screen">
+                      <Header />
+                      <main className="flex-1 main-content">
+                        <Mining />
+                      </main>
+                      <MobileNav />
+                    </div>
+                  </ProtectedRoute>
+                )}
+              />
+
+              <Route
+                path="/referrals"
+                component={() => (
+                  <ProtectedRoute>
+                    <div className="flex flex-col min-h-screen">
+                      <Header />
+                      <main className="flex-1 main-content">
+                        <ReferralsPage />
+                      </main>
+                      <MobileNav />
+                    </div>
+                  </ProtectedRoute>
+                )}
+              />
+
+              <Route
+                path="/send"
+                component={() => (
+                  <ProtectedRoute>
+                    <div className="flex flex-col min-h-screen">
+                      <Header />
+                      <main className="flex-1 main-content">
+                        <SendPage />
+                      </main>
+                      <MobileNav />
+                    </div>
+                  </ProtectedRoute>
+                )}
+              />
+
+              <Route
+                path="/receive"
+                component={() => (
+                  <ProtectedRoute>
+                    <div className="flex flex-col min-h-screen">
+                      <Header />
+                      <main className="flex-1 main-content">
+                        <ReceivePage />
+                      </main>
+                      <MobileNav />
+                    </div>
+                  </ProtectedRoute>
+                )}
+              />
+
+              <Route
+                path="/trading"
+                component={() => (
+                  <ProtectedRoute>
+                    <div className="flex flex-col min-h-screen">
+                      <Header />
+                      <main className="flex-1 main-content">
+                        <TradingPage />
+                      </main>
+                      <MobileNav />
+                    </div>
+                  </ProtectedRoute>
+                )}
+              />
+
+              <Route
+                path="/orders/create"
+                component={() => (
+                  <ProtectedRoute>
+                    <div className="flex flex-col min-h-screen">
+                      <Header />
+                      <main className="flex-1 main-content">
+                        <LimitOrderCreator />
+                      </main>
+                      <MobileNav />
+                    </div>
+                  </ProtectedRoute>
+                )}
+              />
+
+              <Route
+                path="/help/:category/:page"
+                component={() => (
+                  <ProtectedRoute>
+                    <div className="flex flex-col min-h-screen">
+                      <Header />
+                      <main className="flex-1 main-content">
+                        <HelpPage />
+                      </main>
+                      <MobileNav />
+                    </div>
+                  </ProtectedRoute>
+                )}
+              />
+
+              <Route
+                path="/earn"
+                component={() => (
+                  <ProtectedRoute>
+                    <div className="flex flex-col min-h-screen">
+                      <Header />
+                      <main className="flex-1 main-content">
+                        <EarnPage />
+                      </main>
+                      <MobileNav />
+                    </div>
+                  </ProtectedRoute>
+                )}
+              />
+
+              <Route
+                path="/withdraw"
+                component={() => (
+                  <ProtectedRoute>
+                    <div className="flex flex-col min-h-screen">
+                      <Header />
+                      <main className="flex-1 main-content">
+                        <WithdrawPage />
+                      </main>
+                      <MobileNav />
+                    </div>
+                  </ProtectedRoute>
+                )}
+              />
+
+              <Route path="/login" component={Login} />
+              <Route path="/register" component={Register} />
+              <Route component={NotFound} />
+            </Switch>
+          </div>
           <Toaster />
-          <Router />
-        </AuthProvider>
-      </TooltipProvider>
+        </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }
-
-export default App;
