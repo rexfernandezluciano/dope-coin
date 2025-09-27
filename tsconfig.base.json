@@ -4,7 +4,7 @@
 		"tsBuildInfoFile": "./node_modules/.tsbuildinfo",
 		"module": "nodenext",
 		"moduleResolution": "nodenext",
-		"target": "es2022",
+		"target": "ES2022",
 		"strict": true,
 		"lib": ["esnext"],
 		"esModuleInterop": true,
