@@ -93,8 +93,39 @@ export default function EarnPage() {
   }) as any;
 
   const submitScore = useMutation({
-    mutationFn: (data: { gameType: string; score: number; dogeClicks: number; pepeClicks: number }) =>
-      AuthService.authenticatedRequest("POST", "/api/protected/games/submit-score", data),
+    mutationFn: async (data: { gameType: string; score: number; dogeClicks: number; pepeClicks: number }) => {
+      // Establish wallet session if not active
+      if (!walletSessionActive) {
+        try {
+          const wallets = keyVault.getAllWallets();
+          if (wallets.length === 0) {
+            throw new Error("No active wallets found. Please unlock your vault.");
+          }
+
+          const primaryWallet = wallets[0];
+          
+          // Create a default PIN session for games (users can change this later)
+          await primaryWallet.keypair; // Verify wallet is accessible
+          
+          // Establish backend session
+          await fetch("/api/protected/wallet/session", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+              secretKey: primaryWallet.keypair.secret(),
+              pin: "123456" // Default PIN for games
+            })
+          });
+        } catch (sessionError) {
+          throw new Error("Failed to establish wallet session");
+        }
+      }
+      
+      return AuthService.authenticatedRequest("POST", "/api/protected/games/submit-score", data);
+    },
     onSuccess: (data) => {
       toast({
         title: "Score Submitted!",
@@ -105,13 +136,14 @@ export default function EarnPage() {
       refetchLeaderboard();
     },
     onError: (error: any) => {
-      if (error.message.includes("Wallet session required")) {
+      if (error.message.includes("Wallet session required") || error.message.includes("PIN required")) {
         toast({
           title: "Wallet Session Required",
           description: "Please unlock your wallet to earn rewards.",
           variant: "destructive",
         });
         setWalletSessionActive(false);
+        setShowUnlockDialog(true);
       } else {
         toast({
           title: "Error",
@@ -169,8 +201,8 @@ export default function EarnPage() {
     };
 
     checkWalletStatus();
-    // Reduced frequency to every 10 seconds instead of 2
-    const interval = setInterval(checkWalletStatus, 10000);
+    // Reduced frequency to every 30 seconds to prevent excessive calls
+    const interval = setInterval(checkWalletStatus, 30000);
     return () => clearInterval(interval);
   }, []);
 

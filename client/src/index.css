@@ -153,3 +153,46 @@
 .progress-bar {
   background: linear-gradient(90deg, var(--accent) 0%, var(--success) 100%);
 }
+
+/* Scrollbar hide utility */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Dark theme improvements */
+.dark {
+  color-scheme: dark;
+}
+
+/* Game animations */
+@keyframes float {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-50px) scale(1.2);
+  }
+}
+
+.float-animation {
+  animation: float 1s ease-out forwards;
+}
+
+/* Responsive improvements */
+@media (max-width: 640px) {
+  .grid-cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.25rem;
+  }
+
+  .text-xs {
+    font-size: 0.65rem;
+  }
+}

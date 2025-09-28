@@ -1482,11 +1482,16 @@ export class KeyVault {
                 try {
                         const token = localStorage.getItem("token");
                         if (!token) {
-                                console.log("No auth token, skipping server vault load");
                                 return;
                         }
 
-                        console.log("Loading user vaults from server...");
+                        // Check if we've loaded recently to prevent excessive calls
+                        const lastLoad = localStorage.getItem('lastVaultServerLoad');
+                        const now = Date.now();
+                        if (lastLoad && now - parseInt(lastLoad) < 30000) { // Prevent loading more than once per 30 seconds
+                                return;
+                        }
+                        localStorage.setItem('lastVaultServerLoad', now.toString());
 
                         const response = await fetch("/api/protected/vault/list", {
                                 headers: {

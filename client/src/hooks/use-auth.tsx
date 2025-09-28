@@ -347,7 +347,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       // Load vaults from server first
-      await keyVault.loadUserVaultsFromServer();
+      // Load vaults from server with debouncing
+        const lastLoad = localStorage.getItem('lastVaultLoad');
+        const now = Date.now();
+        if (!lastLoad || now - parseInt(lastLoad) > 60000) { // Only load every minute
+          await keyVault.loadUserVaultsFromServer();
+          localStorage.setItem('lastVaultLoad', now.toString());
+        }
       const vaults = await keyVault.getAllVaults();
 
       // If user has vaults, they don't need migration
