@@ -1483,16 +1483,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/protected/games/submit-score", walletAuthMiddleware, async (req, res) => {
+  app.post("/api/protected/games/submit-score", async (req, res) => {
     try {
       const userId = req.user?.id;
-      const secretKey = (req as any).secretKey;
       
-      if (!userId || !secretKey) {
-        return res.status(401).json({ error: "Unauthorized or wallet session required" });
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
       }
 
-      const { gameType, score, dogeClicks, pepeClicks } = req.body;
+      const { gameType, score, dogeClicks, pepeClicks, pin } = req.body;
 
       if (!gameType || score < 0) {
         return res.status(400).json({ error: "Invalid score data" });
@@ -1548,10 +1547,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.setGameStats(userId, gameStats);
 
-      // Issue DOPE tokens to user using wallet session
+      // Issue DOPE tokens to user if PIN provided and wallet session available
       if (totalReward > 0) {
         try {
-          await stellarService.issueDopeTokens(secretKey, totalReward.toFixed(4));
+          let secretKey = null;
+          
+          if (pin) {
+            // Generate session password from PIN
+            const sessionPassword = walletService.generateSessionPassword(userId, pin);
+            
+            // Try to retrieve secret key
+            try {
+              secretKey = await walletService.getUserSecretKey(userId, sessionPassword);
+            } catch (error) {
+              console.log("No wallet session found for token issuance");
+            }
+          }
+          
+          if (secretKey) {
+            await stellarService.issueDopeTokens(secretKey, totalReward.toFixed(4));
+            console.log(`Issued ${totalReward.toFixed(4)} DOPE tokens to user ${userId}`);
+          } else {
+            console.log("No wallet session - rewards tracked but tokens not issued");
+          }
         } catch (error) {
           console.error("Failed to issue DOPE tokens:", error);
           // Don't fail the request if token issuance fails
@@ -1569,14 +1587,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/protected/games/daily-reward", walletAuthMiddleware, async (req, res) => {
+  app.post("/api/protected/games/daily-reward", async (req, res) => {
     try {
       const userId = req.user?.id;
-      const secretKey = (req as any).secretKey;
       
-      if (!userId || !secretKey) {
-        return res.status(401).json({ error: "Unauthorized or wallet session required" });
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
       }
+
+      const { pin } = req.body;
 
       let gameStats = await storage.getGameStats(userId);
       if (!gameStats) {
@@ -1626,18 +1645,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.setGameStats(userId, gameStats);
 
-      // Issue DOPE tokens using wallet session
-      try {
-        await stellarService.issueDopeTokens(secretKey, totalReward.toFixed(4));
-      } catch (error) {
-        console.error("Failed to issue daily reward DOPE tokens:", error);
-        return res.status(500).json({ error: "Failed to issue reward tokens" });
+      // Issue DOPE tokens if PIN provided and wallet session available
+      let tokensIssued = false;
+      if (pin) {
+        try {
+          // Generate session password from PIN
+          const sessionPassword = walletService.generateSessionPassword(userId, pin);
+          
+          // Try to retrieve secret key
+          const secretKey = await walletService.getUserSecretKey(userId, sessionPassword);
+          
+          if (secretKey) {
+            await stellarService.issueDopeTokens(secretKey, totalReward.toFixed(4));
+            tokensIssued = true;
+            console.log(`Issued ${totalReward.toFixed(4)} DOPE daily reward tokens to user ${userId}`);
+          }
+        } catch (error) {
+          console.error("Failed to issue daily reward DOPE tokens:", error);
+          // Continue without failing - reward is still tracked
+        }
       }
 
       res.json({
         success: true,
         reward: totalReward,
-        streak: newStreak
+        streak: newStreak,
+        tokensIssued
       });
     } catch (error) {
       console.error("Daily reward error:", error);

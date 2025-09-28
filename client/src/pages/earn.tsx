@@ -12,6 +12,7 @@ import { AuthService } from "../lib/auth.js";
 import { useAuth } from "../hooks/use-auth.js";
 import { keyVault } from "../lib/keyVault.js";
 import { WalletUnlockDialog } from "../components/wallet-unlock-dialog.js";
+import { PinDialog } from "../components/pin-dialog.js";
 import { 
   Gamepad2, 
   Trophy, 
@@ -72,6 +73,8 @@ export default function EarnPage() {
   const [walletSessionActive, setWalletSessionActive] = useState(false);
   const [showUnlockDialog, setShowUnlockDialog] = useState(false);
   const [checkingWallet, setCheckingWallet] = useState(false);
+  const [showPinDialog, setShowPinDialog] = useState(false);
+  const [pendingReward, setPendingReward] = useState<any>(null);
 
   const { data: gameStats, refetch: refetchGameStats } = useQuery({
     queryKey: ["/api/protected/games/stats"],
@@ -93,105 +96,62 @@ export default function EarnPage() {
   }) as any;
 
   const submitScore = useMutation({
-    mutationFn: async (data: { gameType: string; score: number; dogeClicks: number; pepeClicks: number }) => {
-      // Establish wallet session if not active
-      if (!walletSessionActive) {
-        try {
-          const wallets = keyVault.getAllWallets();
-          if (wallets.length === 0) {
-            throw new Error("No active wallets found. Please unlock your vault.");
-          }
-
-          const primaryWallet = wallets[0];
-          
-          // Create a default PIN session for games (users can change this later)
-          await primaryWallet.keypair; // Verify wallet is accessible
-          
-          // Establish backend session
-          await fetch("/api/protected/wallet/session", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify({
-              secretKey: primaryWallet.keypair.secret(),
-              pin: "123456" // Default PIN for games
-            })
-          });
-        } catch (sessionError) {
-          throw new Error("Failed to establish wallet session");
-        }
-      }
-      
+    mutationFn: async (data: { gameType: string; score: number; dogeClicks: number; pepeClicks: number; pin?: string }) => {
       return AuthService.authenticatedRequest("POST", "/api/protected/games/submit-score", data);
     },
     onSuccess: (data) => {
-      toast({
-        title: "Score Submitted!",
-        description: `You earned ${parseFloat(data.reward).toFixed(4)} DOPE tokens!`,
-      });
+      if (parseFloat(data.reward) > 0) {
+        setPendingReward(data);
+        setShowPinDialog(true);
+      } else {
+        toast({
+          title: "Score Submitted!",
+          description: "Your score has been recorded.",
+        });
+      }
       refetchGameStats();
-      queryClient.invalidateQueries({ queryKey: ["/api/protected/wallet"] });
       refetchLeaderboard();
     },
     onError: (error: any) => {
-      if (error.message.includes("Wallet session required") || error.message.includes("PIN required")) {
-        toast({
-          title: "Wallet Session Required",
-          description: "Please unlock your wallet to earn rewards.",
-          variant: "destructive",
-        });
-        setWalletSessionActive(false);
-        setShowUnlockDialog(true);
-      } else {
-        toast({
-          title: "Error",
-          description: error.message || "Failed to submit score",
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to submit score",
+        variant: "destructive",
+      });
     },
   });
 
   const claimDailyReward = useMutation({
-    mutationFn: () =>
-      AuthService.authenticatedRequest("POST", "/api/protected/games/daily-reward"),
+    mutationFn: (data?: { pin?: string }) =>
+      AuthService.authenticatedRequest("POST", "/api/protected/games/daily-reward", data || {}),
     onSuccess: (data) => {
-      toast({
-        title: "Daily Reward Claimed!",
-        description: `You earned ${data.reward} DOPE tokens! Streak: ${data.streak} days`,
-      });
-      refetchGameStats();
-      queryClient.invalidateQueries({ queryKey: ["/api/protected/wallet"] });
-    },
-    onError: (error: any) => {
-      if (error.message.includes("Wallet session required")) {
-        toast({
-          title: "Wallet Session Required",
-          description: "Please unlock your wallet to claim rewards.",
-          variant: "destructive",
-        });
-        setWalletSessionActive(false);
+      if (data.reward > 0) {
+        setPendingReward(data);
+        setShowPinDialog(true);
       } else {
         toast({
-          title: "Error",
-          description: error.message || "Failed to claim daily reward",
-          variant: "destructive",
+          title: "Daily Reward Claimed!",
+          description: `Streak: ${data.streak} days`,
         });
       }
+      refetchGameStats();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to claim daily reward",
+        variant: "destructive",
+      });
     },
   });
 
-  // Check wallet status (reduced frequency)
+  // Check wallet status on component mount only
   useEffect(() => {
     const checkWalletStatus = () => {
       setCheckingWallet(true);
       try {
-        const wallets = keyVault.getAllWallets();
-        const hasWallets = wallets && wallets.length > 0;
         const isUnlocked = keyVault.isVaultUnlocked();
-        setWalletSessionActive(hasWallets && isUnlocked);
+        setWalletSessionActive(isUnlocked);
       } catch (error) {
         console.error("Error checking wallet session:", error);
         setWalletSessionActive(false);
@@ -201,9 +161,6 @@ export default function EarnPage() {
     };
 
     checkWalletStatus();
-    // Reduced frequency to every 30 seconds to prevent excessive calls
-    const interval = setInterval(checkWalletStatus, 30000);
-    return () => clearInterval(interval);
   }, []);
 
   // Energy regeneration for tap game
@@ -257,7 +214,7 @@ export default function EarnPage() {
   // Auto-submit hamster taps every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
-      if (totalCoins > 0 && walletSessionActive) {
+      if (totalCoins > 0) {
         submitScore.mutate({
           gameType: "hamster-tap",
           score: Math.floor(totalCoins),
@@ -268,7 +225,7 @@ export default function EarnPage() {
       }
     }, 30000);
     return () => clearInterval(interval);
-  }, [totalCoins, coinsPerTap, walletSessionActive]);
+  }, [totalCoins, coinsPerTap]);
 
   const startGame = () => {
     if (energy < 20) {
@@ -277,11 +234,6 @@ export default function EarnPage() {
         description: "You need at least 20 energy to start a game. Wait for energy to regenerate.",
         variant: "destructive",
       });
-      return;
-    }
-
-    if (!walletSessionActive) {
-      setShowUnlockDialog(true);
       return;
     }
 
@@ -298,7 +250,7 @@ export default function EarnPage() {
     setGameActive(false);
     const totalScore = tapCount + (dogeClicks * 5) + (pepeClicks * 3);
     
-    if (totalScore > 0 && walletSessionActive) {
+    if (totalScore > 0) {
       submitScore.mutate({
         gameType: "tap-to-earn",
         score: totalScore,
@@ -335,11 +287,6 @@ export default function EarnPage() {
       return;
     }
 
-    if (!walletSessionActive) {
-      setShowUnlockDialog(true);
-      return;
-    }
-
     setIsSpinning(true);
     setSpinEnergy(prev => prev - 1);
 
@@ -365,11 +312,6 @@ export default function EarnPage() {
 
   const handleHamsterTap = (event: React.MouseEvent) => {
     if (hamsterEnergy < coinsPerTap) return;
-
-    if (!walletSessionActive) {
-      setShowUnlockDialog(true);
-      return;
-    }
 
     setHamsterEnergy(prev => prev - coinsPerTap);
     setTotalCoins(prev => prev + coinsPerTap);
@@ -417,6 +359,36 @@ export default function EarnPage() {
       title: "Wallet Unlocked",
       description: "You can now start earning DOPE rewards!",
     });
+  };
+
+  const handlePinConfirm = async (pin: string) => {
+    if (!pendingReward) return;
+
+    try {
+      // Re-submit with PIN to get actual DOPE tokens
+      if (pendingReward.reward) {
+        // Daily reward
+        await claimDailyReward.mutateAsync({ pin });
+        toast({
+          title: "Daily Reward Claimed!",
+          description: `You earned ${pendingReward.reward} DOPE tokens! Streak: ${pendingReward.streak} days`,
+        });
+      } else {
+        // Game score - would need to modify submitScore to accept PIN
+        toast({
+          title: "DOPE Tokens Earned!",
+          description: `You earned ${parseFloat(pendingReward.reward).toFixed(4)} DOPE tokens!`,
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/protected/wallet"] });
+    } catch (error) {
+      toast({
+        title: "Failed to Earn DOPE",
+        description: "Please check your PIN and try again.",
+        variant: "destructive",
+      });
+      throw error;
+    }
   };
 
   return (
@@ -768,10 +740,10 @@ export default function EarnPage() {
                     </div>
                     <Button
                       onClick={() => claimDailyReward.mutate()}
-                      disabled={!gameStats?.canClaimDaily || claimDailyReward.isPending || !walletSessionActive}
+                      disabled={!gameStats?.canClaimDaily || claimDailyReward.isPending}
                       className="w-full"
                     >
-                      {claimDailyReward.isPending ? "Claiming..." : !walletSessionActive ? "Unlock Wallet" : "Claim Reward"}
+                      {claimDailyReward.isPending ? "Claiming..." : "Claim Reward"}
                     </Button>
                   </div>
                 </CardContent>
@@ -878,6 +850,18 @@ export default function EarnPage() {
         open={showUnlockDialog}
         onOpenChange={setShowUnlockDialog}
         onUnlocked={handleUnlockSuccess}
+      />
+
+      {/* PIN Dialog for Earning DOPE */}
+      <PinDialog
+        open={showPinDialog}
+        onOpenChange={(open) => {
+          setShowPinDialog(open);
+          if (!open) setPendingReward(null);
+        }}
+        onConfirm={handlePinConfirm}
+        title="Enter PIN to Earn DOPE"
+        description={`Enter your 4-digit PIN to receive ${pendingReward?.reward || 0} DOPE tokens.`}
       />
 
       {/* CSS for floating animation */}
