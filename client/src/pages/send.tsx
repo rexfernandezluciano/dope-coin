@@ -1,6 +1,11 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.js";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card.js";
 import { Button } from "../components/ui/button.js";
 import { Input } from "../components/ui/input.js";
 import { Label } from "../components/ui/label.js";
@@ -17,6 +22,7 @@ import { Send, ArrowLeft, Wallet, AlertCircle, Copy } from "lucide-react";
 import { keyVault } from "../lib/keyVault.js";
 import { Alert, AlertDescription } from "../components/ui/alert.js";
 import { useLocation } from "wouter";
+import { WalletUnlockDialog } from "../components/wallet-unlock-dialog.js";
 import { PinVerification } from "../components/pin-verification.js";
 import { useAuth } from "../hooks/use-auth.js";
 
@@ -32,6 +38,7 @@ export default function SendPage() {
     amount: "",
     assetType: "DOPE",
   });
+  const [showUnlockDialog, setShowUnlockDialog] = useState(false);
 
   const { data: walletData, isLoading } = useQuery({
     queryKey: ["/api/protected/wallet"],
@@ -46,13 +53,19 @@ export default function SendPage() {
   // Check wallet unlock status
   useEffect(() => {
     const checkWalletStatus = () => {
-      const wallets = keyVault.getAllWallets();
-      setWalletUnlocked(wallets.length > 0 && keyVault.isVaultUnlocked());
+      try {
+        const wallets = keyVault.getAllWallets();
+        setWalletUnlocked(wallets.length > 0 && keyVault.isVaultUnlocked());
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Unlock your wallet first.",
+          variant: "destructive",
+        });
+      }
     };
 
     checkWalletStatus();
-    const interval = setInterval(checkWalletStatus, 1000);
-    return () => clearInterval(interval);
   }, []);
 
   const sendTokens = useMutation({
@@ -106,9 +119,10 @@ export default function SendPage() {
       return;
     }
 
-    const selectedAsset = assetData?.find((asset: any) => 
-      asset.asset_code === sendForm.assetType || 
-      (sendForm.assetType === "XLM" && asset.asset_type === "native")
+    const selectedAsset = assetData?.find(
+      (asset: any) =>
+        asset.asset_code === sendForm.assetType ||
+        (sendForm.assetType === "XLM" && asset.asset_type === "native"),
     );
 
     const maxBalance = parseFloat(selectedAsset?.balance || "0");
@@ -138,12 +152,12 @@ export default function SendPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${localStorage.getItem('token')}`
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
         body: JSON.stringify({
           secretKey: primaryWallet.keypair.secret(),
-          pin: pin
-        })
+          pin: pin,
+        }),
       });
 
       sendTokens.mutate({ ...sendForm, pin });
@@ -152,7 +166,8 @@ export default function SendPage() {
       setShowPinVerification(false);
       toast({
         title: "Session Error",
-        description: "Failed to establish secure wallet session. Please try again.",
+        description:
+          "Failed to establish secure wallet session. Please try again.",
         variant: "destructive",
       });
     }
@@ -163,9 +178,10 @@ export default function SendPage() {
   };
 
   const setMaxAmount = () => {
-    const selectedAsset = assetData?.find((asset: any) => 
-      asset.asset_code === sendForm.assetType || 
-      (sendForm.assetType === "XLM" && asset.asset_type === "native")
+    const selectedAsset = assetData?.find(
+      (asset: any) =>
+        asset.asset_code === sendForm.assetType ||
+        (sendForm.assetType === "XLM" && asset.asset_type === "native"),
     );
 
     const maxBalance = selectedAsset?.balance || "0";
@@ -176,20 +192,12 @@ export default function SendPage() {
   };
 
   const unlockWallet = async () => {
-    try {
-      // Navigate to dashboard to unlock wallet
-      navigate("/dashboard");
-      toast({
-        title: "Unlock Required",
-        description: "Please unlock your wallet from the dashboard.",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to navigate to wallet unlock",
-        variant: "destructive",
-      });
-    }
+    setShowUnlockDialog(true);
+  };
+
+  const handleUnlockSuccess = () => {
+    setWalletUnlocked(true);
+    setShowUnlockDialog(false);
   };
 
   if (isLoading) {
@@ -232,7 +240,11 @@ export default function SendPage() {
                     Wallet is locked. Please unlock to send transactions.
                   </span>
                 </div>
-                <Button size="sm" onClick={unlockWallet} className="bg-orange-500 hover:bg-orange-600">
+                <Button
+                  size="sm"
+                  onClick={unlockWallet}
+                  className="bg-orange-500 hover:bg-orange-600"
+                >
                   <Wallet className="w-4 h-4 mr-2" />
                   Unlock Wallet
                 </Button>
@@ -268,13 +280,23 @@ export default function SendPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {assetData?.map((asset: any) => (
-                      <SelectItem 
-                        key={asset.asset_type === "native" ? "XLM" : asset.asset_code} 
-                        value={asset.asset_type === "native" ? "XLM" : asset.asset_code}
+                      <SelectItem
+                        key={
+                          asset.asset_type === "native"
+                            ? "XLM"
+                            : asset.asset_code
+                        }
+                        value={
+                          asset.asset_type === "native"
+                            ? "XLM"
+                            : asset.asset_code
+                        }
                       >
                         <div className="flex items-center justify-between w-full">
                           <span>
-                            {asset.asset_type === "native" ? "XLM" : asset.asset_code}
+                            {asset.asset_type === "native"
+                              ? "XLM"
+                              : asset.asset_code}
                             {asset.asset_issuer && (
                               <span className="text-xs text-muted-foreground ml-2">
                                 ({asset.asset_issuer.slice(0, 8)}...)
@@ -351,12 +373,17 @@ export default function SendPage() {
                   >
                     Max:{" "}
                     {(() => {
-                      const selectedAsset = assetData?.find((asset: any) => 
-                        asset.asset_code === sendForm.assetType || 
-                        (sendForm.assetType === "XLM" && asset.asset_type === "native")
+                      const selectedAsset = assetData?.find(
+                        (asset: any) =>
+                          asset.asset_code === sendForm.assetType ||
+                          (sendForm.assetType === "XLM" &&
+                            asset.asset_type === "native"),
                       );
-                      return parseFloat(selectedAsset?.balance || "0").toFixed(4);
-                    })()} {sendForm.assetType}
+                      return parseFloat(selectedAsset?.balance || "0").toFixed(
+                        4,
+                      );
+                    })()}{" "}
+                    {sendForm.assetType}
                   </Button>
                 </div>
                 <Input
@@ -388,8 +415,8 @@ export default function SendPage() {
                   {sendTokens.isPending
                     ? "Sending..."
                     : !walletUnlocked
-                    ? "Unlock Wallet to Send"
-                    : `Send ${sendForm.amount || "0"} ${sendForm.assetType}`}
+                      ? "Unlock Wallet to Send"
+                      : `Send ${sendForm.amount || "0"} ${sendForm.assetType}`}
                 </Button>
               </div>
             </form>
@@ -411,7 +438,7 @@ export default function SendPage() {
 
         {/* PIN Verification Modal */}
         {showPinVerification && user && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center top z-50">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center w-fill h-full top z-50">
             <div className="bg-white rounded-0 max-w-md w-full h-full md:rounded-lg md:h-auto">
               <PinVerification
                 walletId={localStorage.getItem(`walletId_${user.id}`) || ""}
@@ -424,6 +451,11 @@ export default function SendPage() {
           </div>
         )}
       </div>
+      <WalletUnlockDialog
+        open={showUnlockDialog}
+        onOpenChange={setShowUnlockDialog}
+        onUnlocked={handleUnlockSuccess}
+      />
     </div>
   );
 }

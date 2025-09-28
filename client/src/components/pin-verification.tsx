@@ -71,7 +71,7 @@ export function PinVerification({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="relative">
             <Input
-              type={showPin ? "text" : "password"}
+              type={showPin ? "number" : "password"}
               value={pin}
               onChange={(e) => {
                 const value = e.target.value.replace(/\D/g, '').slice(0, 6);
