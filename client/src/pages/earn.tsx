@@ -1,5 +1,3 @@
-
-
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card.js";
@@ -13,12 +11,12 @@ import { useAuth } from "../hooks/use-auth.js";
 import { keyVault } from "../lib/keyVault.js";
 import { WalletUnlockDialog } from "../components/wallet-unlock-dialog.js";
 import { PinDialog } from "../components/pin-dialog.js";
-import { 
-  Gamepad2, 
-  Trophy, 
-  Coins, 
-  Zap, 
-  Target, 
+import {
+  Gamepad2,
+  Trophy,
+  Coins,
+  Zap,
+  Target,
   Crown,
   Star,
   Gift,
@@ -39,10 +37,10 @@ export default function EarnPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  
+
   // Navigation
   const [currentTab, setCurrentTab] = useState("hamster");
-  
+
   // Game states
   const [tapCount, setTapCount] = useState(0);
   const [energy, setEnergy] = useState(100);
@@ -51,20 +49,20 @@ export default function EarnPage() {
   const [gameActive, setGameActive] = useState(false);
   const [timeLeft, setTimeLeft] = useState(60);
   const [currentScore, setCurrentScore] = useState(0);
-  
+
   // Spin game states
   const [spinEnergy, setSpinEnergy] = useState(3);
   const [isSpinning, setIsSpinning] = useState(false);
   const [lastSpinReward, setLastSpinReward] = useState(0);
   const spinRef = useRef<HTMLDivElement>(null);
-  
+
   // Hamster clicker states
   const [hamsterEnergy, setHamsterEnergy] = useState(1000);
   const [hamsterLevel, setHamsterLevel] = useState(1);
   const [profitPerHour, setProfitPerHour] = useState(0);
   const [coinsPerTap, setCoinsPerTap] = useState(1);
   const [totalCoins, setTotalCoins] = useState(0);
-  
+
   // Animation states
   const [tapAnimation, setTapAnimation] = useState(false);
   const [floatingCoins, setFloatingCoins] = useState<Array<{id: number, x: number, y: number}>>([]);
@@ -96,7 +94,7 @@ export default function EarnPage() {
   }) as any;
 
   const submitScore = useMutation({
-    mutationFn: async (data: { gameType: string; score: number; dogeClicks: number; pepeClicks: number; pin?: string }) => {
+    mutationFn: (data: { gameType: string; score: number; dogeClicks: number; pepeClicks: number; pin?: string }) => {
       return AuthService.authenticatedRequest("POST", "/api/protected/games/submit-score", data);
     },
     onSuccess: (data) => {
@@ -249,7 +247,7 @@ export default function EarnPage() {
   const endGame = () => {
     setGameActive(false);
     const totalScore = tapCount + (dogeClicks * 5) + (pepeClicks * 3);
-    
+
     if (totalScore > 0) {
       submitScore.mutate({
         gameType: "tap-to-earn",
@@ -265,7 +263,7 @@ export default function EarnPage() {
 
     setTapCount((prev) => prev + 1);
     let points = 1;
-    
+
     if (type === "doge") {
       setDogeClicks((prev) => prev + 1);
       points = 5;
@@ -273,7 +271,7 @@ export default function EarnPage() {
       setPepeClicks((prev) => prev + 1);
       points = 3;
     }
-    
+
     setCurrentScore(prev => prev + points);
   };
 
@@ -300,7 +298,7 @@ export default function EarnPage() {
       const reward = rewards[Math.floor(Math.random() * rewards.length)];
       setLastSpinReward(reward);
       setIsSpinning(false);
-      
+
       submitScore.mutate({
         gameType: "spin-wheel",
         score: reward,
@@ -315,7 +313,7 @@ export default function EarnPage() {
 
     setHamsterEnergy(prev => prev - coinsPerTap);
     setTotalCoins(prev => prev + coinsPerTap);
-    
+
     setTapAnimation(true);
     setTimeout(() => setTapAnimation(false), 150);
 
@@ -339,7 +337,7 @@ export default function EarnPage() {
       setHamsterLevel(prev => prev + 1);
       setCoinsPerTap(prev => prev + 1);
       setProfitPerHour(prev => prev + hamsterLevel * 10);
-      
+
       toast({
         title: "Hamster Upgraded!",
         description: `Level ${hamsterLevel + 1}: +${hamsterLevel + 1} coins per tap, +${(hamsterLevel + 1) * 10} profit/hour`,
@@ -391,6 +389,12 @@ export default function EarnPage() {
     }
   };
 
+  // Check if user can claim daily reward (24 hours since last claim)
+  const now = new Date();
+  const lastClaim = gameStats?.lastClaimDate ? new Date(gameStats.lastClaimDate) : null;
+  const canClaimDaily = !lastClaim ||
+    (now.getTime() - lastClaim.getTime()) >= 24 * 60 * 60 * 1000;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800">
       {/* Navigation Header */}
@@ -419,8 +423,8 @@ export default function EarnPage() {
                 Balance: {parseFloat(walletData?.dopeBalance || "0").toFixed(4)} DOPE
               </Badge>
               {walletSessionActive ? (
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   variant="outline"
                   onClick={() => window.location.href = "/wallet"}
                   className="hidden md:flex"
@@ -429,8 +433,8 @@ export default function EarnPage() {
                   Wallet
                 </Button>
               ) : (
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   onClick={() => setShowUnlockDialog(true)}
                   className="bg-orange-500 hover:bg-orange-600"
                   disabled={checkingWallet}
@@ -445,7 +449,7 @@ export default function EarnPage() {
               )}
             </div>
           </div>
-          
+
           {/* Mobile Balance */}
           <div className="md:hidden mt-2">
             <Badge variant="secondary" className="w-full justify-center">
@@ -520,7 +524,7 @@ export default function EarnPage() {
                       TAP ME!
                     </div>
                   </button>
-                  
+
                   {/* Floating coins */}
                   {floatingCoins.map(coin => (
                     <div
@@ -538,7 +542,7 @@ export default function EarnPage() {
                 </div>
 
                 <Progress value={(hamsterEnergy / (1000 + (hamsterLevel * 100))) * 100} className="w-full h-3" />
-                
+
                 <Button
                   onClick={upgradeHamster}
                   disabled={totalCoins < hamsterLevel * 1000}
@@ -562,7 +566,7 @@ export default function EarnPage() {
               </CardHeader>
               <CardContent className="text-center space-y-6">
                 <div className="relative w-48 h-48 md:w-64 md:h-64 mx-auto">
-                  <div 
+                  <div
                     ref={spinRef}
                     className="w-full h-full rounded-full border-8 border-purple-500 shadow-2xl transition-transform duration-3000 ease-out overflow-hidden"
                   >
@@ -578,7 +582,7 @@ export default function EarnPage() {
                   </div>
                   <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-2 w-0 h-0 border-l-4 border-r-4 border-b-8 border-transparent border-b-black dark:border-b-white"></div>
                 </div>
-                
+
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
                     <div className="bg-red-100 dark:bg-red-900/30 p-2 rounded">1 DOPE</div>
@@ -586,18 +590,18 @@ export default function EarnPage() {
                     <div className="bg-green-100 dark:bg-green-900/30 p-2 rounded">10 DOPE</div>
                     <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded">20 DOPE</div>
                   </div>
-                  
+
                   <div className="text-sm text-muted-foreground">
                     Last Reward: {lastSpinReward > 0 ? `${lastSpinReward} DOPE` : "None"}
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Progress value={(spinEnergy / 3) * 100} className="w-full h-3" />
                     <div className="text-xs text-muted-foreground">
                       Energy: {spinEnergy}/3 (Regenerates every 5 minutes)
                     </div>
                   </div>
-                  
+
                   <Button
                     onClick={spinWheel}
                     disabled={spinEnergy < 1 || isSpinning}
@@ -644,12 +648,12 @@ export default function EarnPage() {
                         Tap DOGE and PEPE characters to earn points!
                       </p>
                       <div className="grid grid-cols-3 gap-2 md:gap-4 text-xs md:text-sm">
-                        <div className="bg-green-100 dark:bg-green-900/30 p-2 md:p-3 rounded-lg">
-                          <div className="w-4 h-4 md:w-6 md:h-6 bg-green-500 rounded-full mx-auto mb-2"></div>
+                        <div className="bg-yellow-100 dark:bg-yellow-900/30 p-2 md:p-3 rounded-lg">
+                          <div className="text-lg mx-auto mb-1">🐕</div>
                           <span>DOGE = 5 points</span>
                         </div>
-                        <div className="bg-blue-100 dark:bg-blue-900/30 p-2 md:p-3 rounded-lg">
-                          <div className="w-4 h-4 md:w-6 md:h-6 bg-blue-500 rounded-full mx-auto mb-2"></div>
+                        <div className="bg-green-100 dark:bg-green-900/30 p-2 md:p-3 rounded-lg">
+                          <div className="text-lg mx-auto mb-1">🐸</div>
                           <span>PEPE = 3 points</span>
                         </div>
                         <div className="bg-gray-100 dark:bg-gray-700 p-2 md:p-3 rounded-lg">
@@ -658,8 +662,8 @@ export default function EarnPage() {
                         </div>
                       </div>
                     </div>
-                    <Button 
-                      onClick={startGame} 
+                    <Button
+                      onClick={startGame}
                       disabled={energy < 20}
                       className="w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
                     >
@@ -732,7 +736,7 @@ export default function EarnPage() {
                     <div className="flex items-center justify-center space-x-1">
                       <Star className="w-4 h-4 text-yellow-500" />
                       <span className="font-semibold">
-                        {gameStats?.canClaimDaily ? "Available!" : "Come back tomorrow"}
+                        {canClaimDaily ? "Available!" : "Come back tomorrow"}
                       </span>
                     </div>
                     <div className="text-sm text-muted-foreground">
@@ -740,7 +744,7 @@ export default function EarnPage() {
                     </div>
                     <Button
                       onClick={() => claimDailyReward.mutate()}
-                      disabled={!gameStats?.canClaimDaily || claimDailyReward.isPending}
+                      disabled={!canClaimDaily || claimDailyReward.isPending}
                       className="w-full"
                     >
                       {claimDailyReward.isPending ? "Claiming..." : "Claim Reward"}
@@ -797,8 +801,8 @@ export default function EarnPage() {
                       <div
                         key={player.id}
                         className={`flex items-center justify-between p-3 rounded-lg ${
-                          player.id === userProfile?.user?.id 
-                            ? "bg-primary/20 border border-primary/30" 
+                          player.id === userProfile?.user?.id
+                            ? "bg-primary/20 border border-primary/30"
                             : "bg-muted"
                         }`}
                       >
@@ -830,7 +834,7 @@ export default function EarnPage() {
                         </div>
                       </div>
                     ))}
-                    
+
                     {(!leaderboard || leaderboard.length === 0) && (
                       <div className="text-center py-8 text-muted-foreground">
                         <Trophy className="w-8 h-8 mx-auto mb-2 opacity-50" />

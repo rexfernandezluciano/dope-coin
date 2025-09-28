@@ -38,6 +38,11 @@ export default function SendPage() {
     refetchInterval: 30000,
   }) as any;
 
+  const { data: assetData } = useQuery({
+    queryKey: ["/api/protected/asset/holders"],
+    refetchInterval: 30000,
+  }) as any;
+
   // Check wallet unlock status
   useEffect(() => {
     const checkWalletStatus = () => {
@@ -101,7 +106,7 @@ export default function SendPage() {
       return;
     }
 
-    const selectedAsset = walletData?.balances?.find((asset: any) => 
+    const selectedAsset = assetData?.find((asset: any) => 
       asset.asset_code === sendForm.assetType || 
       (sendForm.assetType === "XLM" && asset.asset_type === "native")
     );
@@ -158,7 +163,7 @@ export default function SendPage() {
   };
 
   const setMaxAmount = () => {
-    const selectedAsset = walletData?.balances?.find((asset: any) => 
+    const selectedAsset = assetData?.find((asset: any) => 
       asset.asset_code === sendForm.assetType || 
       (sendForm.assetType === "XLM" && asset.asset_type === "native")
     );
@@ -262,7 +267,7 @@ export default function SendPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {walletData?.balances?.map((asset: any) => (
+                    {assetData?.map((asset: any) => (
                       <SelectItem 
                         key={asset.asset_type === "native" ? "XLM" : asset.asset_code} 
                         value={asset.asset_type === "native" ? "XLM" : asset.asset_code}
@@ -346,7 +351,7 @@ export default function SendPage() {
                   >
                     Max:{" "}
                     {(() => {
-                      const selectedAsset = walletData?.balances?.find((asset: any) => 
+                      const selectedAsset = assetData?.find((asset: any) => 
                         asset.asset_code === sendForm.assetType || 
                         (sendForm.assetType === "XLM" && asset.asset_type === "native")
                       );

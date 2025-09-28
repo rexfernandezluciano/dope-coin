@@ -1433,10 +1433,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.setGameStats(userId, gameStats);
       }
 
-      // Check if user can claim daily reward
+      // Check if user can claim daily reward (24 hours since last claim)
       const now = new Date();
       const lastClaim = gameStats.lastClaimDate ? new Date(gameStats.lastClaimDate) : null;
-      const canClaimDaily = !lastClaim ||
+      const canClaimDaily = !lastClaim || 
         (now.getTime() - lastClaim.getTime()) >= 24 * 60 * 60 * 1000;
 
       // Calculate rank
@@ -1615,9 +1615,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const now = new Date();
       const lastClaim = gameStats.lastClaimDate ? new Date(gameStats.lastClaimDate) : null;
 
-      // Check if 24 hours have passed
+      // Check if 24 hours have passed since last claim
       if (lastClaim && (now.getTime() - lastClaim.getTime()) < 24 * 60 * 60 * 1000) {
-        return res.status(400).json({ error: "Daily reward already claimed" });
+        return res.status(400).json({ error: "Daily reward already claimed. Please wait 24 hours." });
       }
 
       // Calculate streak
